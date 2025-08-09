@@ -8,15 +8,17 @@ function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [agents, setAgents] = useState([]);
+  const [planning, setPlanning] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
-    // Vérifier la session au chargement
     checkUser();
-
-    // Écouter les changements d'auth
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setUser(session.user);
+        loadData();
       } else {
         setUser(null);
       }
@@ -27,14 +29,56 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [selectedMonth, selectedYear, user]);
+
   const checkUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
+      if (user) {
+        loadData();
+      }
     } catch (error) {
-      console.error('Erreur lors de la vérification de l\'utilisateur:', error);
+      console.error('Erreur:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadData = async () => {
+    if (!user) return;
+    
+    // Charger les agents
+    const { data: agentsData, error: agentsError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('site', 'Paris Nord')
+      .order('nom');
+    
+    if (!agentsError) {
+      setAgents(agentsData || []);
+    }
+
+    // Charger le planning du mois
+    const startDate = new Date(selectedYear, selectedMonth - 1, 1);
+    const endDate = new Date(selectedYear, selectedMonth, 0);
+    
+    const { data: planningData, error: planningError } = await supabase
+      .from('planning')
+      .select(`
+        *,
+        agent:agents(nom, prenom, groupe)
+      `)
+      .gte('date', startDate.toISOString().split('T')[0])
+      .lte('date', endDate.toISOString().split('T')[0])
+      .order('date');
+    
+    if (!planningError) {
+      setPlanning(planningData || []);
     }
   };
 
@@ -71,6 +115,38 @@ function App() {
     } catch (error) {
       alert(error.message);
     }
+  };
+
+  const getMonthName = (month) => {
+    const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+                   'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    return months[month - 1];
+  };
+
+  const getServiceColor = (code) => {
+    const colors = {
+      'O': 'bg-green-500',
+      'X': 'bg-red-500',
+      '-': 'bg-gray-400',
+      'RP': 'bg-yellow-500',
+      'D': 'bg-blue-500',
+      'C': 'bg-purple-500',
+      'MA': 'bg-orange-500',
+      'TQ': 'bg-pink-500'
+    };
+    return colors[code] || 'bg-gray-300';
+  };
+
+  const groupPlanningByDate = () => {
+    const grouped = {};
+    planning.forEach(item => {
+      const date = new Date(item.date).toLocaleDateString('fr-FR');
+      if (!grouped[date]) {
+        grouped[date] = [];
+      }
+      grouped[date].push(item);
+    });
+    return grouped;
   };
 
   if (loading) {
@@ -131,6 +207,8 @@ function App() {
     );
   }
 
+  const groupedPlanning = groupPlanningByDate();
+
   return (
     <div className="App min-h-screen">
       <header className="App-header p-4">
@@ -151,75 +229,115 @@ function App() {
       </header>
 
       <main className="container mx-auto p-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="card p-6 fade-in">
-            <h2 className="text-xl font-semibold mb-4">📅 Planning du mois</h2>
-            <p className="text-gray-600">
-              Consultez et gérez le planning des gardes pour le mois en cours.
-            </p>
-            <button className="btn-primary mt-4">Voir le planning</button>
-          </div>
-
-          <div className="card p-6 fade-in" style={{ animationDelay: '0.1s' }}>
-            <h2 className="text-xl font-semibold mb-4">🔔 Mes gardes</h2>
-            <p className="text-gray-600">
-              Visualisez vos gardes programmées et vos disponibilités.
-            </p>
-            <button className="btn-primary mt-4">Mes gardes</button>
-          </div>
-
-          <div className="card p-6 fade-in" style={{ animationDelay: '0.2s' }}>
-            <h2 className="text-xl font-semibold mb-4">🏖 Congés & Absences</h2>
-            <p className="text-gray-600">
-              Déclarez vos absences et gérez vos demandes de congés.
-            </p>
-            <button className="btn-primary mt-4">Gérer</button>
-          </div>
-
-          <div className="card p-6 fade-in" style={{ animationDelay: '0.3s' }}>
-            <h2 className="text-xl font-semibold mb-4">📊 Statistiques</h2>
-            <p className="text-gray-600">
-              Consultez les statistiques et rapports d'activité.
-            </p>
-            <button className="btn-primary mt-4">Voir stats</button>
-          </div>
-
-          <div className="card p-6 fade-in" style={{ animationDelay: '0.4s' }}>
-            <h2 className="text-xl font-semibold mb-4">👥 Équipe</h2>
-            <p className="text-gray-600">
-              Liste des médecins et contacts de l'équipe.
-            </p>
-            <button className="btn-primary mt-4">Voir l'équipe</button>
-          </div>
-
-          <div className="card p-6 fade-in" style={{ animationDelay: '0.5s' }}>
-            <h2 className="text-xl font-semibold mb-4">⚙️ Paramètres</h2>
-            <p className="text-gray-600">
-              Gérez vos préférences et paramètres de compte.
-            </p>
-            <button className="btn-primary mt-4">Paramètres</button>
+        {/* Sélecteur de mois */}
+        <div className="card p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold">
+              Planning {getMonthName(selectedMonth)} {selectedYear}
+            </h2>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  if (selectedMonth === 1) {
+                    setSelectedMonth(12);
+                    setSelectedYear(selectedYear - 1);
+                  } else {
+                    setSelectedMonth(selectedMonth - 1);
+                  }
+                }}
+                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+              >
+                ← Mois précédent
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedMonth === 12) {
+                    setSelectedMonth(1);
+                    setSelectedYear(selectedYear + 1);
+                  } else {
+                    setSelectedMonth(selectedMonth + 1);
+                  }
+                }}
+                className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+              >
+                Mois suivant →
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="mt-8 card p-6">
-          <h2 className="text-xl font-semibold mb-4">📈 Aperçu rapide</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-purple-600">12</div>
-              <div className="text-gray-600">Gardes ce mois</div>
+        {/* Statistiques */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <div className="card p-4 text-center">
+            <div className="text-3xl font-bold text-purple-600">{agents.length}</div>
+            <div className="text-gray-600">Agents actifs</div>
+          </div>
+          <div className="card p-4 text-center">
+            <div className="text-3xl font-bold text-green-600">{planning.length}</div>
+            <div className="text-gray-600">Services ce mois</div>
+          </div>
+          <div className="card p-4 text-center">
+            <div className="text-3xl font-bold text-blue-600">
+              {agents.filter(a => a.statut === 'roulement').length}
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-green-600">3</div>
-              <div className="text-gray-600">Prochaines gardes</div>
+            <div className="text-gray-600">Agents roulement</div>
+          </div>
+          <div className="card p-4 text-center">
+            <div className="text-3xl font-bold text-orange-600">
+              {agents.filter(a => a.statut === 'reserve').length}
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-blue-600">8</div>
-              <div className="text-gray-600">Médecins actifs</div>
+            <div className="text-gray-600">Agents réserve</div>
+          </div>
+        </div>
+
+        {/* Planning détaillé */}
+        <div className="card p-6">
+          <h3 className="text-lg font-semibold mb-4">Planning détaillé</h3>
+          {Object.keys(groupedPlanning).length === 0 ? (
+            <p className="text-gray-500">Aucun planning pour ce mois</p>
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(groupedPlanning).map(([date, items]) => (
+                <div key={date} className="border-l-4 border-purple-500 pl-4">
+                  <h4 className="font-semibold text-gray-700 mb-2">{date}</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {items.map(item => (
+                      <div key={item.id} className="flex items-center space-x-2">
+                        <span className={`px-2 py-1 rounded text-white text-xs ${getServiceColor(item.service_code)}`}>
+                          {item.service_code}
+                        </span>
+                        <span className="text-sm">
+                          {item.agent ? `${item.agent.nom} ${item.agent.prenom}` : 'Non assigné'}
+                        </span>
+                        {item.poste_code && (
+                          <span className="text-xs text-gray-500">({item.poste_code})</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="text-center">
-              <div className="text-3xl font-bold text-orange-600">2</div>
-              <div className="text-gray-600">Demandes en attente</div>
-            </div>
+          )}
+        </div>
+
+        {/* Liste des agents */}
+        <div className="card p-6 mt-6">
+          <h3 className="text-lg font-semibold mb-4">Liste des agents</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {agents.map(agent => (
+              <div key={agent.id} className="border rounded p-3">
+                <div className="font-semibold">{agent.nom} {agent.prenom}</div>
+                <div className="text-sm text-gray-600">{agent.groupe}</div>
+                <div className="text-xs mt-1">
+                  <span className={`px-2 py-1 rounded ${
+                    agent.statut === 'roulement' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'
+                  }`}>
+                    {agent.statut}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </main>
