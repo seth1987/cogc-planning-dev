@@ -1,0 +1,34 @@
+# Voir https://help.github.com/articles/ignoring-files/ pour plus d'informations sur l'ignorance de fichiers.
+
+# dépendances
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/build
+
+# divers
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# éditeur
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
