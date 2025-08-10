@@ -138,16 +138,9 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                                   >
                                     <span>{agent.nom} {agent.prenom}</span>
                                   </button>
-                                  <div className="flex items-center space-x-1">
-                                    <span className={`px-1 py-0.5 text-xs rounded ${
-                                      agent.statut === 'roulement' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
-                                    }`}>
-                                      {agent.statut}
-                                    </span>
-                                    {agent.site === 'Denfert-Rochereau' && (
-                                      <span className="text-xs text-purple-600">DR</span>
-                                    )}
-                                  </div>
+                                  {agent.site === 'Denfert-Rochereau' && (
+                                    <span className="text-xs text-purple-600 ml-2">DR</span>
+                                  )}
                                 </div>
                               </td>
                               {Array.from({ length: daysInMonth }, (_, dayIndex) => 
