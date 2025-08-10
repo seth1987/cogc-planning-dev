@@ -72,6 +72,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       result.agent.prenom = agentMatch[2];
     }
 
+    // Map pour gérer les entrées multiples par date
+    const planningMap = new Map();
+
     // Recherche des dates et services
     const datePattern = /(\d{2})\/(\d{2})\/(\d{4})/g;
     const dates = text.match(datePattern);
@@ -88,6 +91,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         
         let serviceCode = '';
         let posteCode = null;
+        let shouldShift = false; // Flag pour décaler la date
         
         // Détection des codes
         if (dateLine.includes('ACR001') || dateLine.includes('CRC001') || dateLine.includes('CCU001')) {
@@ -97,18 +101,14 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           serviceCode = 'O';
           posteCode = dateLine.includes('ACR') ? 'ACR' : dateLine.includes('CRC') ? 'CRC' : 'CCU';
         } else if (dateLine.includes('ACR003') || dateLine.includes('CRC003') || dateLine.includes('CCU003')) {
-          // Nuit - décaler au lendemain
-          const nextDate = new Date(formattedDate);
-          nextDate.setDate(nextDate.getDate() + 1);
-          const nextDateStr = nextDate.toISOString().split('T')[0];
+          // Nuit de travail - décaler au lendemain
           serviceCode = 'X';
           posteCode = dateLine.includes('ACR') ? 'ACR' : dateLine.includes('CRC') ? 'CRC' : 'CCU';
-          result.planning.push({
-            date: nextDateStr,
-            service_code: serviceCode,
-            poste_code: posteCode
-          });
-          return; // Passer à la date suivante
+          shouldShift = true;
+        } else if (dateLine.includes('RP003') || dateLine.includes('RPP003')) {
+          // Repos de nuit - NE PAS décaler
+          serviceCode = 'RP';
+          shouldShift = false;
         } else if (dateLine.includes('RP') || dateLine.includes('Repos')) {
           serviceCode = 'RP';
         } else if (dateLine.includes('CONGE') || /\bC\s+Congé/.test(dateLine)) {
@@ -124,14 +124,32 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         }
         
         if (serviceCode) {
-          result.planning.push({
-            date: formattedDate,
-            service_code: serviceCode,
-            poste_code: posteCode
-          });
+          let entryDate = formattedDate;
+          
+          // Décaler uniquement les services de nuit (pas les repos de nuit)
+          if (shouldShift) {
+            const nextDate = new Date(formattedDate);
+            nextDate.setDate(nextDate.getDate() + 1);
+            entryDate = nextDate.toISOString().split('T')[0];
+          }
+          
+          // Ajouter l'entrée au planning
+          const key = `${entryDate}_${serviceCode}_${posteCode || 'null'}`;
+          if (!planningMap.has(key)) {
+            planningMap.set(key, {
+              date: entryDate,
+              service_code: serviceCode,
+              poste_code: posteCode
+            });
+          }
         }
       });
     }
+
+    // Convertir la map en array
+    result.planning = Array.from(planningMap.values()).sort((a, b) => 
+      new Date(a.date) - new Date(b.date)
+    );
 
     return result;
   };
@@ -150,16 +168,17 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
        - Le code poste si présent
     
     3. RÈGLE CRITIQUE POUR LES NUITS (003):
-       Les services de nuit (codes se terminant par 003) qui commencent à 22h00 doivent être décalés au JOUR SUIVANT
-       car ils se terminent à 6h00 le lendemain.
-       Exemple: 21/04 ACR003 → enregistrer sur le 22/04
+       - Les services de TRAVAIL de nuit (ACR003, CRC003, CCU003) qui commencent à 22h00 doivent être décalés au JOUR SUIVANT
+       - EXCEPTION: Les REPOS de nuit (RP003, RPP003) restent sur leur date d'origine (ne pas décaler)
+       - Exemple: 21/04 ACR003 → enregistrer sur le 22/04 (service de nuit)
+       - Exemple: 21/04 RP003 → reste sur le 21/04 (repos de nuit)
     
     4. Conversion des codes:
        - XXX001 (matin 6h-14h) = service "-"
        - XXX002 (soir 14h-22h) = service "O"
-       - XXX003 (nuit 22h-6h) = service "X" (DÉCALER AU JOUR SUIVANT)
+       - XXX003 (nuit 22h-6h) = service "X" (DÉCALER AU JOUR SUIVANT sauf si RP/RPP)
        - XXX004, XXX005 = vérifier les horaires (généralement matin="-" ou soir="O")
-       - RP ou RPP = "RP"
+       - RP ou RPP ou RP003 ou RPP003 = "RP" (repos, jamais décalé)
        - C ou CONGE = "C"
        - DISPO = "D"
        - NU = "NU" (garder tel quel)
@@ -173,9 +192,11 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
        - Le chiffre = indicateur horaire pour conversion
     
     6. Si une date a plusieurs entrées:
-       - Garder TOUTES les entrées
-       - Les nuits (003) sont toujours décalées au lendemain
+       - Garder TOUTES les entrées uniques
+       - Les nuits de TRAVAIL (003) sont décalées au lendemain
+       - Les repos de nuit (RP003) restent sur leur date
        - NU reste sur sa date originale
+       - Éviter les doublons (même date + même service + même poste)
     
     Format JSON attendu:
     {
@@ -192,14 +213,18 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       ]
     }
     
-    EXEMPLE CONCRET:
-    Si le bulletin montre:
-    21/04/2025 NU
-    21/04/2025 ACR003 (22h-6h)
+    EXEMPLES CONCRETS:
+    1. Si le bulletin montre:
+       21/04/2025 NU
+       21/04/2025 ACR003 (22h-6h)
+       Tu dois retourner:
+       - {"date": "2025-04-21", "service_code": "NU", "poste_code": null}
+       - {"date": "2025-04-22", "service_code": "X", "poste_code": "ACR"} (décalé au lendemain)
     
-    Tu dois retourner:
-    - {"date": "2025-04-21", "service_code": "NU", "poste_code": null}
-    - {"date": "2025-04-22", "service_code": "X", "poste_code": "ACR"} (décalé au lendemain)
+    2. Si le bulletin montre:
+       21/04/2025 RP003 (repos de nuit)
+       Tu dois retourner:
+       - {"date": "2025-04-21", "service_code": "RP", "poste_code": null} (PAS décalé)
     
     Réponds UNIQUEMENT avec le JSON, sans texte supplémentaire.`;
 
@@ -307,66 +332,111 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setError('');
 
     try {
-      // 1. Vérifier si l'agent existe
+      // 1. Recherche de l'agent avec insensibilité à la casse
+      console.log('Recherche agent:', editedData.agent.nom, editedData.agent.prenom);
+      
+      // Utilisation de ilike pour recherche insensible à la casse
       const { data: agents, error: agentError } = await supabase
         .from('agents')
-        .select('id')
-        .eq('nom', editedData.agent.nom.toUpperCase())
-        .eq('prenom', editedData.agent.prenom.toUpperCase())
+        .select('id, nom, prenom')
+        .ilike('nom', editedData.agent.nom)
+        .ilike('prenom', editedData.agent.prenom)
         .single();
 
       if (agentError || !agents) {
-        throw new Error(`Agent ${editedData.agent.nom} ${editedData.agent.prenom} non trouvé`);
+        // Essai avec des variations de casse
+        const { data: agentsAlt, error: agentErrorAlt } = await supabase
+          .from('agents')
+          .select('id, nom, prenom')
+          .or(`nom.ilike.${editedData.agent.nom},nom.ilike.${editedData.agent.nom.toLowerCase()},nom.ilike.${editedData.agent.nom.charAt(0).toUpperCase() + editedData.agent.nom.slice(1).toLowerCase()}`)
+          .or(`prenom.ilike.${editedData.agent.prenom},prenom.ilike.${editedData.agent.prenom.toLowerCase()},prenom.ilike.${editedData.agent.prenom.charAt(0).toUpperCase() + editedData.agent.prenom.slice(1).toLowerCase()}`)
+          .single();
+        
+        if (agentErrorAlt || !agentsAlt) {
+          throw new Error(`Agent ${editedData.agent.nom} ${editedData.agent.prenom} non trouvé dans la base`);
+        }
+        
+        agents = agentsAlt;
       }
 
       const agentId = agents.id;
+      console.log('Agent trouvé:', agents.nom, agents.prenom, 'ID:', agentId);
 
-      // 2. Sauvegarder le planning
-      for (const entry of editedData.planning) {
-        if (entry.service_code) {
-          // Supprimer l'entrée existante si elle existe
-          await supabase
-            .from('planning')
-            .delete()
-            .eq('agent_id', agentId)
-            .eq('date', entry.date);
+      // 2. Regrouper les entrées par date pour gérer les doublons
+      const entriesByDate = {};
+      editedData.planning.forEach(entry => {
+        if (!entriesByDate[entry.date]) {
+          entriesByDate[entry.date] = [];
+        }
+        // Éviter les doublons exacts
+        const exists = entriesByDate[entry.date].some(e => 
+          e.service_code === entry.service_code && 
+          e.poste_code === entry.poste_code
+        );
+        if (!exists) {
+          entriesByDate[entry.date].push(entry);
+        }
+      });
 
-          // Insérer la nouvelle entrée
-          const { error: insertError } = await supabase
-            .from('planning')
-            .insert({
-              agent_id: agentId,
-              date: entry.date,
-              service_code: entry.service_code,
-              poste_code: entry.poste_code
-            });
+      // 3. Sauvegarder le planning
+      let insertedCount = 0;
+      for (const [date, entries] of Object.entries(entriesByDate)) {
+        // Supprimer toutes les entrées existantes pour cette date
+        await supabase
+          .from('planning')
+          .delete()
+          .eq('agent_id', agentId)
+          .eq('date', date);
 
-          if (insertError) {
-            console.error('Erreur insertion:', insertError);
+        // Insérer toutes les nouvelles entrées pour cette date
+        for (const entry of entries) {
+          if (entry.service_code) {
+            const { error: insertError } = await supabase
+              .from('planning')
+              .insert({
+                agent_id: agentId,
+                date: entry.date,
+                service_code: entry.service_code,
+                poste_code: entry.poste_code
+              });
+
+            if (insertError) {
+              console.error('Erreur insertion:', insertError);
+            } else {
+              insertedCount++;
+            }
           }
         }
       }
 
-      // 3. Enregistrer l'upload
+      // 4. Enregistrer l'upload
       await supabase
         .from('uploads_pdf')
         .insert({
           agent_id: agentId,
           fichier_nom: file.name,
-          agent_nom: `${editedData.agent.nom} ${editedData.agent.prenom}`,
-          services_count: editedData.planning.length,
+          agent_nom: `${agents.nom} ${agents.prenom}`,
+          services_count: insertedCount,
           metadata: {
-            agent: editedData.agent,
-            services_imported: editedData.planning.length,
+            agent: {
+              nom: agents.nom,
+              prenom: agents.prenom,
+              nom_detecte: editedData.agent.nom,
+              prenom_detecte: editedData.agent.prenom
+            },
+            services_imported: insertedCount,
+            dates_count: Object.keys(entriesByDate).length,
             import_date: new Date().toISOString(),
             parsing_mode: showManualParsing ? 'manual' : 'mistral'
           }
         });
 
+      console.log(`Import réussi: ${insertedCount} entrées insérées`);
       onSuccess && onSuccess();
       handleClose();
       
     } catch (err) {
+      console.error('Erreur validation:', err);
       setError(err.message || 'Erreur lors de la sauvegarde');
     } finally {
       setLoading(false);
@@ -415,6 +485,22 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     };
     return colors[code] || 'bg-gray-100 text-gray-700';
   };
+
+  // Fonction pour détecter les doublons dans le planning
+  const getDuplicateDates = () => {
+    if (!editedData || !editedData.planning) return [];
+    
+    const dateCounts = {};
+    editedData.planning.forEach(entry => {
+      dateCounts[entry.date] = (dateCounts[entry.date] || 0) + 1;
+    });
+    
+    return Object.entries(dateCounts)
+      .filter(([date, count]) => count > 1)
+      .map(([date]) => date);
+  };
+
+  const duplicateDates = validationMode ? getDuplicateDates() : [];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -491,9 +577,10 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <h3 className="font-semibold text-yellow-900 mb-2">Rappel important :</h3>
                   <ul className="text-sm text-yellow-800 space-y-1">
-                    <li>• Les services de nuit (22h-6h) sont automatiquement décalés au jour suivant</li>
+                    <li>• Les services de nuit (22h-6h) sont décalés au jour suivant</li>
+                    <li>• Les repos de nuit (RP003) restent sur leur date d'origine</li>
                     <li>• Les codes NU (Non Utilisé) sont conservés</li>
-                    <li>• Vérifiez toujours les données avant validation</li>
+                    <li>• Les doublons (même date/service/poste) sont automatiquement filtrés</li>
                     <li>• Mode : {isApiConfigured ? '🤖 IA Mistral' : '📝 Parsing manuel'}</li>
                   </ul>
                 </div>
@@ -515,10 +602,24 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                   )}
                 </div>
 
+                {duplicateDates.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-amber-900 font-medium">
+                      ⚠️ Dates avec entrées multiples détectées :
+                    </p>
+                    <p className="text-sm text-amber-800 mt-1">
+                      {duplicateDates.map(date => new Date(date).toLocaleDateString('fr-FR')).join(', ')}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-2">
+                      C'est normal si vous avez NU + service ou plusieurs services le même jour.
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <h3 className="font-semibold mb-2">Planning extrait ({editedData.planning.length} entrées) :</h3>
                   <div className="bg-yellow-50 p-2 rounded mb-2 text-sm">
-                    <span className="font-medium">Note :</span> Les nuits (X) ont été automatiquement décalées au jour suivant
+                    <span className="font-medium">Note :</span> Les nuits de travail (X) ont été décalées au jour suivant. Les repos de nuit (RP) restent sur leur date.
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse">
@@ -531,66 +632,72 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                         </tr>
                       </thead>
                       <tbody>
-                        {editedData.planning.map((entry, index) => (
-                          <tr key={index} className="hover:bg-gray-50">
-                            <td className="border p-2">
-                              {new Date(entry.date).toLocaleDateString('fr-FR')}
-                            </td>
-                            <td className="border p-2">
-                              <div className="flex items-center gap-2">
+                        {editedData.planning.map((entry, index) => {
+                          const isDuplicate = duplicateDates.includes(entry.date);
+                          return (
+                            <tr key={index} className={`hover:bg-gray-50 ${isDuplicate ? 'bg-amber-50' : ''}`}>
+                              <td className="border p-2">
+                                {new Date(entry.date).toLocaleDateString('fr-FR')}
+                                {isDuplicate && (
+                                  <span className="ml-2 text-xs text-amber-600">(Multiple)</span>
+                                )}
+                              </td>
+                              <td className="border p-2">
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    value={entry.service_code}
+                                    onChange={(e) => handleCellEdit(index, 'service_code', e.target.value)}
+                                    className="flex-1 p-1 border rounded"
+                                  >
+                                    <option value="-">Matin (06h-14h)</option>
+                                    <option value="O">Soir (14h-22h)</option>
+                                    <option value="X">Nuit (22h-06h)</option>
+                                    <option value="RP">Repos</option>
+                                    <option value="C">Congé</option>
+                                    <option value="D">Disponible</option>
+                                    <option value="NU">Non Utilisé</option>
+                                    <option value="HAB">Formation</option>
+                                    <option value="MA">Maladie</option>
+                                    <option value="I">Inactif/Visite</option>
+                                  </select>
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${getServiceColor(entry.service_code)}`}>
+                                    {getServiceLabel(entry.service_code)}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="border p-2">
                                 <select
-                                  value={entry.service_code}
-                                  onChange={(e) => handleCellEdit(index, 'service_code', e.target.value)}
-                                  className="flex-1 p-1 border rounded"
+                                  value={entry.poste_code || ''}
+                                  onChange={(e) => handleCellEdit(index, 'poste_code', e.target.value || null)}
+                                  className="w-full p-1 border rounded"
                                 >
-                                  <option value="-">Matin (06h-14h)</option>
-                                  <option value="O">Soir (14h-22h)</option>
-                                  <option value="X">Nuit (22h-06h)</option>
-                                  <option value="RP">Repos</option>
-                                  <option value="C">Congé</option>
-                                  <option value="D">Disponible</option>
-                                  <option value="NU">Non Utilisé</option>
-                                  <option value="HAB">Formation</option>
-                                  <option value="MA">Maladie</option>
-                                  <option value="I">Inactif/Visite</option>
+                                  <option value="">-</option>
+                                  <option value="CRC">CRC</option>
+                                  <option value="ACR">ACR</option>
+                                  <option value="CCU">CCU</option>
+                                  <option value="RC">RC</option>
+                                  <option value="RO">RO</option>
+                                  <option value="RE">RE</option>
+                                  <option value="CAC">CAC</option>
+                                  <option value="CENT">Centre</option>
+                                  <option value="SOUF">Souffleur</option>
                                 </select>
-                                <span className={`px-2 py-1 rounded text-xs font-medium ${getServiceColor(entry.service_code)}`}>
-                                  {getServiceLabel(entry.service_code)}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="border p-2">
-                              <select
-                                value={entry.poste_code || ''}
-                                onChange={(e) => handleCellEdit(index, 'poste_code', e.target.value || null)}
-                                className="w-full p-1 border rounded"
-                              >
-                                <option value="">-</option>
-                                <option value="CRC">CRC</option>
-                                <option value="ACR">ACR</option>
-                                <option value="CCU">CCU</option>
-                                <option value="RC">RC</option>
-                                <option value="RO">RO</option>
-                                <option value="RE">RE</option>
-                                <option value="CAC">CAC</option>
-                                <option value="CENT">Centre</option>
-                                <option value="SOUF">Souffleur</option>
-                              </select>
-                            </td>
-                            <td className="border p-2">
-                              <button
-                                onClick={() => {
-                                  const newData = { ...editedData };
-                                  newData.planning.splice(index, 1);
-                                  setEditedData(newData);
-                                }}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                <X size={18} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="border p-2">
+                                <button
+                                  onClick={() => {
+                                    const newData = { ...editedData };
+                                    newData.planning.splice(index, 1);
+                                    setEditedData(newData);
+                                  }}
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  <X size={18} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
