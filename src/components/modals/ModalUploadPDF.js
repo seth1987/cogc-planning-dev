@@ -57,6 +57,39 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
+  // Mapping des codes vers les postes réels
+  const getPosteFromCode = (code) => {
+    const mapping = {
+      'CRC001': { service: '-', poste: 'CRC' },  // Matin CRC
+      'CRC002': { service: 'O', poste: 'CRC' },  // Soir CRC
+      'CRC003': { service: 'X', poste: 'CRC' },  // Nuit CRC
+      
+      'ACR001': { service: '-', poste: 'ACR' },  // Matin ACR
+      'ACR002': { service: 'O', poste: 'ACR' },  // Soir ACR
+      'ACR003': { service: 'X', poste: 'ACR' },  // Nuit ACR
+      
+      'CCU001': { service: '-', poste: 'CCU' },  // Matin CCU
+      'CCU002': { service: 'O', poste: 'CCU' },  // Soir CCU
+      'CCU003': { service: 'X', poste: 'CCU' },  // Nuit CCU
+      
+      'CCU004': { service: '-', poste: 'RE' },   // Matin RE (pas CCU!)
+      'CCU005': { service: 'O', poste: 'RE' },   // Soir RE (pas CCU!)
+      'CCU006': { service: 'X', poste: 'RE' },   // Nuit RE (pas CCU!)
+      
+      'CENT001': { service: '-', poste: 'RC' },  // Matin RC (pas CENT!)
+      'CENT002': { service: 'O', poste: 'RC' },  // Soir RC (pas CENT!)
+      'CENT003': { service: 'X', poste: 'RC' },  // Nuit RC (pas CENT!)
+      
+      'SOUF001': { service: '-', poste: 'SOUF' }, // Matin Souffleur
+      'SOUF002': { service: 'O', poste: 'SOUF' }, // Soir Souffleur
+      
+      'REO007': { service: '-', poste: 'RO' },   // Matin RO
+      'REO008': { service: 'O', poste: 'RO' },   // Soir RO
+    };
+    
+    return mapping[code] || null;
+  };
+
   const parseManually = (text) => {
     console.log('Début du parsing manuel...');
     const result = {
@@ -182,32 +215,19 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       });
     }
     
-    // Pattern pour les codes services avec numéros (ACR001, CRC002, CCU003, etc.)
-    const serviceCodePattern = /(ACR|CRC|CCU|CENT|SOUF|REO|RE|RO|RC|CAC)(\d{3})/g;
+    // Pattern pour les codes services avec numéros
+    const serviceCodePattern = /(CRC|ACR|CCU|CENT|SOUF|REO)(\d{3})/g;
     const serviceMatches = [...content.matchAll(serviceCodePattern)];
     
     serviceMatches.forEach(match => {
-      const poste = match[1];
-      const numero = match[2];
+      const fullCode = match[0];
+      const mapping = getPosteFromCode(fullCode);
       
-      // Déterminer le service_code en fonction du numéro
-      let serviceCode = '';
-      let shouldShift = false;
-      
-      if (numero === '001' || numero === '004') {
-        serviceCode = '-'; // Matin
-      } else if (numero === '002' || numero === '005' || numero === '008') {
-        serviceCode = 'O'; // Soir
-      } else if (numero === '003') {
-        serviceCode = 'X'; // Nuit
-        shouldShift = true; // Les nuits sont décalées au lendemain
-      }
-      
-      if (serviceCode) {
+      if (mapping) {
         let entryDate = formattedDate;
         
-        // Décaler la date pour les services de nuit
-        if (shouldShift) {
+        // Décaler la date pour les services de nuit (service_code === 'X')
+        if (mapping.service === 'X') {
           const nextDate = new Date(formattedDate);
           nextDate.setDate(nextDate.getDate() + 1);
           entryDate = nextDate.toISOString().split('T')[0];
@@ -215,8 +235,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         
         entries.push({
           date: entryDate,
-          service_code: serviceCode,
-          poste_code: poste
+          service_code: mapping.service,
+          poste_code: mapping.poste
         });
       }
     });
@@ -233,56 +253,61 @@ ${text}
 INSTRUCTIONS CRITIQUES:
 
 1. AGENT:
-   - Cherche "COGC PN" suivi du NOM et PRÉNOM sur la ligne suivante
+   - Cherche "COGC PN" suivi du NOM et PRÉNOM
    - Format: COGC PN [NOM] [PRÉNOM]
 
-2. DATES ET SERVICES:
-   Pour CHAQUE date (format JJ/MM/AAAA), identifie TOUTES les entrées:
+2. MAPPING EXACT DES CODES:
    
-   a) ENTRÉES MULTIPLES PAR DATE:
-      - Une date peut avoir PLUSIEURS services (ex: NU + service de nuit)
-      - Une date peut avoir RP + service de nuit
-      - GARDER TOUTES LES ENTRÉES pour chaque date
+   CODES CRC:
+   - CRC001 = Matin CRC → service: "-", poste: "CRC"
+   - CRC002 = Soir CRC → service: "O", poste: "CRC"
+   - CRC003 = Nuit CRC → service: "X", poste: "CRC" (DÉCALER AU LENDEMAIN)
    
-   b) CODES À RECONNAÎTRE:
-      - ACR001, ACR004, CENT001, SOUF001, CCU004, CRC001 = Matin (6h-14h) → service_code: "-"
-      - ACR002, ACR005, CENT002, SOUF002, CCU005, CRC002, REO008 = Soir (14h-22h) → service_code: "O"
-      - ACR003, CENT003, CCU003, CRC003 = Nuit (22h-6h) → service_code: "X"
-      - RP ou RPP = Repos → service_code: "RP"
-      - C ou CONGE = Congé → service_code: "C"
-      - NU = Non Utilisé → service_code: "NU"
-      - DISPO = Disponible → service_code: "D"
-      - HAB-QF ou FORMATION = Formation → service_code: "HAB"
-      - VISIMED ou VMT = Visite médicale → service_code: "I"
-      - INACTIN = Inactif → service_code: "I"
+   CODES ACR:
+   - ACR001 = Matin ACR → service: "-", poste: "ACR"
+   - ACR002 = Soir ACR → service: "O", poste: "ACR"
+   - ACR003 = Nuit ACR → service: "X", poste: "ACR" (DÉCALER AU LENDEMAIN)
    
-   c) RÈGLE DES NUITS (TRÈS IMPORTANT):
-      - Les services XXX003 (nuit 22h-6h) doivent être DÉCALÉS AU JOUR SUIVANT
-      - MAIS si la même date a aussi RP, le RP reste sur sa date d'origine
-      - Exemple: 30/05 avec RP + CENT003 → RP reste le 30/05, CENT003 va au 31/05
+   CODES CCU (attention au poste!):
+   - CCU001 = Matin CCU → service: "-", poste: "CCU"
+   - CCU002 = Soir CCU → service: "O", poste: "CCU"
+   - CCU003 = Nuit CCU → service: "X", poste: "CCU" (DÉCALER AU LENDEMAIN)
+   - CCU004 = Matin RE → service: "-", poste: "RE" (PAS CCU!)
+   - CCU005 = Soir RE → service: "O", poste: "RE" (PAS CCU!)
+   - CCU006 = Nuit RE → service: "X", poste: "RE" (PAS CCU!) (DÉCALER AU LENDEMAIN)
    
-   d) EXTRACTION DU POSTE:
-      - Pour ACR001, ACR002, ACR003 → poste_code: "ACR"
-      - Pour CRC001, CRC002, CRC003 → poste_code: "CRC"
-      - Pour CCU003, CCU004, CCU005 → poste_code: "CCU"
-      - Pour CENT001, CENT002, CENT003 → poste_code: "CENT"
-      - Pour SOUF001, SOUF002 → poste_code: "SOUF"
-      - Pour REO008 → poste_code: "REO"
-      - Pour RP, C, NU, DISPO, HAB, VISIMED, INACTIN → poste_code: null
+   CODES CENT (attention: poste RC!):
+   - CENT001 = Matin RC → service: "-", poste: "RC" (PAS CENT!)
+   - CENT002 = Soir RC → service: "O", poste: "RC" (PAS CENT!)
+   - CENT003 = Nuit RC → service: "X", poste: "RC" (PAS CENT!) (DÉCALER AU LENDEMAIN)
+   
+   CODES SOUF:
+   - SOUF001 = Matin Souffleur → service: "-", poste: "SOUF"
+   - SOUF002 = Soir Souffleur → service: "O", poste: "SOUF"
+   
+   CODES REO (poste RO!):
+   - REO007 = Matin RO → service: "-", poste: "RO" (PAS REO!)
+   - REO008 = Soir RO → service: "O", poste: "RO" (PAS REO!)
+   
+   AUTRES:
+   - RP ou RPP = Repos → service: "RP", poste: null
+   - C ou CONGE = Congé → service: "C", poste: null
+   - NU = Non Utilisé → service: "NU", poste: null
+   - DISPO = Disponible → service: "D", poste: null
+   - HAB-QF ou FORMATION = Formation → service: "HAB", poste: null
+   - VISIMED ou VMT = Visite médicale → service: "I", poste: null
+   - INACTIN = Inactif → service: "I", poste: null
 
-3. EXEMPLES CONCRETS DU BULLETIN:
-   
-   21/04/2025 avec NU + ACR003:
-   → {"date": "2025-04-21", "service_code": "NU", "poste_code": null}
-   → {"date": "2025-04-22", "service_code": "X", "poste_code": "ACR"} (décalé)
-   
-   30/05/2025 avec RP + CENT003:
-   → {"date": "2025-05-30", "service_code": "RP", "poste_code": null}
-   → {"date": "2025-05-31", "service_code": "X", "poste_code": "CENT"} (décalé)
-   
-   18/05/2025 avec NU + CCU003:
-   → {"date": "2025-05-18", "service_code": "NU", "poste_code": null}
-   → {"date": "2025-05-19", "service_code": "X", "poste_code": "CCU"} (décalé)
+3. RÈGLE DES NUITS (service "X"):
+   - TOUS les services de nuit (service_code: "X") doivent être DÉCALÉS AU JOUR SUIVANT
+   - SAUF les RP qui restent sur leur date
+   - Exemples:
+     * 21/04 avec NU + ACR003 → NU reste le 21/04, ACR003 (nuit) va au 22/04
+     * 30/05 avec RP + CENT003 → RP reste le 30/05, CENT003 (nuit RC) va au 31/05
+
+4. ENTRÉES MULTIPLES:
+   - Une date peut avoir plusieurs services (NU + service, RP + service de nuit)
+   - GARDER TOUTES les entrées uniques pour chaque date
 
 FORMAT JSON ATTENDU:
 {
@@ -294,10 +319,15 @@ FORMAT JSON ATTENDU:
     {
       "date": "YYYY-MM-DD",
       "service_code": "-" ou "O" ou "X" ou "RP" ou "C" ou "D" ou "NU" ou "HAB" ou "I",
-      "poste_code": "ACR" ou "CRC" ou "CCU" ou "CENT" ou "SOUF" ou "REO" ou null
+      "poste_code": "CRC" ou "ACR" ou "CCU" ou "RE" ou "RC" ou "SOUF" ou "RO" ou null
     }
   ]
 }
+
+EXEMPLES CONCRETS:
+- CCU004 le 21/04 → {"date": "2025-04-21", "service_code": "-", "poste_code": "RE"}
+- CENT002 le 16/08 → {"date": "2025-08-16", "service_code": "O", "poste_code": "RC"}
+- CCU003 le 18/05 → {"date": "2025-05-19", "service_code": "X", "poste_code": "CCU"} (décalé)
 
 RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
 
@@ -579,7 +609,7 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden">
         <div className="p-6 border-b">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold flex items-center gap-2">
@@ -661,33 +691,130 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                 </div>
 
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-blue-900 mb-2">Codes reconnus :</h3>
-                  <div className="grid grid-cols-3 gap-2 text-xs">
+                  <h3 className="font-semibold text-blue-900 mb-2">Référence des codes services :</h3>
+                  <div className="grid grid-cols-2 gap-4 text-xs">
                     <div>
-                      <span className="font-medium">Matin (6h-14h):</span>
-                      <p>ACR001, CRC001, CCU004, CENT001, SOUF001</p>
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-blue-100">
+                            <th className="border border-blue-300 px-2 py-1 text-left">Code</th>
+                            <th className="border border-blue-300 px-2 py-1 text-left">Service</th>
+                            <th className="border border-blue-300 px-2 py-1 text-left">Poste</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CRC001</td>
+                            <td className="border border-blue-200 px-2 py-1">Matin</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">CRC</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CRC002</td>
+                            <td className="border border-blue-200 px-2 py-1">Soir</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">CRC</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CRC003</td>
+                            <td className="border border-blue-200 px-2 py-1">Nuit ⚠️</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">CRC</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">ACR001</td>
+                            <td className="border border-blue-200 px-2 py-1">Matin</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">ACR</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">ACR002</td>
+                            <td className="border border-blue-200 px-2 py-1">Soir</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">ACR</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">ACR003</td>
+                            <td className="border border-blue-200 px-2 py-1">Nuit ⚠️</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">ACR</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CCU001</td>
+                            <td className="border border-blue-200 px-2 py-1">Matin</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">CCU</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CCU002</td>
+                            <td className="border border-blue-200 px-2 py-1">Soir</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">CCU</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CCU003</td>
+                            <td className="border border-blue-200 px-2 py-1">Nuit ⚠️</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">CCU</td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                     <div>
-                      <span className="font-medium">Soir (14h-22h):</span>
-                      <p>ACR002, CRC002, CCU005, CENT002, SOUF002, REO008</p>
-                    </div>
-                    <div>
-                      <span className="font-medium">Nuit (22h-6h):</span>
-                      <p>ACR003, CRC003, CCU003, CENT003</p>
-                    </div>
-                    <div>
-                      <span className="font-medium">Repos:</span>
-                      <p>RP, RPP</p>
-                    </div>
-                    <div>
-                      <span className="font-medium">Autres:</span>
-                      <p>C/CONGE, NU, DISPO, HAB-QF</p>
-                    </div>
-                    <div>
-                      <span className="font-medium">Inactif:</span>
-                      <p>VISIMED, VMT, INACTIN</p>
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-blue-100">
+                            <th className="border border-blue-300 px-2 py-1 text-left">Code</th>
+                            <th className="border border-blue-300 px-2 py-1 text-left">Service</th>
+                            <th className="border border-blue-300 px-2 py-1 text-left">Poste</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="hover:bg-blue-50 bg-yellow-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CCU004</td>
+                            <td className="border border-blue-200 px-2 py-1">Matin</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold text-red-600">RE</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50 bg-yellow-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CCU005</td>
+                            <td className="border border-blue-200 px-2 py-1">Soir</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold text-red-600">RE</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50 bg-yellow-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CCU006</td>
+                            <td className="border border-blue-200 px-2 py-1">Nuit ⚠️</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold text-red-600">RE</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50 bg-green-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CENT001</td>
+                            <td className="border border-blue-200 px-2 py-1">Matin</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold text-green-600">RC</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50 bg-green-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CENT002</td>
+                            <td className="border border-blue-200 px-2 py-1">Soir</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold text-green-600">RC</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50 bg-green-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">CENT003</td>
+                            <td className="border border-blue-200 px-2 py-1">Nuit ⚠️</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold text-green-600">RC</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">SOUF002</td>
+                            <td className="border border-blue-200 px-2 py-1">Soir</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">SOUF</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">REO007</td>
+                            <td className="border border-blue-200 px-2 py-1">Matin</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">RO</td>
+                          </tr>
+                          <tr className="hover:bg-blue-50">
+                            <td className="border border-blue-200 px-2 py-1 font-mono">REO008</td>
+                            <td className="border border-blue-200 px-2 py-1">Soir</td>
+                            <td className="border border-blue-200 px-2 py-1 font-semibold">RO</td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </div>
                   </div>
+                  <p className="text-xs text-blue-700 mt-2">
+                    ⚠️ = Service de nuit décalé au lendemain | 
+                    <span className="text-red-600 font-semibold"> RE</span> = CCU004/005/006 | 
+                    <span className="text-green-600 font-semibold"> RC</span> = CENT001/002/003
+                  </p>
                 </div>
               </div>
             </>
@@ -780,12 +907,10 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                                   <option value="CRC">CRC</option>
                                   <option value="ACR">ACR</option>
                                   <option value="CCU">CCU</option>
-                                  <option value="CENT">Centre</option>
-                                  <option value="SOUF">Souffleur</option>
-                                  <option value="REO">REO</option>
+                                  <option value="RE">RE</option>
                                   <option value="RC">RC</option>
                                   <option value="RO">RO</option>
-                                  <option value="RE">RE</option>
+                                  <option value="SOUF">Souffleur</option>
                                   <option value="CAC">CAC</option>
                                 </select>
                               </td>
