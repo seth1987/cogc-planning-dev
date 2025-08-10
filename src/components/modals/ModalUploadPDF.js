@@ -23,11 +23,23 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   if (!isOpen) return null;
 
+  // Fonction pour réinitialiser tous les états
+  const resetAllStates = () => {
+    setParsedData(null);
+    setEditedData(null);
+    setValidationMode(false);
+    setError('');
+    setExtractedText('');
+    setShowManualParsing(false);
+  };
+
   const handleFileSelect = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
       setError('');
+      // Réinitialiser les données précédentes quand un nouveau fichier est sélectionné
+      resetAllStates();
     } else {
       setError('Veuillez sélectionner un fichier PDF valide');
     }
@@ -419,6 +431,9 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
 
     setLoading(true);
     setError('');
+    
+    // IMPORTANT: Réinitialiser toutes les données avant de commencer le parsing
+    resetAllStates();
 
     try {
       // 1. Extraire le texte du PDF
@@ -446,9 +461,15 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
       }
       
       // 3. Préparer les données pour validation
-      setParsedData(parsed);
-      setEditedData(JSON.parse(JSON.stringify(parsed))); // Deep copy
+      // IMPORTANT: Créer de nouvelles instances pour éviter les références
+      const freshParsedData = JSON.parse(JSON.stringify(parsed));
+      const freshEditedData = JSON.parse(JSON.stringify(parsed));
+      
+      setParsedData(freshParsedData);
+      setEditedData(freshEditedData);
       setValidationMode(true);
+      
+      console.log('Données parsées:', freshParsedData.planning.length, 'entrées');
       
     } catch (err) {
       setError(err.message || 'Erreur lors du traitement du fichier');
@@ -581,13 +602,14 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
 
   const handleClose = () => {
     setFile(null);
-    setParsedData(null);
-    setEditedData(null);
-    setValidationMode(false);
-    setError('');
-    setExtractedText('');
-    setShowManualParsing(false);
+    resetAllStates();
     onClose();
+  };
+
+  // Fonction pour revenir à l'upload
+  const handleBackToUpload = () => {
+    // Garder le fichier mais réinitialiser le reste
+    resetAllStates();
   };
 
   const getServiceLabel = (code) => {
@@ -989,56 +1011,75 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
 
         <div className="p-6 border-t bg-gray-50">
           <div className="flex justify-between">
-            <button
-              onClick={handleClose}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800"
-            >
-              Annuler
-            </button>
-            {!validationMode ? (
-              <button
-                onClick={handleUpload}
-                disabled={!file || loading}
-                className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${
-                  !file || loading
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700'
-                }`}
-              >
-                {loading ? (
-                  <>
-                    <Loader className="animate-spin" size={20} />
-                    Traitement...
-                  </>
-                ) : (
-                  <>
-                    <Upload size={20} />
-                    Analyser le PDF
-                  </>
-                )}
-              </button>
+            {validationMode ? (
+              <>
+                <button
+                  onClick={handleBackToUpload}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800 flex items-center gap-2"
+                >
+                  <Upload size={18} />
+                  Nouveau PDF
+                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleClose}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={handleValidate}
+                    disabled={loading}
+                    className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${
+                      loading
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-green-600 text-white hover:bg-green-700'
+                    }`}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader className="animate-spin" size={20} />
+                        Enregistrement...
+                      </>
+                    ) : (
+                      <>
+                        <Check size={20} />
+                        Valider et Enregistrer
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
             ) : (
-              <button
-                onClick={handleValidate}
-                disabled={loading}
-                className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${
-                  loading
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-green-600 text-white hover:bg-green-700'
-                }`}
-              >
-                {loading ? (
-                  <>
-                    <Loader className="animate-spin" size={20} />
-                    Enregistrement...
-                  </>
-                ) : (
-                  <>
-                    <Check size={20} />
-                    Valider et Enregistrer
-                  </>
-                )}
-              </button>
+              <>
+                <button
+                  onClick={handleClose}
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleUpload}
+                  disabled={!file || loading}
+                  className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${
+                    !file || loading
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                >
+                  {loading ? (
+                    <>
+                      <Loader className="animate-spin" size={20} />
+                      Traitement...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={20} />
+                      Analyser le PDF
+                    </>
+                  )}
+                </button>
+              </>
             )}
           </div>
         </div>
