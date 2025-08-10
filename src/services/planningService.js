@@ -10,6 +10,7 @@ class PlanningService {
       
       // Repos et congés
       'RP': 'bg-yellow-100 text-yellow-800',  // Repos programmé/périodique
+      'RPP': 'bg-yellow-100 text-yellow-800', // Repos périodique (variante)
       'RU': 'bg-amber-100 text-amber-800',    // RTT
       'C': 'bg-lime-100 text-lime-800',       // Congés
 
@@ -22,6 +23,7 @@ class PlanningService {
       'EIA': 'bg-pink-100 text-pink-800',     // Formation EIA
       'FO': 'bg-cyan-100 text-cyan-800',      // Formation
       'VM': 'bg-rose-100 text-rose-800',      // Visite médicale
+      'VISIMED': 'bg-rose-100 text-rose-800', // Visite médicale (variante)
       'VL': 'bg-emerald-100 text-emerald-800' // Autre visite
     };
   }
@@ -93,35 +95,62 @@ class PlanningService {
   // Mapper les codes PDF vers codes standardisés
   mapPDFCodeToStandard(codePDF, isReserve = false) {
     const mapping = {
-      // Services avec postes
+      // Services avec postes - CCU
       'CCU001': { service: '-', poste: 'CCU' },
       'CCU002': { service: 'O', poste: 'CCU' },
       'CCU003': { service: 'X', poste: 'CCU' },
       'CCU004': { service: '-', poste: 'CCU' },
       'CCU005': { service: 'O', poste: 'CCU' },
       'CCU006': { service: 'X', poste: 'CCU' },
+      
+      // CRC
       'CRC001': { service: '-', poste: 'CRC' },
       'CRC002': { service: 'O', poste: 'CRC' },
       'CRC003': { service: 'X', poste: 'CRC' },
+      
+      // RC
       'RC001': { service: '-', poste: 'RC' },
       'RC002': { service: 'O', poste: 'RC' },
       'RC003': { service: 'X', poste: 'RC' },
+      
+      // RE
       'RE001': { service: '-', poste: 'RE' },
       'RE002': { service: 'O', poste: 'RE' },
       'RE003': { service: 'X', poste: 'RE' },
+      
+      // REO (Régulateur OUEST) - NOUVEAU
+      'REO001': { service: '-', poste: 'RO' },
+      'REO002': { service: 'O', poste: 'RO' },
+      'REO003': { service: 'X', poste: 'RO' },
+      'REO004': { service: '-', poste: 'RO' },
+      'REO005': { service: 'O', poste: 'RO' },
+      'REO006': { service: 'X', poste: 'RO' },
+      'REO007': { service: '-', poste: 'RO' },
+      'REO008': { service: 'O', poste: 'RO' },
+      'REO009': { service: 'X', poste: 'RO' },
+      
+      // RO
       'RO001': { service: '-', poste: 'RO' },
       'RO002': { service: 'O', poste: 'RO' },
+      'RO003': { service: 'X', poste: 'RO' },
+      
+      // CAC
       'CAC001': { service: '-', poste: 'CAC' },
       'CAC002': { service: 'O', poste: 'CAC' },
+      
+      // ACR
       'ACR001': { service: '-', poste: 'ACR' },
       'ACR002': { service: 'O', poste: 'ACR' },
       'ACR003': { service: 'X', poste: 'ACR' },
+      
+      // CENT (Centre)
       'CENT001': { service: '-', poste: 'CENT' },
       'CENT002': { service: 'O', poste: 'CENT' },
       'CENT003': { service: 'X', poste: 'CENT' },
       
       // Repos et congés (sans poste)
       'RP': { service: 'RP', poste: '' },
+      'RPP': { service: 'RP', poste: '' },
       'RU': { service: 'RU', poste: '' },
       'Repos': { service: 'RP', poste: '' },
       
@@ -135,6 +164,7 @@ class PlanningService {
       'HAB': { service: 'HAB', poste: '' },
       'FO': { service: 'FO', poste: '' },
       'VM': { service: 'VM', poste: '' },
+      'VISIMED': { service: 'VM', poste: '' },
       'VL': { service: 'VL', poste: '' },
       'EIA': { service: 'EIA', poste: '' }
     };
@@ -150,8 +180,8 @@ class PlanningService {
 
   // Déterminer si un service est de nuit en regardant l'heure ou le code
   isServiceNuit(serviceCode, timeString = null) {
-    // Vérifier le code de service (finit par 003 ou 006 = nuit)
-    if (serviceCode && (serviceCode.endsWith('003') || serviceCode.endsWith('006'))) {
+    // Vérifier le code de service (finit par 003, 006 ou 009 = nuit)
+    if (serviceCode && (serviceCode.endsWith('003') || serviceCode.endsWith('006') || serviceCode.endsWith('009'))) {
       return true;
     }
     
@@ -160,8 +190,8 @@ class PlanningService {
       const match = timeString.match(/(\d{2}):(\d{2})/);
       if (match) {
         const hour = parseInt(match[1]);
-        // Service de nuit : commence après 20h
-        return hour >= 20;
+        // Service de nuit : commence après 20h ou avant 5h
+        return hour >= 20 || hour < 5;
       }
     }
     
@@ -175,7 +205,7 @@ class PlanningService {
     
     // Patterns pour détecter les dates, services et heures
     const datePattern = /(\d{2})\/(\d{2})\/(\d{4})/;
-    const servicePattern = /(CRC|ACR|RC|RO|CCU|RE|CAC|CENT)\d{3}/;
+    const servicePattern = /(CRC|ACR|RC|RO|REO|CCU|RE|CAC|CENT)\d{3}/;
     const heurePattern = /(\d{2}):(\d{2})/;
     
     // Structure temporaire pour gérer les services multiples par jour
@@ -201,19 +231,17 @@ class PlanningService {
           
           // Chercher NU (Non Utilisable)
           if (currentLine.includes('NU') && (currentLine.includes('Utilisable') || currentLine.includes('non utilisé'))) {
-            // Vérifier s'il y a une heure associée
-            const heureMatch = currentLine.match(heurePattern);
             tempPlanning[jour].push({
               code: 'NU',
               service: 'NU',
               poste: '',
               isNuit: false,
-              heure: heureMatch ? heureMatch[0] : null
+              heure: null
             });
           }
           
-          // Chercher RP (Repos périodique)
-          if (currentLine.includes('RP') && currentLine.includes('Repos')) {
+          // Chercher RP/RPP (Repos périodique)
+          if ((currentLine.includes('RP') || currentLine.includes('RPP')) && currentLine.includes('Repos')) {
             tempPlanning[jour].push({
               code: 'RP',
               service: 'RP',
@@ -245,7 +273,18 @@ class PlanningService {
             });
           }
           
-          // Chercher les codes de service (CRC001, CCU003, etc.)
+          // Chercher VISIMED
+          if (currentLine.includes('VISIMED')) {
+            tempPlanning[jour].push({
+              code: 'VISIMED',
+              service: 'VM',
+              poste: '',
+              isNuit: false,
+              heure: null
+            });
+          }
+          
+          // Chercher les codes de service (CRC001, CCU003, REO008, etc.)
           const serviceMatch = currentLine.match(servicePattern);
           if (serviceMatch) {
             const serviceCode = serviceMatch[0];
@@ -284,37 +323,25 @@ class PlanningService {
       
       if (services.length === 0) return;
       
-      // Trier les services par type (NU/RP d'abord, puis les autres)
-      services.sort((a, b) => {
-        // NU et RP restent sur le jour actuel
-        if (a.service === 'NU' || a.service === 'RP') return -1;
-        if (b.service === 'NU' || b.service === 'RP') return 1;
-        // Les services de nuit passent après
-        if (a.isNuit && !b.isNuit) return 1;
-        if (!a.isNuit && b.isNuit) return -1;
-        return 0;
-      });
-      
       // Traiter chaque service
       services.forEach(serviceData => {
         let targetDay = jourNum;
         
-        // Si c'est un service de nuit et qu'il y a déjà un autre service ce jour-là
-        if (serviceData.isNuit && services.length > 1 && serviceData.service !== 'NU') {
-          // Décaler au jour suivant
+        // IMPORTANT : Les services de nuit sont TOUJOURS décalés au jour suivant
+        // peu importe s'il y a d'autres services ou non
+        if (serviceData.isNuit) {
           targetDay = jourNum + 1;
           
           // Gérer le passage au mois suivant
           if (targetDay > 31) {
-            // Pour l'instant, on ignore les services qui dépassent le mois
-            console.warn(`Service de nuit du ${jourNum} décalé au ${targetDay} (mois suivant)`);
+            console.warn(`Service de nuit du ${jourNum} décalé au ${targetDay} (mois suivant) - ignoré`);
             return;
           }
         }
         
         // Ajouter le service au planning final
         if (!planning[targetDay]) {
-          // Si un seul service pour ce jour
+          // Premier service pour ce jour
           if (serviceData.poste) {
             planning[targetDay] = {
               service: serviceData.service,
@@ -324,12 +351,30 @@ class PlanningService {
             planning[targetDay] = serviceData.service;
           }
         } else {
-          // S'il y a déjà un service ce jour-là
-          // Si c'est NU sur le jour original, on peut avoir les deux
-          if (serviceData.service === 'NU' && targetDay === jourNum) {
-            console.log(`Jour ${targetDay} : NU conservé avec ${planning[targetDay]}`);
-          } else {
-            console.warn(`Jour ${targetDay} a déjà un service, ${serviceData.code} ignoré`);
+          // Il y a déjà un service ce jour-là
+          const existingService = typeof planning[targetDay] === 'string' 
+            ? planning[targetDay] 
+            : planning[targetDay].service;
+          
+          // Si c'est NU qui arrive sur un jour qui a déjà quelque chose, on privilégie l'autre service
+          if (serviceData.service === 'NU') {
+            console.log(`Jour ${targetDay} : NU ignoré car ${existingService} déjà présent`);
+          } 
+          // Si le jour a déjà NU et qu'on veut mettre autre chose, on remplace NU
+          else if (existingService === 'NU') {
+            if (serviceData.poste) {
+              planning[targetDay] = {
+                service: serviceData.service,
+                poste: serviceData.poste
+              };
+            } else {
+              planning[targetDay] = serviceData.service;
+            }
+            console.log(`Jour ${targetDay} : NU remplacé par ${serviceData.code}`);
+          } 
+          // Sinon on garde le premier service et on signale le conflit
+          else {
+            console.warn(`Jour ${targetDay} a déjà ${existingService}, ${serviceData.code} ignoré`);
           }
         }
       });
