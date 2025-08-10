@@ -1,9 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { CODE_COLORS } from '../constants/config';
 import planningService from '../services/planningService';
 
 const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgentClick }) => {
   const daysInMonth = planningService.getDaysInMonth(currentMonth);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  
+  const toggleGroupCollapse = (groupName) => {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [groupName]: !prev[groupName]
+    }));
+  };
   
   const getDayHeader = (day) => {
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth);
@@ -78,70 +87,96 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full table-fixed">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="w-48 px-4 py-2 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10">
-                Agent
-              </th>
-              {Array.from({ length: daysInMonth }, (_, i) => getDayHeader(i + 1))}
-            </tr>
-          </thead>
           <tbody>
-            {Object.entries(agentsData).map(([groupe, agents], groupIndex) => (
-              <React.Fragment key={groupe}>
-                {agents.length > 0 && (
-                  <>
-                    <tr className="bg-blue-50">
-                      <td className="px-4 py-2 font-semibold text-sm text-blue-900 sticky left-0 bg-blue-50 z-10" colSpan={daysInMonth + 1}>
-                        {groupe} ({agents.length} agents)
-                      </td>
-                    </tr>
-                    
-                    {agents.map((agent) => (
-                      <tr key={agent.id || `${agent.nom}_${agent.prenom}`} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r">
-                          <div className="flex items-center justify-between">
+            {Object.entries(agentsData).map(([groupe, agents], groupIndex) => {
+              const isCollapsed = collapsedGroups[groupe];
+              const displayGroupe = groupe === 'ACR - ROULEMENT ACR GOGC' 
+                ? 'ACR - ROULEMENT ACR COGC' 
+                : groupe;
+              
+              return (
+                <React.Fragment key={groupe}>
+                  {agents.length > 0 && (
+                    <>
+                      {/* En-tête du groupe avec bouton de réduction */}
+                      <tr className="bg-blue-50">
+                        <td colSpan={daysInMonth + 1}>
+                          <div className="flex items-center justify-between px-4 py-2">
+                            <span className="font-semibold text-sm text-blue-900">
+                              {displayGroupe} ({agents.length} agents)
+                            </span>
                             <button
-                              onClick={() => onAgentClick && onAgentClick(agent)}
-                              className="text-left hover:text-blue-600 hover:underline transition-colors"
-                              title="Cliquer pour voir les détails"
+                              onClick={() => toggleGroupCollapse(groupe)}
+                              className="p-1 hover:bg-blue-100 rounded transition-colors"
+                              title={isCollapsed ? "Afficher" : "Réduire"}
                             >
-                              <span>{agent.nom} {agent.prenom}</span>
+                              {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                             </button>
-                            <div className="flex items-center space-x-1">
-                              <span className={`px-1 py-0.5 text-xs rounded ${
-                                agent.statut === 'roulement' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {agent.statut}
-                              </span>
-                              {agent.site === 'Denfert-Rochereau' && (
-                                <span className="text-xs text-purple-600">DR</span>
-                              )}
-                            </div>
                           </div>
                         </td>
-                        {Array.from({ length: daysInMonth }, (_, dayIndex) => 
-                          renderPlanningCell(agent, dayIndex + 1)
-                        )}
                       </tr>
-                    ))}
-                    
-                    {groupIndex < Object.entries(agentsData).length - 1 && (
-                      <tr className="h-2 bg-gray-100">
-                        <td colSpan={daysInMonth + 1}></td>
-                      </tr>
-                    )}
-                  </>
-                )}
-              </React.Fragment>
-            ))}
+                      
+                      {!isCollapsed && (
+                        <>
+                          {/* En-tête des jours pour chaque groupe */}
+                          <tr className="bg-gray-50">
+                            <th className="w-48 px-4 py-2 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10">
+                              Agent
+                            </th>
+                            {Array.from({ length: daysInMonth }, (_, i) => getDayHeader(i + 1))}
+                          </tr>
+                          
+                          {/* Lignes des agents */}
+                          {agents.map((agent) => (
+                            <tr key={agent.id || `${agent.nom}_${agent.prenom}`} className="hover:bg-gray-50">
+                              <td className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r">
+                                <div className="flex items-center justify-between">
+                                  <button
+                                    onClick={() => onAgentClick && onAgentClick(agent)}
+                                    className="text-left hover:text-blue-600 hover:underline transition-colors"
+                                    title="Cliquer pour voir les détails"
+                                  >
+                                    <span>{agent.nom} {agent.prenom}</span>
+                                  </button>
+                                  <div className="flex items-center space-x-1">
+                                    <span className={`px-1 py-0.5 text-xs rounded ${
+                                      agent.statut === 'roulement' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
+                                    }`}>
+                                      {agent.statut}
+                                    </span>
+                                    {agent.site === 'Denfert-Rochereau' && (
+                                      <span className="text-xs text-purple-600">DR</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              {Array.from({ length: daysInMonth }, (_, dayIndex) => 
+                                renderPlanningCell(agent, dayIndex + 1)
+                              )}
+                            </tr>
+                          ))}
+                        </>
+                      )}
+                      
+                      {/* Séparateur entre les groupes */}
+                      {groupIndex < Object.entries(agentsData).length - 1 && (
+                        <tr className="h-2 bg-gray-100">
+                          <td colSpan={daysInMonth + 1}></td>
+                        </tr>
+                      )}
+                    </>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
       
+      {/* Légende mise à jour (sans "Postes (réserve)") */}
       <div className="p-4 bg-gray-50 border-t">
         <h4 className="font-semibold text-sm mb-2">Légende des codes</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
           <div>
             <p className="font-medium mb-1">Services :</p>
             <div className="space-y-1">
@@ -184,10 +219,6 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                 <span>MA = Maladie</span>
               </div>
             </div>
-          </div>
-          <div>
-            <p className="font-medium mb-1">Postes (réserve) :</p>
-            <p className="text-gray-600">CRC, ACR, RC, RO, CCU, RE, CAC</p>
           </div>
         </div>
       </div>
