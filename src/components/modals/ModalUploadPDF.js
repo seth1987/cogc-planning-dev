@@ -123,46 +123,61 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       console.log('Agent détecté:', result.agent.nom, result.agent.prenom);
     }
 
-    // Map pour gérer les entrées par date
-    const planningMap = new Map();
-
-    // Pattern amélioré pour capturer les dates et tout le contenu jusqu'à la prochaine date
+    // Extraire toutes les dates et leur contenu
     const datePattern = /(\d{2})\/(\d{2})\/(\d{4})/g;
-    const matches = [...text.matchAll(datePattern)];
+    const dateMatches = [...text.matchAll(datePattern)];
     
-    for (let i = 0; i < matches.length; i++) {
-      const match = matches[i];
+    // Créer une map pour stocker les entrées par date
+    const entriesByDate = new Map();
+    
+    for (let i = 0; i < dateMatches.length; i++) {
+      const match = dateMatches[i];
       const dateStr = match[0];
       const [day, month, year] = dateStr.split('/');
       const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
       
       // Extraire le contenu entre cette date et la suivante
       const startIndex = match.index;
-      const endIndex = (i < matches.length - 1) ? matches[i + 1].index : text.length;
+      const endIndex = (i < dateMatches.length - 1) ? dateMatches[i + 1].index : text.length;
       const dateContent = text.substring(startIndex, endIndex);
       
-      console.log(`\nAnalyse de ${dateStr}:`);
-      console.log('Contenu:', dateContent.substring(0, 200));
+      console.log(`\nAnalyse de ${dateStr} (${formattedDate}):`);
       
-      // Analyser le contenu pour cette date
+      // Parser le contenu pour cette date
       const entries = parseEntriesForDate(dateContent, formattedDate);
       
-      // Ajouter toutes les entrées trouvées
+      // Ajouter chaque entrée à la bonne date
       entries.forEach(entry => {
-        const key = `${entry.date}_${entry.service_code}_${entry.poste_code || 'null'}`;
-        if (!planningMap.has(key)) {
-          planningMap.set(key, entry);
-          console.log(`  -> Ajout: ${entry.date} ${entry.service_code} ${entry.poste_code || '-'}`);
+        if (!entriesByDate.has(entry.date)) {
+          entriesByDate.set(entry.date, []);
+        }
+        
+        // Vérifier les doublons
+        const existingEntries = entriesByDate.get(entry.date);
+        const isDuplicate = existingEntries.some(e => 
+          e.service_code === entry.service_code && 
+          e.poste_code === entry.poste_code
+        );
+        
+        if (!isDuplicate) {
+          existingEntries.push(entry);
+          console.log(`  -> ${entry.date}: ${entry.service_code} ${entry.poste_code || '-'}`);
         }
       });
     }
-
-    // Convertir la map en array trié
-    result.planning = Array.from(planningMap.values()).sort((a, b) => 
-      new Date(a.date) - new Date(b.date)
-    );
+    
+    // Convertir la map en array et trier par date
+    const allDates = Array.from(entriesByDate.keys()).sort();
+    allDates.forEach(date => {
+      const entries = entriesByDate.get(date);
+      entries.forEach(entry => {
+        result.planning.push(entry);
+      });
+    });
 
     console.log(`\nTotal: ${result.planning.length} entrées`);
+    console.log('Planning final:', result.planning.map(e => `${e.date} ${e.service_code} ${e.poste_code}`));
+    
     return result;
   };
 
@@ -171,12 +186,13 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     const entries = [];
     
     // Vérifier NU (Non Utilisé)
-    if (content.includes('NU Utilisable non utilisé') || content.includes('NU') && content.includes('non utilisé')) {
+    if (content.includes('NU Utilisable non utilisé') || (content.includes('NU') && content.includes('non utilisé'))) {
       entries.push({
         date: formattedDate,
         service_code: 'NU',
         poste_code: null
       });
+      console.log(`    NU trouvé pour ${formattedDate}`);
     }
     
     // Vérifier RP/RPP (Repos)
@@ -186,6 +202,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         service_code: 'RP',
         poste_code: null
       });
+      console.log(`    RP trouvé pour ${formattedDate}`);
     }
     
     // Vérifier Congés
@@ -195,6 +212,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         service_code: 'C',
         poste_code: null
       });
+      console.log(`    Congé trouvé pour ${formattedDate}`);
     }
     
     // Vérifier DISPO
@@ -204,6 +222,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         service_code: 'D',
         poste_code: null
       });
+      console.log(`    DISPO trouvé pour ${formattedDate}`);
     }
     
     // Vérifier VISIMED
@@ -213,6 +232,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         service_code: 'I',
         poste_code: null
       });
+      console.log(`    VISIMED trouvé pour ${formattedDate}`);
     }
     
     // Vérifier INACTIN
@@ -222,6 +242,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         service_code: 'I',
         poste_code: null
       });
+      console.log(`    INACTIN trouvé pour ${formattedDate}`);
     }
     
     // Vérifier Formation/HAB
@@ -231,17 +252,19 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         service_code: 'HAB',
         poste_code: null
       });
+      console.log(`    Formation trouvée pour ${formattedDate}`);
     }
     
-    // Pattern pour les codes services avec numéros - plus précis
-    // On cherche les codes soit en début de ligne, soit après un espace
+    // Pattern pour les codes services avec numéros
     const serviceCodePattern = /(?:^|\s)(CRC001|CRC002|CRC003|ACR001|ACR002|ACR003|CCU001|CCU002|CCU003|CCU004|CCU005|CCU006|CENT001|CENT002|CENT003|SOUF001|SOUF002|REO007|REO008)(?:\s|$)/g;
     const serviceMatches = [...content.matchAll(serviceCodePattern)];
     
-    console.log(`  Codes trouvés pour ${formattedDate}:`, serviceMatches.map(m => m[1]));
+    if (serviceMatches.length > 0) {
+      console.log(`    Codes services trouvés: ${serviceMatches.map(m => m[1]).join(', ')}`);
+    }
     
     serviceMatches.forEach(match => {
-      const fullCode = match[1]; // Le code capturé
+      const fullCode = match[1];
       const mapping = getPosteFromCode(fullCode);
       
       if (mapping) {
@@ -249,10 +272,13 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         
         // Décaler la date pour les services de nuit (service_code === 'X')
         if (mapping.service === 'X') {
-          const nextDate = new Date(formattedDate);
-          nextDate.setDate(nextDate.getDate() + 1);
-          entryDate = nextDate.toISOString().split('T')[0];
-          console.log(`    Service de nuit ${fullCode} décalé de ${formattedDate} à ${entryDate}`);
+          // Calculer le jour suivant
+          const currentDate = new Date(formattedDate + 'T12:00:00'); // Midi pour éviter les problèmes de timezone
+          currentDate.setDate(currentDate.getDate() + 1);
+          entryDate = currentDate.toISOString().split('T')[0];
+          console.log(`    ${fullCode} (nuit) décalé de ${formattedDate} vers ${entryDate}`);
+        } else {
+          console.log(`    ${fullCode} reste le ${formattedDate}`);
         }
         
         entries.push({
@@ -260,8 +286,6 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           service_code: mapping.service,
           poste_code: mapping.poste
         });
-        
-        console.log(`    ${fullCode} -> service: ${mapping.service}, poste: ${mapping.poste}, date: ${entryDate}`);
       }
     });
     
@@ -280,7 +304,11 @@ INSTRUCTIONS CRITIQUES:
    - Cherche "COGC PN" suivi du NOM et PRÉNOM
    - Format: COGC PN [NOM] [PRÉNOM]
 
-2. MAPPING EXACT DES CODES (TRÈS IMPORTANT - RESPECTER EXACTEMENT):
+2. DATES IMPORTANTES:
+   - TOUTES les dates doivent être comprises entre le 13/05/2025 et le 01/06/2025
+   - Si une nuit du 31/05 se décale, elle va au 01/06/2025
+
+3. MAPPING EXACT DES CODES:
    
    CODES CRC:
    - CRC001 = Matin CRC → service: "-", poste: "CRC"
@@ -292,74 +320,48 @@ INSTRUCTIONS CRITIQUES:
    - ACR002 = Soir ACR → service: "O", poste: "ACR"
    - ACR003 = Nuit ACR → service: "X", poste: "ACR" (DÉCALER AU LENDEMAIN)
    
-   CODES CCU (ATTENTION AU POSTE!):
+   CODES CCU:
    - CCU001 = Matin CCU → service: "-", poste: "CCU"
    - CCU002 = Soir CCU → service: "O", poste: "CCU"
    - CCU003 = Nuit CCU → service: "X", poste: "CCU" (DÉCALER AU LENDEMAIN)
-   - CCU004 = Matin RE → service: "-", poste: "RE" (ATTENTION: POSTE RE, PAS CCU!)
-   - CCU005 = Soir RE → service: "O", poste: "RE" (ATTENTION: POSTE RE, PAS CCU!)
-   - CCU006 = Nuit RE → service: "X", poste: "RE" (ATTENTION: POSTE RE, PAS CCU!) (DÉCALER AU LENDEMAIN)
+   - CCU004 = Matin RE → service: "-", poste: "RE"
+   - CCU005 = Soir RE → service: "O", poste: "RE"
+   - CCU006 = Nuit RE → service: "X", poste: "RE" (DÉCALER AU LENDEMAIN)
    
-   CODES CENT (ATTENTION: POSTE RC!):
-   - CENT001 = Matin RC → service: "-", poste: "RC" (ATTENTION: POSTE RC, PAS CENT!)
-   - CENT002 = Soir RC → service: "O", poste: "RC" (ATTENTION: POSTE RC, PAS CENT!)
-   - CENT003 = Nuit RC → service: "X", poste: "RC" (ATTENTION: POSTE RC, PAS CENT!) (DÉCALER AU LENDEMAIN)
-   
-   CODES SOUF:
-   - SOUF001 = Matin Souffleur → service: "-", poste: "SOUF"
-   - SOUF002 = Soir Souffleur → service: "O", poste: "SOUF"
-   
-   CODES REO (ATTENTION: POSTE RO!):
-   - REO007 = Matin RO → service: "-", poste: "RO" (ATTENTION: POSTE RO, PAS REO!)
-   - REO008 = Soir RO → service: "O", poste: "RO" (ATTENTION: POSTE RO, PAS REO!)
+   CODES CENT:
+   - CENT001 = Matin RC → service: "-", poste: "RC"
+   - CENT002 = Soir RC → service: "O", poste: "RC"
+   - CENT003 = Nuit RC → service: "X", poste: "RC" (DÉCALER AU LENDEMAIN)
    
    AUTRES:
    - RP ou RPP = Repos → service: "RP", poste: null
    - C ou CONGE = Congé → service: "C", poste: null
    - NU = Non Utilisé → service: "NU", poste: null
    - DISPO = Disponible → service: "D", poste: null
-   - HAB-QF ou FORMATION = Formation → service: "HAB", poste: null
-   - VISIMED ou VMT = Visite médicale → service: "I", poste: null
-   - INACTIN = Inactif → service: "I", poste: null
+   - HAB-QF = Formation → service: "HAB", poste: null
 
-3. RÈGLE TRÈS IMPORTANTE POUR LES POSTES:
-   - CCU004, CCU005, CCU006 → TOUJOURS poste "RE" (jamais "CCU")
-   - CENT001, CENT002, CENT003 → TOUJOURS poste "RC" (jamais "CENT")
-   - REO007, REO008 → TOUJOURS poste "RO" (jamais "REO")
+4. RÈGLE DES NUITS (TRÈS IMPORTANT):
+   - TOUS les services de nuit (X) sont DÉCALÉS AU JOUR SUIVANT
+   - 18/05 avec NU + CCU003 → NU reste le 18/05, CCU003 va au 19/05
+   - 30/05 avec RP + CENT003 → RP reste le 30/05, CENT003 va au 31/05
+   - 31/05 avec ACR003 → ACR003 va au 01/06
 
-4. RÈGLE DES NUITS (service "X"):
-   - TOUS les services de nuit (service_code: "X") doivent être DÉCALÉS AU JOUR SUIVANT
-   - SAUF les RP qui restent sur leur date
-   - Exemples:
-     * 21/04 avec NU + ACR003 → NU reste le 21/04, ACR003 (nuit) va au 22/04
-     * 30/05 avec RP + CENT003 → RP reste le 30/05, CENT003 (nuit RC) va au 31/05
-
-5. ENTRÉES MULTIPLES:
-   - Une date peut avoir plusieurs services (NU + service, RP + service de nuit)
-   - GARDER TOUTES les entrées uniques pour chaque date
-
-FORMAT JSON ATTENDU:
+FORMAT JSON:
 {
   "agent": {
-    "nom": "NOM_EN_MAJUSCULES",
-    "prenom": "PRENOM_EN_MAJUSCULES"
+    "nom": "NOM",
+    "prenom": "PRENOM"
   },
   "planning": [
     {
       "date": "YYYY-MM-DD",
-      "service_code": "-" ou "O" ou "X" ou "RP" ou "C" ou "D" ou "NU" ou "HAB" ou "I",
-      "poste_code": "CRC" ou "ACR" ou "CCU" ou "RE" ou "RC" ou "SOUF" ou "RO" ou null
+      "service_code": "code",
+      "poste_code": "poste ou null"
     }
   ]
 }
 
-EXEMPLES CONCRETS (TRÈS IMPORTANT):
-- CCU004 le 21/04 → {"date": "2025-04-21", "service_code": "-", "poste_code": "RE"} (PAS CCU!)
-- CCU005 le 16/04 → {"date": "2025-04-16", "service_code": "O", "poste_code": "RE"} (PAS CCU!)
-- CENT002 le 16/08 → {"date": "2025-08-16", "service_code": "O", "poste_code": "RC"} (PAS CENT!)
-- CCU003 le 18/05 → {"date": "2025-05-19", "service_code": "X", "poste_code": "CCU"} (décalé)
-
-RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
+RÉPONDS UNIQUEMENT AVEC LE JSON.`;
 
     try {
       const response = await fetch(MISTRAL_API_URL, {
@@ -405,15 +407,10 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
 
       const parsedResult = JSON.parse(jsonMatch[0]);
       
-      // Vérifier et corriger les postes mal mappés
+      // Log pour debug
+      console.log('Résultat Mistral brut:', parsedResult);
       if (parsedResult.planning) {
-        parsedResult.planning.forEach(entry => {
-          // Log pour debug
-          console.log(`Vérification: Date ${entry.date}, Service ${entry.service_code}, Poste ${entry.poste_code}`);
-          
-          // On ne devrait pas avoir besoin de correction si Mistral suit bien les instructions
-          // mais on peut ajouter une validation ici si nécessaire
-        });
+        console.log('Planning Mistral:', parsedResult.planning.map(e => `${e.date} ${e.service_code} ${e.poste_code}`));
       }
       
       return parsedResult;
@@ -883,7 +880,7 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                   </p>
                   {showManualParsing && (
                     <p className="text-sm text-blue-600 mt-2">
-                      ⚠️ Données extraites manuellement - Vérifiez attentivement les postes
+                      ⚠️ Données extraites manuellement - Vérifiez attentivement
                     </p>
                   )}
                 </div>
@@ -894,10 +891,13 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                       ⚠️ Dates avec entrées multiples détectées :
                     </p>
                     <p className="text-sm text-amber-800 mt-1">
-                      {duplicateDates.map(date => new Date(date).toLocaleDateString('fr-FR')).join(', ')}
+                      {duplicateDates.map(date => {
+                        const d = new Date(date + 'T12:00:00');
+                        return d.toLocaleDateString('fr-FR');
+                      }).join(', ')}
                     </p>
                     <p className="text-xs text-amber-700 mt-2">
-                      C'est normal si vous avez NU + service ou RP + service de nuit le même jour.
+                      Normal pour : NU + service, RP + service de nuit
                     </p>
                   </div>
                 )}
@@ -908,13 +908,14 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                     <li>CCU004/005/006 → doit afficher <strong>RE</strong> (pas CCU)</li>
                     <li>CENT001/002/003 → doit afficher <strong>RC</strong> (pas CENT)</li>
                     <li>REO007/008 → doit afficher <strong>RO</strong> (pas REO)</li>
+                    <li>Services de nuit (31/05) → décalés au 01/06</li>
                   </ul>
                 </div>
 
                 <div>
                   <h3 className="font-semibold mb-2">Planning extrait ({editedData.planning.length} entrées) :</h3>
                   <div className="bg-yellow-50 p-2 rounded mb-2 text-sm">
-                    <span className="font-medium">Note :</span> Les nuits de travail (X) ont été décalées au jour suivant. Les repos (RP) restent sur leur date.
+                    <span className="font-medium">Note :</span> Les nuits (X) sont décalées au lendemain
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse">
@@ -930,12 +931,18 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                         {editedData.planning.map((entry, index) => {
                           const isDuplicate = duplicateDates.includes(entry.date);
                           const needsAttention = entry.poste_code === 'RE' || entry.poste_code === 'RC' || entry.poste_code === 'RO';
+                          const dateObj = new Date(entry.date + 'T12:00:00');
+                          const isJune = entry.date.startsWith('2025-06');
+                          
                           return (
-                            <tr key={index} className={`hover:bg-gray-50 ${isDuplicate ? 'bg-amber-50' : ''} ${needsAttention ? 'font-semibold' : ''}`}>
+                            <tr key={index} className={`hover:bg-gray-50 ${isDuplicate ? 'bg-amber-50' : ''} ${needsAttention ? 'font-semibold' : ''} ${isJune ? 'bg-purple-50' : ''}`}>
                               <td className="border p-2">
-                                {new Date(entry.date).toLocaleDateString('fr-FR')}
+                                {dateObj.toLocaleDateString('fr-FR')}
                                 {isDuplicate && (
                                   <span className="ml-2 text-xs text-amber-600">(Multiple)</span>
+                                )}
+                                {isJune && (
+                                  <span className="ml-2 text-xs text-purple-600">(Juin)</span>
                                 )}
                               </td>
                               <td className="border p-2">
