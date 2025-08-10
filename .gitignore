@@ -13,11 +13,16 @@
 
 # divers
 .DS_Store
+
+# IMPORTANT - Variables d'environnement
 .env
+.env.*
 .env.local
+.env.configured
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
 
 npm-debug.log*
 yarn-debug.log*
