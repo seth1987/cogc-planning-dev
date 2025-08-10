@@ -8,40 +8,72 @@ Corriger et améliorer l'application existante de planning COGC
 
 ## Fonctionnalités principales
 
-### 1. Corrections urgentes
-- Corriger les jours fériés (actuellement le 14 de chaque mois)
-- Restaurer le module de gestion des agents
-- Restaurer le module d'upload PDF
-- Restaurer le module des habilitations
-- Nettoyer les warnings d'imports non utilisés
+### 1. Corrections urgentes ✅ TERMINÉES
+- ✅ Corriger les jours fériés (actuellement le 14 de chaque mois)
+- ✅ Restaurer le module de gestion des agents
+- ✅ Restaurer le module d'upload PDF
+- ✅ Restaurer le module des habilitations
+- ✅ Nettoyer les warnings d'imports non utilisés
 
-### 2. Refactoring
-- Séparer le code en composants modulaires
-- Créer des services dédiés (Supabase, Planning)
-- Optimiser les performances
+### 2. Refactoring ✅ TERMINÉ
+- ✅ Séparer le code en composants modulaires
+- ✅ Créer des services dédiés (Supabase, Planning)
+- ✅ Optimiser les performances
 
-### 3. Fonctionnalités existantes à maintenir
-- Authentification par email
-- Affichage du planning mensuel
-- Navigation entre les mois
-- Modification des cellules de planning
-- Gestion des agents (CRUD)
-- Upload et parsing de PDF
-- Gestion des habilitations
+### 3. Fonctionnalités existantes à maintenir ✅ OPÉRATIONNELLES
+- ✅ Authentification par email
+- ✅ Affichage du planning mensuel
+- ✅ Navigation entre les mois
+- ✅ Modification des cellules de planning
+- ✅ Gestion des agents (CRUD)
+- ✅ Upload et parsing de PDF
+- ✅ Gestion des habilitations
 
 ## Stack technique
 - React 18
 - Supabase (auth + database)
 - Lucide React (icons)
 - Tailwind CSS
+- Mistral OCR (pour l'extraction PDF)
 
 ## Base de données
 - Table agents
 - Table planning
 - Table habilitations
 - Table uploads_pdf
+- Table codes_services (69 codes mappés)
+- Table notes
 
-## Priorités
-1. Corrections critiques
-2. Refactoring du code
-3. Améliorations UX
+## Priorités ✅ COMPLÉTÉES
+1. ✅ Corrections critiques
+2. ✅ Refactoring du code
+3. ✅ Améliorations UX
+
+## Corrections apportées (v2.1.0)
+
+### Problème de connexion "API Key Invalid"
+- **Cause** : Clé API Supabase obsolète dans le fichier .env
+- **Solution** : Mise à jour avec la clé API valide de 2025
+- **État** : ✅ RÉSOLU
+
+### Problème Upload PDF "getMappingStats is not a function"
+- **Cause** : Incompatibilité de nom de fonction entre ModalUploadPDF.js et mappingService.js
+- **Solution** : 
+  - Correction de `getMappingStats()` vers `getStats()`
+  - Ajout des champs `total` et `mapped` dans la réponse
+- **État** : ✅ RÉSOLU
+
+### Améliorations générales
+- ✅ Nettoyage de l'encodage des caractères
+- ✅ Mise à jour de la documentation
+- ✅ Amélioration des messages d'erreur
+- ✅ Script de lancement Windows (start-app.bat)
+
+## État du projet : 🟢 OPÉRATIONNEL
+
+L'application est maintenant entièrement fonctionnelle avec :
+- ✅ Connexion Supabase opérationnelle
+- ✅ Upload PDF avec Mistral OCR fonctionnel
+- ✅ Tous les modules restaurés et testés
+- ✅ Base de données synchronisée
+- ✅ Documentation mise à jour
