@@ -16,7 +16,7 @@ L'application utilise maintenant **Mistral OCR** (`mistral-ocr-latest`) pour l'e
 - 👥 **Gestion des agents** : Création, modification, suppression d'agents
 - 🎯 **Gestion des habilitations** : Attribution des postes aux agents
 - 📄 **Import PDF avec OCR** : Extraction intelligente via Mistral OCR API
-- 🔒 **Authentification** : Connexion sécurisée via Supabase
+- 🔐 **Authentification** : Connexion sécurisée via Supabase
 - 📊 **Groupes réductibles** : Interface optimisée avec groupes réductibles
 - 🗄️ **Base de données** : 69 codes services mappés dans la BDD
 
@@ -123,17 +123,32 @@ npm run build
 
 ## Documentation
 
-- 📖 [Guide d'installation rapide](INSTALLATION_RAPIDE.md)
+- 📝 [Guide d'installation rapide](INSTALLATION_RAPIDE.md)
 - 🚀 [Documentation de la migration OCR](MIGRATION_MISTRAL_OCR.md)
-- 🔄 [Refactoring du module PDF](REFACTORING_UPLOAD_PDF.md)
+- 📄 [Refactoring du module PDF](REFACTORING_UPLOAD_PDF.md)
 - 🗄️ [Structure de la base de données](DATABASE.md)
-- 🌐 [Guide de déploiement](DEPLOYMENT.md)
+- 🚀 [Guide de déploiement](DEPLOYMENT.md)
 
 ## Versions
 
-- **v2.0.0-ocr** : Migration vers Mistral OCR (10/08/2025)
+- **v2.1.0** : Corrections et améliorations (10/08/2025)
+- **v2.0.0-ocr** : Migration vers Mistral OCR
 - **v1.5.0** : Refactoring complet du module Upload PDF
 - **v1.0.0** : Version initiale avec PDF.js
+
+## Corrections récentes (v2.1.0)
+
+✅ **Correction du problème "api key invalid"**
+- Mise à jour de la clé API Supabase
+- Résolution des problèmes de connexion
+
+✅ **Correction de l'upload PDF**
+- Fix de la fonction `getMappingStats()` → `getStats()`
+- Résolution de l'erreur "is not a function"
+
+✅ **Améliorations du code**
+- Nettoyage de l'encodage des caractères
+- Optimisation des services
 
 ## Support
 
