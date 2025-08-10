@@ -118,7 +118,7 @@ class PlanningService {
       'RE002': { service: 'O', poste: 'RE' },
       'RE003': { service: 'X', poste: 'RE' },
       
-      // REO (Régulateur OUEST) - Seulement REO007 et REO008
+      // REO (Régulateur OUEST) - REO007 et REO008
       'REO007': { service: '-', poste: 'RO' },  // Matinée
       'REO008': { service: 'O', poste: 'RO' },  // Soirée
       
@@ -191,18 +191,21 @@ class PlanningService {
     return false;
   }
 
-  // Extraire les informations d'un bulletin PDF avec gestion correcte des services de nuit
-  extractFromPDF(pdfText, agent) {
+  // Extraire les informations d'un bulletin PDF avec gestion correcte des services de nuit ET DU MOIS
+  extractFromPDF(pdfText, agent, currentMonth = null) {
     const planning = {};
     const lines = pdfText.split('\n');
     
-    // Patterns pour détecter les dates, services et heures
+    // Patterns pour détecter les dates et services
     const datePattern = /(\d{2})\/(\d{2})\/(\d{4})/;
     const servicePattern = /(CRC|ACR|RC|RO|REO|CCU|RE|CAC|CENT)\d{3}/;
-    const heurePattern = /(\d{2}):(\d{2})/;
     
     // Structure temporaire pour gérer les services multiples par jour
     const tempPlanning = {};
+    
+    // Déterminer le mois du bulletin
+    let bulletinMonth = null;
+    let bulletinYear = 2025;
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -212,6 +215,13 @@ class PlanningService {
         const jour = parseInt(dateMatch[1]);
         const mois = parseInt(dateMatch[2]);
         const annee = parseInt(dateMatch[3]);
+        
+        // Mémoriser le mois et l'année du bulletin
+        if (!bulletinMonth) {
+          bulletinMonth = MONTHS[mois - 1]; // Convertir le numéro de mois en nom
+          bulletinYear = annee;
+          console.log(`Bulletin détecté pour ${bulletinMonth} ${bulletinYear}`);
+        }
         
         // Initialiser le stockage pour ce jour
         if (!tempPlanning[jour]) {
@@ -277,7 +287,7 @@ class PlanningService {
             });
           }
           
-          // Chercher les codes de service (CRC001, CCU003, REO008, etc.)
+          // Chercher les codes de service (CRC001, CCU003, REO007, REO008, etc.)
           const serviceMatch = currentLine.match(servicePattern);
           if (serviceMatch) {
             const serviceCode = serviceMatch[0];
@@ -304,10 +314,19 @@ class PlanningService {
               isNuit: isNuit,
               heure: heureDebut
             });
+            
+            console.log(`Service détecté : ${serviceCode} le ${jour}/${mois} - ${codeStandard.service} (${codeStandard.poste})`);
           }
         }
       }
     }
+    
+    // Retourner le planning avec le mois correct
+    const result = {
+      month: bulletinMonth || currentMonth,
+      year: bulletinYear,
+      planning: {}
+    };
     
     // Traiter le planning temporaire et gérer les décalages de nuit
     Object.keys(tempPlanning).forEach(jour => {
@@ -326,7 +345,8 @@ class PlanningService {
           targetDay = jourNum + 1;
           
           // Gérer le passage au mois suivant
-          if (targetDay > 31) {
+          const daysInMonth = this.getDaysInMonth(bulletinMonth || currentMonth);
+          if (targetDay > daysInMonth) {
             console.warn(`Service de nuit du ${jourNum} décalé au ${targetDay} (mois suivant) - ignoré`);
             return;
           }
@@ -335,22 +355,22 @@ class PlanningService {
         // Ajouter le service au planning final
         // IMPORTANT : On ajoute TOUJOURS le service, même s'il y a déjà quelque chose
         // Sauf si c'est NU qui existe déjà (NU n'est jamais remplacé)
-        if (!planning[targetDay]) {
+        if (!result.planning[targetDay]) {
           // Premier service pour ce jour
           if (serviceData.poste) {
-            planning[targetDay] = {
+            result.planning[targetDay] = {
               service: serviceData.service,
               poste: serviceData.poste
             };
           } else {
-            planning[targetDay] = serviceData.service;
+            result.planning[targetDay] = serviceData.service;
           }
           console.log(`Jour ${targetDay} : ajout de ${serviceData.code}`);
         } else {
           // Il y a déjà un service ce jour-là
-          const existingService = typeof planning[targetDay] === 'string' 
-            ? planning[targetDay] 
-            : planning[targetDay].service;
+          const existingService = typeof result.planning[targetDay] === 'string' 
+            ? result.planning[targetDay] 
+            : result.planning[targetDay].service;
           
           // RÈGLE : NU n'est JAMAIS remplacé
           if (existingService === 'NU') {
@@ -363,12 +383,12 @@ class PlanningService {
           // IMPORTANT : Pour les services de nuit, on REMPLACE ce qui existe (sauf NU)
           else if (serviceData.isNuit || serviceData.service === 'X') {
             if (serviceData.poste) {
-              planning[targetDay] = {
+              result.planning[targetDay] = {
                 service: serviceData.service,
                 poste: serviceData.poste
               };
             } else {
-              planning[targetDay] = serviceData.service;
+              result.planning[targetDay] = serviceData.service;
             }
             console.log(`Jour ${targetDay} : service de nuit ${serviceData.code} remplace ${existingService}`);
           }
@@ -380,7 +400,7 @@ class PlanningService {
       });
     });
     
-    return planning;
+    return result;
   }
 
   // Détecter les écarts
