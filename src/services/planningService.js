@@ -118,16 +118,9 @@ class PlanningService {
       'RE002': { service: 'O', poste: 'RE' },
       'RE003': { service: 'X', poste: 'RE' },
       
-      // REO (Régulateur OUEST) - NOUVEAU
-      'REO001': { service: '-', poste: 'RO' },
-      'REO002': { service: 'O', poste: 'RO' },
-      'REO003': { service: 'X', poste: 'RO' },
-      'REO004': { service: '-', poste: 'RO' },
-      'REO005': { service: 'O', poste: 'RO' },
-      'REO006': { service: 'X', poste: 'RO' },
-      'REO007': { service: '-', poste: 'RO' },
-      'REO008': { service: 'O', poste: 'RO' },
-      'REO009': { service: 'X', poste: 'RO' },
+      // REO (Régulateur OUEST) - Seulement REO007 et REO008
+      'REO007': { service: '-', poste: 'RO' },  // Matinée
+      'REO008': { service: 'O', poste: 'RO' },  // Soirée
       
       // RO
       'RO001': { service: '-', poste: 'RO' },
@@ -356,22 +349,14 @@ class PlanningService {
             ? planning[targetDay] 
             : planning[targetDay].service;
           
-          // Si c'est NU qui arrive sur un jour qui a déjà quelque chose, on privilégie l'autre service
-          if (serviceData.service === 'NU') {
+          // RÈGLE IMPORTANTE : NU n'est JAMAIS remplacé
+          if (existingService === 'NU') {
+            console.warn(`Jour ${targetDay} : NU présent, ${serviceData.code} ignoré (NU n'est jamais remplacé)`);
+          }
+          // Si c'est NU qui arrive sur un jour qui a déjà quelque chose, on l'ignore
+          else if (serviceData.service === 'NU') {
             console.log(`Jour ${targetDay} : NU ignoré car ${existingService} déjà présent`);
-          } 
-          // Si le jour a déjà NU et qu'on veut mettre autre chose, on remplace NU
-          else if (existingService === 'NU') {
-            if (serviceData.poste) {
-              planning[targetDay] = {
-                service: serviceData.service,
-                poste: serviceData.poste
-              };
-            } else {
-              planning[targetDay] = serviceData.service;
-            }
-            console.log(`Jour ${targetDay} : NU remplacé par ${serviceData.code}`);
-          } 
+          }
           // Sinon on garde le premier service et on signale le conflit
           else {
             console.warn(`Jour ${targetDay} a déjà ${existingService}, ${serviceData.code} ignoré`);
