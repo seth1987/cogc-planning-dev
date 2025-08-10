@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, FileText, Check, X, AlertCircle, Loader } from 'lucide-react';
+import { Upload, FileText, Check, X, AlertCircle, Loader, Key } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
@@ -9,10 +9,17 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [error, setError] = useState('');
   const [validationMode, setValidationMode] = useState(false);
   const [editedData, setEditedData] = useState(null);
+  const [extractedText, setExtractedText] = useState('');
+  const [showManualParsing, setShowManualParsing] = useState(false);
 
   // Configuration Mistral API
   const MISTRAL_API_KEY = process.env.REACT_APP_MISTRAL_API_KEY;
   const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
+
+  // Vérifier si la clé API est configurée
+  const isApiConfigured = MISTRAL_API_KEY && 
+                          MISTRAL_API_KEY !== 'your_mistral_api_key_here' &&
+                          MISTRAL_API_KEY.length > 10;
 
   if (!isOpen) return null;
 
@@ -48,6 +55,85 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       console.error('Erreur extraction PDF:', err);
       throw new Error('Impossible d\'extraire le texte du PDF');
     }
+  };
+
+  const parseManually = (text) => {
+    // Parser manuel basique pour extraction des données
+    const lines = text.split('\n');
+    const result = {
+      agent: { nom: '', prenom: '' },
+      planning: []
+    };
+
+    // Recherche du nom de l'agent
+    const agentMatch = text.match(/Agent\s*:\s*COGC\s+PN\s+([A-Z]+)\s+([A-Z]+)/);
+    if (agentMatch) {
+      result.agent.nom = agentMatch[1];
+      result.agent.prenom = agentMatch[2];
+    }
+
+    // Recherche des dates et services
+    const datePattern = /(\d{2})\/(\d{2})\/(\d{4})/g;
+    const dates = text.match(datePattern);
+    
+    if (dates) {
+      dates.forEach(dateStr => {
+        const [day, month, year] = dateStr.split('/');
+        const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        
+        // Recherche du service pour cette date
+        const dateIndex = text.indexOf(dateStr);
+        const lineEnd = text.indexOf('\n', dateIndex);
+        const dateLine = text.substring(dateIndex, lineEnd);
+        
+        let serviceCode = '';
+        let posteCode = null;
+        
+        // Détection des codes
+        if (dateLine.includes('ACR001') || dateLine.includes('CRC001') || dateLine.includes('CCU001')) {
+          serviceCode = '-';
+          posteCode = dateLine.includes('ACR') ? 'ACR' : dateLine.includes('CRC') ? 'CRC' : 'CCU';
+        } else if (dateLine.includes('ACR002') || dateLine.includes('CRC002') || dateLine.includes('CCU002')) {
+          serviceCode = 'O';
+          posteCode = dateLine.includes('ACR') ? 'ACR' : dateLine.includes('CRC') ? 'CRC' : 'CCU';
+        } else if (dateLine.includes('ACR003') || dateLine.includes('CRC003') || dateLine.includes('CCU003')) {
+          // Nuit - décaler au lendemain
+          const nextDate = new Date(formattedDate);
+          nextDate.setDate(nextDate.getDate() + 1);
+          const nextDateStr = nextDate.toISOString().split('T')[0];
+          serviceCode = 'X';
+          posteCode = dateLine.includes('ACR') ? 'ACR' : dateLine.includes('CRC') ? 'CRC' : 'CCU';
+          result.planning.push({
+            date: nextDateStr,
+            service_code: serviceCode,
+            poste_code: posteCode
+          });
+          return; // Passer à la date suivante
+        } else if (dateLine.includes('RP') || dateLine.includes('Repos')) {
+          serviceCode = 'RP';
+        } else if (dateLine.includes('CONGE') || /\bC\s+Congé/.test(dateLine)) {
+          serviceCode = 'C';
+        } else if (dateLine.includes('DISPO')) {
+          serviceCode = 'D';
+        } else if (dateLine.includes('NU') || dateLine.includes('non utilisé')) {
+          serviceCode = 'NU';
+        } else if (dateLine.includes('HAB') || dateLine.includes('FORMATION')) {
+          serviceCode = 'HAB';
+        } else if (dateLine.includes('VISIMED') || dateLine.includes('VMT') || dateLine.includes('INACTIN')) {
+          serviceCode = 'I';
+        }
+        
+        if (serviceCode) {
+          result.planning.push({
+            date: formattedDate,
+            service_code: serviceCode,
+            poste_code: posteCode
+          });
+        }
+      });
+    }
+
+    return result;
   };
 
   const parseWithMistral = async (text) => {
@@ -138,7 +224,16 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       });
 
       if (!response.ok) {
-        throw new Error('Erreur API Mistral');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Erreur API Mistral:', errorData);
+        
+        if (response.status === 401) {
+          throw new Error('Clé API Mistral invalide. Vérifiez votre configuration.');
+        } else if (response.status === 429) {
+          throw new Error('Limite de requêtes atteinte. Réessayez dans quelques instants.');
+        } else {
+          throw new Error(`Erreur API Mistral (${response.status})`);
+        }
       }
 
       const data = await response.json();
@@ -153,7 +248,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       return JSON.parse(jsonMatch[0]);
     } catch (err) {
       console.error('Erreur Mistral:', err);
-      throw new Error('Erreur lors du parsing avec Mistral');
+      throw err;
     }
   };
 
@@ -169,9 +264,25 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     try {
       // 1. Extraire le texte du PDF
       const text = await extractTextFromPDF(file);
+      setExtractedText(text);
       
-      // 2. Parser avec Mistral
-      const parsed = await parseWithMistral(text);
+      let parsed;
+      
+      // 2. Parser avec Mistral ou manuellement
+      if (isApiConfigured) {
+        try {
+          parsed = await parseWithMistral(text);
+        } catch (mistralError) {
+          console.error('Erreur Mistral, bascule en mode manuel:', mistralError);
+          setError(`Erreur API Mistral: ${mistralError.message}. Utilisation du parsing manuel.`);
+          parsed = parseManually(text);
+          setShowManualParsing(true);
+        }
+      } else {
+        setError('Clé API Mistral non configurée. Utilisation du parsing manuel.');
+        parsed = parseManually(text);
+        setShowManualParsing(true);
+      }
       
       // 3. Préparer les données pour validation
       setParsedData(parsed);
@@ -247,7 +358,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           metadata: {
             agent: editedData.agent,
             services_imported: editedData.planning.length,
-            import_date: new Date().toISOString()
+            import_date: new Date().toISOString(),
+            parsing_mode: showManualParsing ? 'manual' : 'mistral'
           }
         });
 
@@ -267,6 +379,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setEditedData(null);
     setValidationMode(false);
     setError('');
+    setExtractedText('');
+    setShowManualParsing(false);
     onClose();
   };
 
@@ -322,6 +436,27 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
             <>
               {/* Mode Upload */}
               <div className="space-y-4">
+                {/* Alerte si API non configurée */}
+                {!isApiConfigured && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div className="flex items-start gap-2">
+                      <Key className="text-amber-600 mt-1" size={20} />
+                      <div className="flex-1">
+                        <p className="font-medium text-amber-900">Configuration API Mistral requise</p>
+                        <p className="text-sm text-amber-800 mt-1">
+                          Pour un parsing optimal, configurez votre clé API Mistral dans le fichier .env :
+                        </p>
+                        <pre className="bg-amber-100 p-2 rounded mt-2 text-xs">
+                          REACT_APP_MISTRAL_API_KEY=votre_clé_ici
+                        </pre>
+                        <p className="text-sm text-amber-700 mt-2">
+                          Le parsing manuel est disponible mais moins précis.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
                   <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                   <input
@@ -359,6 +494,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                     <li>• Les services de nuit (22h-6h) sont automatiquement décalés au jour suivant</li>
                     <li>• Les codes NU (Non Utilisé) sont conservés</li>
                     <li>• Vérifiez toujours les données avant validation</li>
+                    <li>• Mode : {isApiConfigured ? '🤖 IA Mistral' : '📝 Parsing manuel'}</li>
                   </ul>
                 </div>
               </div>
@@ -372,6 +508,11 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                   <p className="text-lg">
                     {editedData.agent.nom} {editedData.agent.prenom}
                   </p>
+                  {showManualParsing && (
+                    <p className="text-sm text-blue-600 mt-2">
+                      ⚠️ Données extraites manuellement - Vérifiez attentivement
+                    </p>
+                  )}
                 </div>
 
                 <div>
