@@ -29,9 +29,9 @@ export const CODE_COLORS = {
   'RU': 'bg-green-100 text-green-700',
   'C': 'bg-green-100 text-green-700',
   'MA': 'bg-red-100 text-red-700',
-  'I': 'bg-gray-100 text-gray-600',
+  'I': 'bg-pink-100 text-pink-700',
   'D': 'bg-yellow-100 text-yellow-700',
-  'NU': 'bg-gray-100 text-gray-600',
+  'NU': 'bg-gray-100 text-gray-500',
   'FO': 'bg-indigo-100 text-indigo-700',
   'VL': 'bg-indigo-100 text-indigo-700', 
   'VM': 'bg-indigo-100 text-indigo-700',
@@ -48,6 +48,8 @@ export const CODE_COLORS = {
   'RE': 'bg-emerald-100 text-emerald-800 font-semibold',
   'CAC': 'bg-amber-100 text-amber-800 font-semibold',
   'S/S': 'bg-purple-100 text-purple-800 font-semibold',
+  'CENT': 'bg-teal-100 text-teal-800 font-semibold',
+  'SOUF': 'bg-cyan-100 text-cyan-800 font-semibold',
   '': 'bg-gray-50 text-gray-400'
 };
 
@@ -91,8 +93,10 @@ export const SERVICE_CODES = [
   { code: 'C', desc: 'Congés' },
   { code: 'MA', desc: 'Maladie' },
   { code: 'D', desc: 'Disponible' },
-  { code: 'HAB', desc: 'Habilitation' },
+  { code: 'NU', desc: 'Non Utilisé' },
+  { code: 'I', desc: 'Inactif/Visite' },
+  { code: 'HAB', desc: 'Habilitation/Formation' },
   { code: 'FO', desc: 'Formation' }
 ];
 
-export const POSTES_CODES = ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'S/S'];
+export const POSTES_CODES = ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'S/S', 'CENT', 'SOUF'];
