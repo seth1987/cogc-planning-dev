@@ -18,6 +18,7 @@ import ModalCellEdit from './components/modals/ModalCellEdit';
 import ModalGestionAgents from './components/modals/ModalGestionAgents';
 import ModalEditAgent from './components/modals/ModalEditAgent';
 import ModalHabilitations from './components/modals/ModalHabilitations';
+import ModalUploadPDF from './components/modals/ModalUploadPDF';
 
 // Constants
 import { MONTHS } from './constants/config';
@@ -42,6 +43,7 @@ const App = () => {
   const [showGestionAgents, setShowGestionAgents] = useState(false);
   const [showHabilitations, setShowHabilitations] = useState(false);
   const [showEditAgent, setShowEditAgent] = useState(false);
+  const [showUploadPDF, setShowUploadPDF] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(null);
 
   // Check authentication on mount
@@ -265,10 +267,14 @@ const App = () => {
     }
   };
 
-  // Handler for Upload PDF (placeholder for now)
+  // Handler for Upload PDF
   const handleOpenUploadPDF = () => {
-    alert('Module Upload PDF en cours de développement');
-    // TODO: Implémenter le module upload PDF
+    setShowUploadPDF(true);
+  };
+
+  const handleUploadSuccess = () => {
+    loadData(currentMonth);
+    setConnectionStatus('✅ Planning importé avec succès');
   };
 
   // Loading state
@@ -376,6 +382,12 @@ const App = () => {
         onClose={() => setShowHabilitations(false)}
         onAddHabilitation={handleAddHabilitation}
         onRemoveHabilitation={handleRemoveHabilitation}
+      />
+      
+      <ModalUploadPDF
+        isOpen={showUploadPDF}
+        onClose={() => setShowUploadPDF(false)}
+        onSuccess={handleUploadSuccess}
       />
     </div>
   );
