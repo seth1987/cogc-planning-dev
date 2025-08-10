@@ -42,7 +42,6 @@ const App = () => {
   const [showGestionAgents, setShowGestionAgents] = useState(false);
   const [showHabilitations, setShowHabilitations] = useState(false);
   const [showEditAgent, setShowEditAgent] = useState(false);
-  const [showUploadPDF, setShowUploadPDF] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(null);
 
   // Check authentication on mount
@@ -226,7 +225,7 @@ const App = () => {
       setConnectionStatus('✅ Agent mis à jour');
     } catch (error) {
       console.error('Erreur mise à jour agent:', error);
-      alert('Erreur lors de la mise à jour');
+      alert(`Erreur lors de la mise à jour: ${error.message}`);
     }
   };
 
@@ -237,7 +236,7 @@ const App = () => {
       setConnectionStatus('✅ Agent supprimé');
     } catch (error) {
       console.error('Erreur suppression agent:', error);
-      alert('Erreur lors de la suppression');
+      alert(`Erreur lors de la suppression: ${error.message}`);
     }
   };
 
@@ -250,7 +249,7 @@ const App = () => {
       setHabilitations(habilitationsByAgent);
     } catch (error) {
       console.error('Erreur ajout habilitation:', error);
-      alert('Erreur lors de l\'ajout');
+      alert(`Erreur lors de l'ajout: ${error.message}`);
     }
   };
 
@@ -262,14 +261,14 @@ const App = () => {
       setHabilitations(habilitationsByAgent);
     } catch (error) {
       console.error('Erreur suppression habilitation:', error);
-      alert('Erreur lors de la suppression');
+      alert(`Erreur lors de la suppression: ${error.message}`);
     }
   };
 
   // Handler for Upload PDF (placeholder for now)
   const handleOpenUploadPDF = () => {
     alert('Module Upload PDF en cours de développement');
-    // setShowUploadPDF(true);
+    // TODO: Implémenter le module upload PDF
   };
 
   // Loading state
