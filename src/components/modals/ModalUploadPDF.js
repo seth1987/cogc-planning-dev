@@ -87,7 +87,13 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       'REO008': { service: 'O', poste: 'RO' },   // Soir RO
     };
     
-    return mapping[code] || null;
+    const result = mapping[code.toUpperCase()] || null;
+    if (result) {
+      console.log(`Mapping ${code} -> Service: ${result.service}, Poste: ${result.poste}`);
+    } else {
+      console.log(`Pas de mapping pour ${code}`);
+    }
+    return result;
   };
 
   const parseManually = (text) => {
@@ -124,7 +130,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       const dateContent = text.substring(startIndex, endIndex);
       
       console.log(`\nAnalyse de ${dateStr}:`);
-      console.log('Contenu:', dateContent.substring(0, 100));
+      console.log('Contenu:', dateContent.substring(0, 200));
       
       // Analyser le contenu pour cette date
       const entries = parseEntriesForDate(dateContent, formattedDate);
@@ -215,12 +221,15 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       });
     }
     
-    // Pattern pour les codes services avec numéros
-    const serviceCodePattern = /(CRC|ACR|CCU|CENT|SOUF|REO)(\d{3})/g;
+    // Pattern pour les codes services avec numéros - plus précis
+    // On cherche les codes soit en début de ligne, soit après un espace
+    const serviceCodePattern = /(?:^|\s)(CRC001|CRC002|CRC003|ACR001|ACR002|ACR003|CCU001|CCU002|CCU003|CCU004|CCU005|CCU006|CENT001|CENT002|CENT003|SOUF001|SOUF002|REO007|REO008)(?:\s|$)/g;
     const serviceMatches = [...content.matchAll(serviceCodePattern)];
     
+    console.log(`  Codes trouvés pour ${formattedDate}:`, serviceMatches.map(m => m[1]));
+    
     serviceMatches.forEach(match => {
-      const fullCode = match[0];
+      const fullCode = match[1]; // Le code capturé
       const mapping = getPosteFromCode(fullCode);
       
       if (mapping) {
@@ -231,6 +240,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           const nextDate = new Date(formattedDate);
           nextDate.setDate(nextDate.getDate() + 1);
           entryDate = nextDate.toISOString().split('T')[0];
+          console.log(`    Service de nuit ${fullCode} décalé de ${formattedDate} à ${entryDate}`);
         }
         
         entries.push({
@@ -238,6 +248,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           service_code: mapping.service,
           poste_code: mapping.poste
         });
+        
+        console.log(`    ${fullCode} -> service: ${mapping.service}, poste: ${mapping.poste}, date: ${entryDate}`);
       }
     });
     
@@ -256,7 +268,7 @@ INSTRUCTIONS CRITIQUES:
    - Cherche "COGC PN" suivi du NOM et PRÉNOM
    - Format: COGC PN [NOM] [PRÉNOM]
 
-2. MAPPING EXACT DES CODES:
+2. MAPPING EXACT DES CODES (TRÈS IMPORTANT - RESPECTER EXACTEMENT):
    
    CODES CRC:
    - CRC001 = Matin CRC → service: "-", poste: "CRC"
@@ -268,26 +280,26 @@ INSTRUCTIONS CRITIQUES:
    - ACR002 = Soir ACR → service: "O", poste: "ACR"
    - ACR003 = Nuit ACR → service: "X", poste: "ACR" (DÉCALER AU LENDEMAIN)
    
-   CODES CCU (attention au poste!):
+   CODES CCU (ATTENTION AU POSTE!):
    - CCU001 = Matin CCU → service: "-", poste: "CCU"
    - CCU002 = Soir CCU → service: "O", poste: "CCU"
    - CCU003 = Nuit CCU → service: "X", poste: "CCU" (DÉCALER AU LENDEMAIN)
-   - CCU004 = Matin RE → service: "-", poste: "RE" (PAS CCU!)
-   - CCU005 = Soir RE → service: "O", poste: "RE" (PAS CCU!)
-   - CCU006 = Nuit RE → service: "X", poste: "RE" (PAS CCU!) (DÉCALER AU LENDEMAIN)
+   - CCU004 = Matin RE → service: "-", poste: "RE" (ATTENTION: POSTE RE, PAS CCU!)
+   - CCU005 = Soir RE → service: "O", poste: "RE" (ATTENTION: POSTE RE, PAS CCU!)
+   - CCU006 = Nuit RE → service: "X", poste: "RE" (ATTENTION: POSTE RE, PAS CCU!) (DÉCALER AU LENDEMAIN)
    
-   CODES CENT (attention: poste RC!):
-   - CENT001 = Matin RC → service: "-", poste: "RC" (PAS CENT!)
-   - CENT002 = Soir RC → service: "O", poste: "RC" (PAS CENT!)
-   - CENT003 = Nuit RC → service: "X", poste: "RC" (PAS CENT!) (DÉCALER AU LENDEMAIN)
+   CODES CENT (ATTENTION: POSTE RC!):
+   - CENT001 = Matin RC → service: "-", poste: "RC" (ATTENTION: POSTE RC, PAS CENT!)
+   - CENT002 = Soir RC → service: "O", poste: "RC" (ATTENTION: POSTE RC, PAS CENT!)
+   - CENT003 = Nuit RC → service: "X", poste: "RC" (ATTENTION: POSTE RC, PAS CENT!) (DÉCALER AU LENDEMAIN)
    
    CODES SOUF:
    - SOUF001 = Matin Souffleur → service: "-", poste: "SOUF"
    - SOUF002 = Soir Souffleur → service: "O", poste: "SOUF"
    
-   CODES REO (poste RO!):
-   - REO007 = Matin RO → service: "-", poste: "RO" (PAS REO!)
-   - REO008 = Soir RO → service: "O", poste: "RO" (PAS REO!)
+   CODES REO (ATTENTION: POSTE RO!):
+   - REO007 = Matin RO → service: "-", poste: "RO" (ATTENTION: POSTE RO, PAS REO!)
+   - REO008 = Soir RO → service: "O", poste: "RO" (ATTENTION: POSTE RO, PAS REO!)
    
    AUTRES:
    - RP ou RPP = Repos → service: "RP", poste: null
@@ -298,14 +310,19 @@ INSTRUCTIONS CRITIQUES:
    - VISIMED ou VMT = Visite médicale → service: "I", poste: null
    - INACTIN = Inactif → service: "I", poste: null
 
-3. RÈGLE DES NUITS (service "X"):
+3. RÈGLE TRÈS IMPORTANTE POUR LES POSTES:
+   - CCU004, CCU005, CCU006 → TOUJOURS poste "RE" (jamais "CCU")
+   - CENT001, CENT002, CENT003 → TOUJOURS poste "RC" (jamais "CENT")
+   - REO007, REO008 → TOUJOURS poste "RO" (jamais "REO")
+
+4. RÈGLE DES NUITS (service "X"):
    - TOUS les services de nuit (service_code: "X") doivent être DÉCALÉS AU JOUR SUIVANT
    - SAUF les RP qui restent sur leur date
    - Exemples:
      * 21/04 avec NU + ACR003 → NU reste le 21/04, ACR003 (nuit) va au 22/04
      * 30/05 avec RP + CENT003 → RP reste le 30/05, CENT003 (nuit RC) va au 31/05
 
-4. ENTRÉES MULTIPLES:
+5. ENTRÉES MULTIPLES:
    - Une date peut avoir plusieurs services (NU + service, RP + service de nuit)
    - GARDER TOUTES les entrées uniques pour chaque date
 
@@ -324,9 +341,10 @@ FORMAT JSON ATTENDU:
   ]
 }
 
-EXEMPLES CONCRETS:
-- CCU004 le 21/04 → {"date": "2025-04-21", "service_code": "-", "poste_code": "RE"}
-- CENT002 le 16/08 → {"date": "2025-08-16", "service_code": "O", "poste_code": "RC"}
+EXEMPLES CONCRETS (TRÈS IMPORTANT):
+- CCU004 le 21/04 → {"date": "2025-04-21", "service_code": "-", "poste_code": "RE"} (PAS CCU!)
+- CCU005 le 16/04 → {"date": "2025-04-16", "service_code": "O", "poste_code": "RE"} (PAS CCU!)
+- CENT002 le 16/08 → {"date": "2025-08-16", "service_code": "O", "poste_code": "RC"} (PAS CENT!)
 - CCU003 le 18/05 → {"date": "2025-05-19", "service_code": "X", "poste_code": "CCU"} (décalé)
 
 RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
@@ -373,7 +391,20 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
         throw new Error('Format de réponse invalide');
       }
 
-      return JSON.parse(jsonMatch[0]);
+      const parsedResult = JSON.parse(jsonMatch[0]);
+      
+      // Vérifier et corriger les postes mal mappés
+      if (parsedResult.planning) {
+        parsedResult.planning.forEach(entry => {
+          // Log pour debug
+          console.log(`Vérification: Date ${entry.date}, Service ${entry.service_code}, Poste ${entry.poste_code}`);
+          
+          // On ne devrait pas avoir besoin de correction si Mistral suit bien les instructions
+          // mais on peut ajouter une validation ici si nécessaire
+        });
+      }
+      
+      return parsedResult;
     } catch (err) {
       console.error('Erreur Mistral:', err);
       throw err;
@@ -685,7 +716,8 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                     <li>• Les services de nuit (22h-6h) sont décalés au jour suivant</li>
                     <li>• Les repos (RP) restent toujours sur leur date d'origine</li>
                     <li>• Les codes NU (Non Utilisé) sont conservés sur leur date</li>
-                    <li>• Les entrées multiples par jour sont gérées automatiquement</li>
+                    <li>• CCU004/005/006 → Poste RE (pas CCU)</li>
+                    <li>• CENT001/002/003 → Poste RC (pas CENT)</li>
                     <li>• Mode : {isApiConfigured ? '🤖 IA Mistral' : '📝 Parsing manuel'}</li>
                   </ul>
                 </div>
@@ -764,32 +796,32 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                           <tr className="hover:bg-blue-50 bg-yellow-50">
                             <td className="border border-blue-200 px-2 py-1 font-mono">CCU004</td>
                             <td className="border border-blue-200 px-2 py-1">Matin</td>
-                            <td className="border border-blue-200 px-2 py-1 font-semibold text-red-600">RE</td>
+                            <td className="border border-blue-200 px-2 py-1 font-bold text-red-600">RE ⚠️</td>
                           </tr>
                           <tr className="hover:bg-blue-50 bg-yellow-50">
                             <td className="border border-blue-200 px-2 py-1 font-mono">CCU005</td>
                             <td className="border border-blue-200 px-2 py-1">Soir</td>
-                            <td className="border border-blue-200 px-2 py-1 font-semibold text-red-600">RE</td>
+                            <td className="border border-blue-200 px-2 py-1 font-bold text-red-600">RE ⚠️</td>
                           </tr>
                           <tr className="hover:bg-blue-50 bg-yellow-50">
                             <td className="border border-blue-200 px-2 py-1 font-mono">CCU006</td>
                             <td className="border border-blue-200 px-2 py-1">Nuit ⚠️</td>
-                            <td className="border border-blue-200 px-2 py-1 font-semibold text-red-600">RE</td>
+                            <td className="border border-blue-200 px-2 py-1 font-bold text-red-600">RE ⚠️</td>
                           </tr>
                           <tr className="hover:bg-blue-50 bg-green-50">
                             <td className="border border-blue-200 px-2 py-1 font-mono">CENT001</td>
                             <td className="border border-blue-200 px-2 py-1">Matin</td>
-                            <td className="border border-blue-200 px-2 py-1 font-semibold text-green-600">RC</td>
+                            <td className="border border-blue-200 px-2 py-1 font-bold text-green-600">RC ⚠️</td>
                           </tr>
                           <tr className="hover:bg-blue-50 bg-green-50">
                             <td className="border border-blue-200 px-2 py-1 font-mono">CENT002</td>
                             <td className="border border-blue-200 px-2 py-1">Soir</td>
-                            <td className="border border-blue-200 px-2 py-1 font-semibold text-green-600">RC</td>
+                            <td className="border border-blue-200 px-2 py-1 font-bold text-green-600">RC ⚠️</td>
                           </tr>
                           <tr className="hover:bg-blue-50 bg-green-50">
                             <td className="border border-blue-200 px-2 py-1 font-mono">CENT003</td>
                             <td className="border border-blue-200 px-2 py-1">Nuit ⚠️</td>
-                            <td className="border border-blue-200 px-2 py-1 font-semibold text-green-600">RC</td>
+                            <td className="border border-blue-200 px-2 py-1 font-bold text-green-600">RC ⚠️</td>
                           </tr>
                           <tr className="hover:bg-blue-50">
                             <td className="border border-blue-200 px-2 py-1 font-mono">SOUF002</td>
@@ -811,9 +843,9 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                     </div>
                   </div>
                   <p className="text-xs text-blue-700 mt-2">
-                    ⚠️ = Service de nuit décalé au lendemain | 
-                    <span className="text-red-600 font-semibold"> RE</span> = CCU004/005/006 | 
-                    <span className="text-green-600 font-semibold"> RC</span> = CENT001/002/003
+                    ⚠️ = Attention au mapping | Nuits décalées au lendemain | 
+                    <span className="text-red-600 font-bold"> CCU004/005/006 → RE</span> | 
+                    <span className="text-green-600 font-bold"> CENT001/002/003 → RC</span>
                   </p>
                 </div>
               </div>
@@ -829,7 +861,7 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                   </p>
                   {showManualParsing && (
                     <p className="text-sm text-blue-600 mt-2">
-                      ⚠️ Données extraites manuellement - Vérifiez attentivement
+                      ⚠️ Données extraites manuellement - Vérifiez attentivement les postes
                     </p>
                   )}
                 </div>
@@ -847,6 +879,15 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                     </p>
                   </div>
                 )}
+
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-red-900 font-medium">⚠️ Vérifiez particulièrement :</p>
+                  <ul className="text-sm text-red-800 mt-1 list-disc list-inside">
+                    <li>CCU004/005/006 → doit afficher <strong>RE</strong> (pas CCU)</li>
+                    <li>CENT001/002/003 → doit afficher <strong>RC</strong> (pas CENT)</li>
+                    <li>REO007/008 → doit afficher <strong>RO</strong> (pas REO)</li>
+                  </ul>
+                </div>
 
                 <div>
                   <h3 className="font-semibold mb-2">Planning extrait ({editedData.planning.length} entrées) :</h3>
@@ -866,8 +907,9 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                       <tbody>
                         {editedData.planning.map((entry, index) => {
                           const isDuplicate = duplicateDates.includes(entry.date);
+                          const needsAttention = entry.poste_code === 'RE' || entry.poste_code === 'RC' || entry.poste_code === 'RO';
                           return (
-                            <tr key={index} className={`hover:bg-gray-50 ${isDuplicate ? 'bg-amber-50' : ''}`}>
+                            <tr key={index} className={`hover:bg-gray-50 ${isDuplicate ? 'bg-amber-50' : ''} ${needsAttention ? 'font-semibold' : ''}`}>
                               <td className="border p-2">
                                 {new Date(entry.date).toLocaleDateString('fr-FR')}
                                 {isDuplicate && (
@@ -901,15 +943,15 @@ RÉPONDS UNIQUEMENT AVEC LE JSON, SANS AUCUN TEXTE SUPPLÉMENTAIRE.`;
                                 <select
                                   value={entry.poste_code || ''}
                                   onChange={(e) => handleCellEdit(index, 'poste_code', e.target.value || null)}
-                                  className="w-full p-1 border rounded"
+                                  className={`w-full p-1 border rounded ${needsAttention ? 'bg-yellow-100 font-bold' : ''}`}
                                 >
                                   <option value="">-</option>
                                   <option value="CRC">CRC</option>
                                   <option value="ACR">ACR</option>
                                   <option value="CCU">CCU</option>
-                                  <option value="RE">RE</option>
-                                  <option value="RC">RC</option>
-                                  <option value="RO">RO</option>
+                                  <option value="RE" className="font-bold text-red-600">RE (CCU004/005/006)</option>
+                                  <option value="RC" className="font-bold text-green-600">RC (CENT001/002/003)</option>
+                                  <option value="RO" className="font-bold text-orange-600">RO (REO007/008)</option>
                                   <option value="SOUF">Souffleur</option>
                                   <option value="CAC">CAC</option>
                                 </select>
