@@ -320,8 +320,8 @@ class PlanningService {
       services.forEach(serviceData => {
         let targetDay = jourNum;
         
-        // IMPORTANT : Les services de nuit sont TOUJOURS décalés au jour suivant
-        // peu importe s'il y a d'autres services ou non
+        // RÈGLE FONDAMENTALE : Les services de nuit sont TOUJOURS décalés au jour suivant
+        // Une nuit qui commence le J à 22h et finit le J+1 à 6h est affichée en J+1
         if (serviceData.isNuit) {
           targetDay = jourNum + 1;
           
@@ -333,6 +333,8 @@ class PlanningService {
         }
         
         // Ajouter le service au planning final
+        // IMPORTANT : On ajoute TOUJOURS le service, même s'il y a déjà quelque chose
+        // Sauf si c'est NU qui existe déjà (NU n'est jamais remplacé)
         if (!planning[targetDay]) {
           // Premier service pour ce jour
           if (serviceData.poste) {
@@ -343,21 +345,34 @@ class PlanningService {
           } else {
             planning[targetDay] = serviceData.service;
           }
+          console.log(`Jour ${targetDay} : ajout de ${serviceData.code}`);
         } else {
           // Il y a déjà un service ce jour-là
           const existingService = typeof planning[targetDay] === 'string' 
             ? planning[targetDay] 
             : planning[targetDay].service;
           
-          // RÈGLE IMPORTANTE : NU n'est JAMAIS remplacé
+          // RÈGLE : NU n'est JAMAIS remplacé
           if (existingService === 'NU') {
-            console.warn(`Jour ${targetDay} : NU présent, ${serviceData.code} ignoré (NU n'est jamais remplacé)`);
+            console.warn(`Jour ${targetDay} : NU présent, ${serviceData.code} ignoré (NU prioritaire)`);
           }
-          // Si c'est NU qui arrive sur un jour qui a déjà quelque chose, on l'ignore
+          // Si c'est NU qui arrive et qu'il y a déjà autre chose, NU est ignoré
           else if (serviceData.service === 'NU') {
             console.log(`Jour ${targetDay} : NU ignoré car ${existingService} déjà présent`);
           }
-          // Sinon on garde le premier service et on signale le conflit
+          // IMPORTANT : Pour les services de nuit, on REMPLACE ce qui existe (sauf NU)
+          else if (serviceData.isNuit || serviceData.service === 'X') {
+            if (serviceData.poste) {
+              planning[targetDay] = {
+                service: serviceData.service,
+                poste: serviceData.poste
+              };
+            } else {
+              planning[targetDay] = serviceData.service;
+            }
+            console.log(`Jour ${targetDay} : service de nuit ${serviceData.code} remplace ${existingService}`);
+          }
+          // Pour les autres services, on garde le premier arrivé
           else {
             console.warn(`Jour ${targetDay} a déjà ${existingService}, ${serviceData.code} ignoré`);
           }
