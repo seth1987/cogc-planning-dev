@@ -25,9 +25,8 @@ class PDFParserService {
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = () => {
-        // Enlever le préfixe "data:application/pdf;base64,"
-        const base64 = reader.result.split(',')[1];
-        resolve(base64);
+        // Retourner l'URL data complète pour Mistral OCR
+        resolve(reader.result);
       };
       reader.onerror = error => reject(error);
     });
@@ -35,6 +34,7 @@ class PDFParserService {
 
   /**
    * Parse le PDF avec Mistral OCR SDK officiel
+   * Utilise l'API chat avec vision pour extraire le texte du PDF
    */
   async parseWithMistralOCR(file, apiKey) {
     if (!apiKey) {
@@ -47,26 +47,54 @@ class PDFParserService {
       // Initialiser le client Mistral
       this.initMistralClient(apiKey);
       
-      // Convertir le fichier en base64
-      const base64PDF = await this.fileToBase64(file);
+      // Convertir le fichier en base64 data URL
+      const dataUrl = await this.fileToBase64(file);
       
-      // Appel à l'API Mistral OCR via le SDK officiel
-      const ocrResponse = await this.mistralClient.ocr.process({
-        model: 'mistral-ocr-latest',
-        document: {
-          type: 'document_url',
-          documentUrl: `data:application/pdf;base64,${base64PDF}`
-        },
-        includeImageBase64: false // Pas besoin des images pour les bulletins
+      // Utiliser l'API chat avec vision du SDK pour l'OCR
+      // Le modèle pixtral-12b-2024-09-04 supporte l'analyse de documents
+      const chatResponse = await this.mistralClient.chat.complete({
+        model: 'pixtral-12b-2024-09-04',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Extrais tout le texte de ce document PDF, notamment :
+                - Le nom et prénom de l'agent (format: COGC PN NOM PRENOM)
+                - Toutes les dates (format JJ/MM/AAAA)
+                - Tous les codes de service (CRC001, ACR002, etc.)
+                - Les codes spéciaux (RP, C, HAB, MA, etc.)
+                - Présente le résultat en format markdown structuré
+                - Conserve EXACTEMENT les codes tels qu'ils apparaissent`
+              },
+              {
+                type: 'image_url',
+                image_url: dataUrl
+              }
+            ]
+          }
+        ],
+        temperature: 0.1, // Température basse pour plus de précision
+        max_tokens: 8000
       });
 
       console.log('✅ OCR terminé, parsing des résultats...');
       
+      // Extraire le contenu de la réponse
+      const ocrContent = chatResponse.choices[0].message.content;
+      
       // Parser les résultats OCR
-      return await this.parseOCRResult(ocrResponse);
+      return await this.parseOCRContent(ocrContent);
       
     } catch (err) {
       console.error('Erreur Mistral OCR:', err);
+      
+      // Si erreur avec pixtral, essayer avec l'API standard
+      if (err.message?.includes('model')) {
+        console.log('⚠️ Modèle pixtral non disponible, tentative avec mistral-large...');
+        return await this.parseWithMistralLarge(file, apiKey);
+      }
       
       // Gestion des erreurs spécifiques
       if (err.message?.includes('401')) {
@@ -82,41 +110,89 @@ class PDFParserService {
   }
 
   /**
-   * Parse les résultats de Mistral OCR
+   * Fallback: Parse avec Mistral Large si pixtral n'est pas disponible
    */
-  async parseOCRResult(ocrResponse) {
+  async parseWithMistralLarge(file, apiKey) {
+    try {
+      console.log('🔄 Utilisation de mistral-large-latest comme fallback...');
+      
+      // Initialiser le client Mistral
+      this.initMistralClient(apiKey);
+      
+      // Convertir le fichier en base64
+      const dataUrl = await this.fileToBase64(file);
+      
+      // Utiliser mistral-large avec le prompt OCR
+      const chatResponse = await this.mistralClient.chat.complete({
+        model: 'mistral-large-latest',
+        messages: [
+          {
+            role: 'system',
+            content: 'Tu es un système OCR spécialisé dans l\'extraction de données de bulletins de commande SNCF. Extrais EXACTEMENT le texte tel qu\'il apparaît, sans interprétation.'
+          },
+          {
+            role: 'user',
+            content: `Analyse ce document PDF et extrais :
+            1. Le nom et prénom de l'agent (format: COGC PN NOM PRENOM)
+            2. Toutes les dates au format JJ/MM/AAAA
+            3. Tous les codes de service (ex: CRC001, ACR002, CCU003, etc.)
+            4. Les codes spéciaux (RP, C, HAB, MA, VISIMED, etc.)
+            
+            Format de sortie attendu en markdown :
+            - Agent: NOM PRENOM
+            - Pour chaque date, liste les codes associés
+            - Conserve EXACTEMENT les codes comme ils apparaissent`
+          }
+        ],
+        temperature: 0.1,
+        max_tokens: 8000
+      });
+
+      const ocrContent = chatResponse.choices[0].message.content;
+      return await this.parseOCRContent(ocrContent);
+      
+    } catch (err) {
+      console.error('Erreur avec mistral-large:', err);
+      throw new Error(`Impossible d'extraire le PDF: ${err.message}`);
+    }
+  }
+
+  /**
+   * Parse le contenu OCR extrait par Mistral
+   */
+  async parseOCRContent(ocrContent) {
     const result = {
       agent: { nom: '', prenom: '' },
       planning: []
     };
 
-    // Le SDK retourne directement les pages
-    if (!ocrResponse?.pages || ocrResponse.pages.length === 0) {
-      throw new Error('Aucune page détectée dans le PDF');
+    if (!ocrContent) {
+      throw new Error('Aucun contenu extrait du PDF');
     }
 
-    // Combiner le contenu markdown de toutes les pages
-    const fullContent = ocrResponse.pages
-      .map(page => page.markdown || '')
-      .join('\n');
+    console.log('📄 Contenu OCR extrait (extrait):', ocrContent.substring(0, 500) + '...');
 
-    console.log('📄 Contenu extrait (extrait):', fullContent.substring(0, 500) + '...');
-    console.log(`📊 Nombre de pages traitées: ${ocrResponse.pages.length}`);
-
-    // Extraction du nom de l'agent (pattern: COGC PN NOM PRENOM)
-    const agentMatch = fullContent.match(/COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ]+)\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)/i);
+    // Extraction du nom de l'agent
+    const agentMatch = ocrContent.match(/COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ]+)\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)/i);
     if (agentMatch) {
       result.agent.nom = agentMatch[1];
       result.agent.prenom = agentMatch[2];
       console.log('👤 Agent détecté:', result.agent.nom, result.agent.prenom);
     } else {
-      console.warn('⚠️ Agent non détecté dans le document');
+      // Essayer d'autres patterns
+      const altAgentMatch = ocrContent.match(/Agent\s*:\s*([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ]+)\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)/i);
+      if (altAgentMatch) {
+        result.agent.nom = altAgentMatch[1];
+        result.agent.prenom = altAgentMatch[2];
+        console.log('👤 Agent détecté (format alternatif):', result.agent.nom, result.agent.prenom);
+      } else {
+        console.warn('⚠️ Agent non détecté dans le document');
+      }
     }
 
     // Extraction des dates et codes
-    // Pattern pour les dates françaises JJ/MM/AAAA
     const datePattern = /(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
-    const lines = fullContent.split('\n');
+    const lines = ocrContent.split('\n');
     
     // Map pour stocker les codes par date
     const codesByDate = new Map();
