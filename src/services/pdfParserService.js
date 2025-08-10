@@ -1,9 +1,20 @@
-// Service de parsing et extraction de PDF avec Mistral OCR
+// Service de parsing et extraction de PDF avec Mistral OCR SDK officiel
+import { Mistral } from '@mistralai/mistralai';
 import mappingService from './mappingService';
 
 class PDFParserService {
   constructor() {
-    this.mistralOCRUrl = 'https://api.mistral.ai/v1/ocr';
+    this.mistralClient = null;
+  }
+
+  /**
+   * Initialise le client Mistral
+   */
+  initMistralClient(apiKey) {
+    if (!this.mistralClient && apiKey) {
+      this.mistralClient = new Mistral({ apiKey });
+    }
+    return this.mistralClient;
   }
 
   /**
@@ -23,7 +34,7 @@ class PDFParserService {
   }
 
   /**
-   * Parse le PDF avec Mistral OCR API
+   * Parse le PDF avec Mistral OCR SDK officiel
    */
   async parseWithMistralOCR(file, apiKey) {
     if (!apiKey) {
@@ -31,72 +42,66 @@ class PDFParserService {
     }
 
     try {
-      console.log('🔍 Démarrage OCR avec Mistral OCR...');
+      console.log('🔍 Démarrage OCR avec Mistral SDK officiel...');
+      
+      // Initialiser le client Mistral
+      this.initMistralClient(apiKey);
       
       // Convertir le fichier en base64
       const base64PDF = await this.fileToBase64(file);
       
-      // Appel à l'API Mistral OCR
-      const response = await fetch(this.mistralOCRUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+      // Appel à l'API Mistral OCR via le SDK officiel
+      const ocrResponse = await this.mistralClient.ocr.process({
+        model: 'mistral-ocr-latest',
+        document: {
+          type: 'document_url',
+          documentUrl: `data:application/pdf;base64,${base64PDF}`
         },
-        body: JSON.stringify({
-          model: 'mistral-ocr-latest',
-          document: {
-            type: 'document_url',
-            document_url: `data:application/pdf;base64,${base64PDF}`
-          },
-          include_image_base64: false // Pas besoin des images pour les bulletins
-        })
+        includeImageBase64: false // Pas besoin des images pour les bulletins
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Erreur API Mistral OCR:', errorData);
-        
-        if (response.status === 401) {
-          throw new Error('Clé API Mistral invalide');
-        } else if (response.status === 429) {
-          throw new Error('Limite de requêtes atteinte');
-        } else {
-          throw new Error(`Erreur OCR (${response.status}): ${errorData.message || 'Erreur inconnue'}`);
-        }
-      }
-
-      const ocrResult = await response.json();
       console.log('✅ OCR terminé, parsing des résultats...');
       
       // Parser les résultats OCR
-      return await this.parseOCRResult(ocrResult);
+      return await this.parseOCRResult(ocrResponse);
       
     } catch (err) {
       console.error('Erreur Mistral OCR:', err);
-      throw err;
+      
+      // Gestion des erreurs spécifiques
+      if (err.message?.includes('401')) {
+        throw new Error('Clé API Mistral invalide. Vérifiez votre configuration.');
+      } else if (err.message?.includes('429')) {
+        throw new Error('Limite de requêtes Mistral atteinte. Réessayez plus tard.');
+      } else if (err.message?.includes('413')) {
+        throw new Error('Fichier PDF trop volumineux (max 50MB)');
+      } else {
+        throw new Error(`Erreur OCR: ${err.message || 'Erreur inconnue'}`);
+      }
     }
   }
 
   /**
    * Parse les résultats de Mistral OCR
    */
-  async parseOCRResult(ocrData) {
+  async parseOCRResult(ocrResponse) {
     const result = {
       agent: { nom: '', prenom: '' },
       planning: []
     };
 
-    if (!ocrData.pages || ocrData.pages.length === 0) {
+    // Le SDK retourne directement les pages
+    if (!ocrResponse?.pages || ocrResponse.pages.length === 0) {
       throw new Error('Aucune page détectée dans le PDF');
     }
 
-    // Combiner le contenu de toutes les pages
-    const fullContent = ocrData.pages
-      .map(page => page.markdown || page.content || '')
+    // Combiner le contenu markdown de toutes les pages
+    const fullContent = ocrResponse.pages
+      .map(page => page.markdown || '')
       .join('\n');
 
-    console.log('📄 Contenu extrait:', fullContent.substring(0, 500) + '...');
+    console.log('📄 Contenu extrait (extrait):', fullContent.substring(0, 500) + '...');
+    console.log(`📊 Nombre de pages traitées: ${ocrResponse.pages.length}`);
 
     // Extraction du nom de l'agent (pattern: COGC PN NOM PRENOM)
     const agentMatch = fullContent.match(/COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ]+)\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)/i);
@@ -104,6 +109,8 @@ class PDFParserService {
       result.agent.nom = agentMatch[1];
       result.agent.prenom = agentMatch[2];
       console.log('👤 Agent détecté:', result.agent.nom, result.agent.prenom);
+    } else {
+      console.warn('⚠️ Agent non détecté dans le document');
     }
 
     // Extraction des dates et codes
@@ -291,13 +298,15 @@ class PDFParserService {
     }
 
     // Vérifier la cohérence des dates
-    const dates = data.planning.map(e => new Date(e.date));
-    const minDate = new Date(Math.min(...dates));
-    const maxDate = new Date(Math.max(...dates));
-    const daysDiff = (maxDate - minDate) / (1000 * 60 * 60 * 24);
-    
-    if (daysDiff > 45) {
-      warnings.push('Période de planning supérieure à 45 jours');
+    if (data.planning && data.planning.length > 0) {
+      const dates = data.planning.map(e => new Date(e.date));
+      const minDate = new Date(Math.min(...dates));
+      const maxDate = new Date(Math.max(...dates));
+      const daysDiff = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+      
+      if (daysDiff > 45) {
+        warnings.push('Période de planning supérieure à 45 jours');
+      }
     }
 
     return { 
