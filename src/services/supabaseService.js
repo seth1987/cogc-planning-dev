@@ -8,17 +8,43 @@ class SupabaseService {
       .select('*')
       .order('groupe,nom');
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur getAgents:', error);
+      throw error;
+    }
     return data || [];
   }
 
   async updateAgent(agentId, agentData) {
+    // Nettoyer les données avant l'envoi
+    const cleanData = {
+      nom: agentData.nom,
+      prenom: agentData.prenom,
+      statut: agentData.statut,
+      groupe: agentData.groupe,
+      site: agentData.site
+    };
+
+    // Ajouter les dates seulement si elles existent
+    if (agentData.date_arrivee) {
+      cleanData.date_arrivee = agentData.date_arrivee;
+    }
+    if (agentData.date_depart) {
+      cleanData.date_depart = agentData.date_depart || null;
+    }
+
+    console.log('Mise à jour agent:', agentId, cleanData);
+
     const { data, error } = await supabase
       .from('agents')
-      .update(agentData)
-      .eq('id', agentId);
+      .update(cleanData)
+      .eq('id', agentId)
+      .select();
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur updateAgent:', error);
+      throw error;
+    }
     return data;
   }
 
@@ -33,7 +59,10 @@ class SupabaseService {
       .delete()
       .eq('id', agentId);
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur deleteAgent:', error);
+      throw error;
+    }
     return true;
   }
 
@@ -43,7 +72,10 @@ class SupabaseService {
       .insert(agentData)
       .select();
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur createAgent:', error);
+      throw error;
+    }
     return data[0];
   }
 
@@ -53,7 +85,10 @@ class SupabaseService {
       .from('habilitations')
       .select('*');
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur getHabilitations:', error);
+      throw error;
+    }
     return data || [];
   }
 
@@ -64,9 +99,13 @@ class SupabaseService {
         agent_id: agentId,
         poste: poste,
         date_obtention: new Date().toISOString().split('T')[0]
-      });
+      })
+      .select();
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur addHabilitation:', error);
+      throw error;
+    }
     return data;
   }
 
@@ -77,7 +116,10 @@ class SupabaseService {
       .eq('agent_id', agentId)
       .eq('poste', poste);
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur removeHabilitation:', error);
+      throw error;
+    }
     return true;
   }
 
@@ -90,7 +132,10 @@ class SupabaseService {
       .lte('date', endDate)
       .order('date');
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur getPlanningForMonth:', error);
+      throw error;
+    }
     return data || [];
   }
 
@@ -116,17 +161,25 @@ class SupabaseService {
       const { data, error } = await supabase
         .from('planning')
         .update(planningData)
-        .eq('id', existing.id);
+        .eq('id', existing.id)
+        .select();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur update planning:', error);
+        throw error;
+      }
       return data;
     } else {
       // Créer
       const { data, error } = await supabase
         .from('planning')
-        .insert(planningData);
+        .insert(planningData)
+        .select();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Erreur insert planning:', error);
+        throw error;
+      }
       return data;
     }
   }
@@ -138,7 +191,10 @@ class SupabaseService {
       .eq('agent_id', agentId)
       .eq('date', date);
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur deletePlanning:', error);
+      throw error;
+    }
     return true;
   }
 
@@ -146,9 +202,13 @@ class SupabaseService {
   async saveUploadRecord(uploadData) {
     const { data, error } = await supabase
       .from('uploads_pdf')
-      .insert(uploadData);
+      .insert(uploadData)
+      .select();
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur saveUploadRecord:', error);
+      throw error;
+    }
     return data;
   }
 
@@ -158,9 +218,13 @@ class SupabaseService {
       .select('*')
       .order('date_upload', { ascending: false });
     
-    if (error) throw error;
+    if (error) {
+      console.error('Erreur getUploads:', error);
+      throw error;
+    }
     return data || [];
   }
 }
 
-export default new SupabaseService();
+const supabaseService = new SupabaseService();
+export default supabaseService;
