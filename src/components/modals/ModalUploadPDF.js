@@ -29,7 +29,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   // Charger les statistiques de mapping
   const loadMappingStats = async () => {
-    const mappingStats = await mappingService.getMappingStats();
+    const mappingStats = await mappingService.getStats();
     setStats(mappingStats);
   };
 
@@ -57,7 +57,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         throw new Error('Clé API Mistral non configurée');
       }
 
-      console.log('🚀 Utilisation de Mistral OCR pour l\'extraction...');
+      console.log('🔄 Utilisation de Mistral OCR pour l\'extraction...');
       
       // Parser le PDF avec Mistral OCR
       const parsed = await pdfParserService.parsePDF(uploadedFile, apiKey);
@@ -175,9 +175,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                   <strong>Nouveau !</strong> Utilisation de Mistral OCR pour une extraction plus précise
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
-                  • Reconnaissance avancée des tableaux et mise en page complexe<br/>
-                  • Précision de 94.89% sur les documents structurés<br/>
-                  • Coût réduit de 87% par rapport à l'ancienne méthode
+                  ✓ Reconnaissance avancée des tableaux et mise en page complexe<br/>
+                  ✓ Précision de 94.89% sur les documents structurés<br/>
+                  ✓ Coût réduit de 87% par rapport à l'ancienne méthode
                 </p>
               </div>
             </div>
@@ -251,7 +251,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         <div className="bg-gray-50 px-6 py-3 border-t flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <CheckCircle className="h-3 w-3 text-green-500" />
-            <span>Mistral OCR activé • {stats.mapped}/{stats.total} codes mappés</span>
+            <span>Mistral OCR activé ✓ {stats.mapped}/{stats.total} codes mappés</span>
           </div>
           <div className="text-xs text-gray-400">
             v2.0 - Migration OCR
