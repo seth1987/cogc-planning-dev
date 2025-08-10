@@ -1,292 +1,153 @@
-// Service de parsing et extraction de PDF
+// Service de parsing et extraction de PDF avec Mistral OCR
 import mappingService from './mappingService';
 
 class PDFParserService {
   constructor() {
-    this.pdfjsLib = null;
+    this.mistralOCRUrl = 'https://api.mistral.ai/v1/ocr';
   }
 
   /**
-   * Initialise PDF.js si nécessaire
+   * Convertit un fichier en base64
    */
-  async initPDFJS() {
-    if (!this.pdfjsLib && window.pdfjsLib) {
-      this.pdfjsLib = window.pdfjsLib;
-      this.pdfjsLib.GlobalWorkerOptions.workerSrc = 
-        '//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    }
-    return this.pdfjsLib;
+  async fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        // Enlever le préfixe "data:application/pdf;base64,"
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = error => reject(error);
+    });
   }
 
   /**
-   * Extrait le texte d'un fichier PDF
+   * Parse le PDF avec Mistral OCR API
    */
-  async extractTextFromPDF(file) {
-    await this.initPDFJS();
-    
-    if (!this.pdfjsLib) {
-      throw new Error('PDF.js non disponible');
+  async parseWithMistralOCR(file, apiKey) {
+    if (!apiKey) {
+      throw new Error('Clé API Mistral requise pour l\'OCR');
     }
 
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await this.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let fullText = '';
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(' ');
-        fullText += pageText + '\n';
-      }
-
-      return fullText;
-    } catch (err) {
-      console.error('Erreur extraction PDF:', err);
-      throw new Error('Impossible d\'extraire le texte du PDF');
-    }
-  }
-
-  /**
-   * Parse le texte avec l'API Mistral
-   */
-  async parseWithMistral(text, apiKey) {
-    const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
-    
-    const prompt = `Analyse ce bulletin de commande SNCF et extrais EXACTEMENT les informations au format JSON.
-
-TEXTE DU BULLETIN:
-${text}
-
-INSTRUCTIONS CRITIQUES:
-
-1. AGENT:
-   - Cherche "COGC PN" suivi du NOM et PRÉNOM
-   - Format: COGC PN [NOM] [PRÉNOM]
-
-2. DATES IMPORTANTES:
-   - Format des dates dans le texte: JJ/MM/AAAA
-   - Convertir en format ISO: AAAA-MM-JJ
-
-3. CODES À EXTRAIRE:
-   - Codes service avec numéro (ex: CRC001, ACR002, CCU003, etc.)
-   - Codes spéciaux: RP, RPP, C, NU, DISPO, HAB-QF, INACTIN, VISIMED
-   - Pour chaque date, extraire TOUS les codes présents
-
-4. RÈGLE IMPORTANTE:
-   - Les services de nuit (codes finissant par 003 ou avec service X) sont décalés au jour suivant
-   - Les autres codes restent sur leur date d'origine
-
-FORMAT JSON ATTENDU:
-{
-  "agent": {
-    "nom": "NOM",
-    "prenom": "PRENOM"
-  },
-  "planning": [
-    {
-      "date": "YYYY-MM-DD",
-      "codes": ["CODE1", "CODE2"]
-    }
-  ]
-}
-
-RÉPONDS UNIQUEMENT AVEC LE JSON.`;
-
-    try {
-      const response = await fetch(MISTRAL_API_URL, {
+      console.log('🔍 Démarrage OCR avec Mistral OCR...');
+      
+      // Convertir le fichier en base64
+      const base64PDF = await this.fileToBase64(file);
+      
+      // Appel à l'API Mistral OCR
+      const response = await fetch(this.mistralOCRUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'mistral-large-latest',
-          messages: [
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 3000
+          model: 'mistral-ocr-latest',
+          document: {
+            type: 'document_url',
+            document_url: `data:application/pdf;base64,${base64PDF}`
+          },
+          include_image_base64: false // Pas besoin des images pour les bulletins
         })
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('Erreur API Mistral:', errorData);
+        console.error('Erreur API Mistral OCR:', errorData);
         
         if (response.status === 401) {
           throw new Error('Clé API Mistral invalide');
         } else if (response.status === 429) {
           throw new Error('Limite de requêtes atteinte');
         } else {
-          throw new Error(`Erreur API Mistral (${response.status})`);
+          throw new Error(`Erreur OCR (${response.status}): ${errorData.message || 'Erreur inconnue'}`);
         }
       }
 
-      const data = await response.json();
-      const content = data.choices[0].message.content;
+      const ocrResult = await response.json();
+      console.log('✅ OCR terminé, parsing des résultats...');
       
-      // Nettoyer la réponse pour ne garder que le JSON
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Format de réponse invalide');
-      }
-
-      const parsedResult = JSON.parse(jsonMatch[0]);
-      
-      // Convertir au format attendu avec mapping
-      return await this.convertToMappedFormat(parsedResult);
+      // Parser les résultats OCR
+      return await this.parseOCRResult(ocrResult);
       
     } catch (err) {
-      console.error('Erreur Mistral:', err);
+      console.error('Erreur Mistral OCR:', err);
       throw err;
     }
   }
 
   /**
-   * Parse manuellement le texte du PDF
+   * Parse les résultats de Mistral OCR
    */
-  async parseManually(text) {
-    console.log('Début du parsing manuel...');
+  async parseOCRResult(ocrData) {
     const result = {
       agent: { nom: '', prenom: '' },
       planning: []
     };
 
-    // Extraction du nom de l'agent
-    const agentMatch = text.match(/COGC\s+PN\s+([A-Z]+)\s+([A-Z]+)/);
+    if (!ocrData.pages || ocrData.pages.length === 0) {
+      throw new Error('Aucune page détectée dans le PDF');
+    }
+
+    // Combiner le contenu de toutes les pages
+    const fullContent = ocrData.pages
+      .map(page => page.markdown || page.content || '')
+      .join('\n');
+
+    console.log('📄 Contenu extrait:', fullContent.substring(0, 500) + '...');
+
+    // Extraction du nom de l'agent (pattern: COGC PN NOM PRENOM)
+    const agentMatch = fullContent.match(/COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ]+)\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)/i);
     if (agentMatch) {
       result.agent.nom = agentMatch[1];
       result.agent.prenom = agentMatch[2];
-      console.log('Agent détecté:', result.agent.nom, result.agent.prenom);
+      console.log('👤 Agent détecté:', result.agent.nom, result.agent.prenom);
     }
 
-    // Pattern pour les dates
-    const datePattern = /(\d{2})\/(\d{2})\/(\d{4})/g;
-    const dateMatches = [...text.matchAll(datePattern)];
+    // Extraction des dates et codes
+    // Pattern pour les dates françaises JJ/MM/AAAA
+    const datePattern = /(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
+    const lines = fullContent.split('\n');
     
     // Map pour stocker les codes par date
     const codesByDate = new Map();
     
-    for (let i = 0; i < dateMatches.length; i++) {
-      const match = dateMatches[i];
-      const dateStr = match[0];
-      const [day, month, year] = dateStr.split('/');
-      const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const dateMatches = [...line.matchAll(datePattern)];
       
-      // Extraire le contenu entre cette date et la suivante
-      const startIndex = match.index;
-      const endIndex = (i < dateMatches.length - 1) ? dateMatches[i + 1].index : text.length;
-      const dateContent = text.substring(startIndex, endIndex);
-      
-      // Extraire les codes pour cette date
-      const codes = await this.extractCodesFromContent(dateContent, formattedDate);
-      
-      if (codes.length > 0) {
-        codesByDate.set(formattedDate, codes);
+      for (const dateMatch of dateMatches) {
+        const [fullDate, day, month, year] = dateMatch;
+        const formattedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        
+        // Chercher les codes sur la même ligne et les lignes suivantes
+        const codes = [];
+        
+        // Extraire les codes de la ligne actuelle
+        const lineCodes = this.extractCodesFromLine(line);
+        codes.push(...lineCodes);
+        
+        // Regarder les 2-3 lignes suivantes pour des codes associés
+        for (let j = 1; j <= 3 && i + j < lines.length; j++) {
+          const nextLine = lines[i + j];
+          // Si on trouve une nouvelle date, on arrête
+          if (datePattern.test(nextLine)) break;
+          
+          const nextLineCodes = this.extractCodesFromLine(nextLine);
+          codes.push(...nextLineCodes);
+        }
+        
+        if (codes.length > 0) {
+          // Éliminer les doublons
+          const uniqueCodes = [...new Set(codes)];
+          codesByDate.set(formattedDate, uniqueCodes);
+        }
       }
     }
     
     // Convertir en format avec mapping
-    return await this.convertManualToMappedFormat(result.agent, codesByDate);
-  }
-
-  /**
-   * Extrait les codes d'un contenu de date
-   */
-  async extractCodesFromContent(content, date) {
-    const codes = [];
-    
-    // Pattern pour les codes services avec numéros
-    const serviceCodePattern = /(CRC|ACR|CCU|CENT|SOUF|REO|RC|RE|RO|CAC)\d{3}/gi;
-    const serviceMatches = [...content.matchAll(serviceCodePattern)];
-    
-    serviceMatches.forEach(match => {
-      codes.push(match[0].toUpperCase());
-    });
-    
-    // Codes spéciaux sans numéros
-    const specialPatterns = [
-      { pattern: /\bRP\b|Repos périodique/i, code: 'RP' },
-      { pattern: /\bRPP\b/i, code: 'RPP' },
-      { pattern: /\bC\s+Congé|\bCONGE\b/i, code: 'C' },
-      { pattern: /\bNU\b.*non utilisé/i, code: 'NU' },
-      { pattern: /\bDISPO\b|Disponible/i, code: 'D' },
-      { pattern: /HAB-QF|FORMATION/i, code: 'HAB' },
-      { pattern: /INACTIN/i, code: 'INACTIN' },
-      { pattern: /VISIMED|VMT/i, code: 'VISIMED' }
-    ];
-    
-    specialPatterns.forEach(({ pattern, code }) => {
-      if (pattern.test(content)) {
-        codes.push(code);
-      }
-    });
-    
-    return [...new Set(codes)]; // Éliminer les doublons
-  }
-
-  /**
-   * Convertit le format parsé avec mapping des codes
-   */
-  async convertToMappedFormat(parsedData) {
-    const result = {
-      agent: parsedData.agent,
-      planning: []
-    };
-
-    for (const entry of parsedData.planning) {
-      for (const code of entry.codes) {
-        const mapping = await mappingService.getPosteFromCode(code);
-        
-        if (mapping) {
-          let targetDate = entry.date;
-          
-          // Décaler les services de nuit
-          if (mapping.service === 'X') {
-            const currentDate = new Date(entry.date + 'T12:00:00');
-            currentDate.setDate(currentDate.getDate() + 1);
-            targetDate = currentDate.toISOString().split('T')[0];
-          }
-          
-          result.planning.push({
-            date: targetDate,
-            service_code: mapping.service,
-            poste_code: mapping.poste,
-            original_code: code,
-            description: mapping.description
-          });
-        } else if (!this.isNumericCode(code)) {
-          // Codes sans mapping (RP, C, etc.)
-          result.planning.push({
-            date: entry.date,
-            service_code: code,
-            poste_code: null,
-            original_code: code,
-            description: code
-          });
-        }
-      }
-    }
-
-    // Trier par date
-    result.planning.sort((a, b) => a.date.localeCompare(b.date));
-    
-    return result;
-  }
-
-  /**
-   * Convertit le parsing manuel avec mapping
-   */
-  async convertManualToMappedFormat(agent, codesByDate) {
-    const result = {
-      agent: agent,
-      planning: []
-    };
-
     for (const [date, codes] of codesByDate.entries()) {
       for (const code of codes) {
         const mapping = await mappingService.getPosteFromCode(code);
@@ -294,7 +155,7 @@ RÉPONDS UNIQUEMENT AVEC LE JSON.`;
         if (mapping) {
           let targetDate = date;
           
-          // Décaler les services de nuit
+          // Décaler les services de nuit au jour suivant
           if (mapping.service === 'X') {
             const currentDate = new Date(date + 'T12:00:00');
             currentDate.setDate(currentDate.getDate() + 1);
@@ -308,6 +169,15 @@ RÉPONDS UNIQUEMENT AVEC LE JSON.`;
             original_code: code,
             description: mapping.description
           });
+        } else if (!this.isNumericCode(code)) {
+          // Codes spéciaux sans mapping (RP, C, etc.)
+          result.planning.push({
+            date: date,
+            service_code: code,
+            poste_code: null,
+            original_code: code,
+            description: this.getSpecialCodeDescription(code)
+          });
         }
       }
     }
@@ -315,7 +185,70 @@ RÉPONDS UNIQUEMENT AVEC LE JSON.`;
     // Trier par date
     result.planning.sort((a, b) => a.date.localeCompare(b.date));
     
+    console.log(`✅ Extraction terminée: ${result.planning.length} entrées trouvées`);
+    
     return result;
+  }
+
+  /**
+   * Extrait les codes d'une ligne de texte
+   */
+  extractCodesFromLine(line) {
+    const codes = [];
+    
+    // Pattern pour les codes services avec numéros (CRC001, ACR002, etc.)
+    const serviceCodePattern = /(CRC|ACR|CCU|CENT|SOUF|REO|RC|RE|RO|CAC)\d{3}/gi;
+    const serviceMatches = [...line.matchAll(serviceCodePattern)];
+    serviceMatches.forEach(match => codes.push(match[0].toUpperCase()));
+    
+    // Codes spéciaux
+    const specialPatterns = [
+      { pattern: /\bRPP?\b/i, code: 'RP' },
+      { pattern: /\bRepos\s+périodique/i, code: 'RP' },
+      { pattern: /\bC\b(?!\d)/i, code: 'C' },
+      { pattern: /\bCongé/i, code: 'C' },
+      { pattern: /\bCONGE\b/i, code: 'C' },
+      { pattern: /\bNU\b/i, code: 'NU' },
+      { pattern: /\bNon\s+utilisé/i, code: 'NU' },
+      { pattern: /\bDISPO\b/i, code: 'D' },
+      { pattern: /\bDisponible/i, code: 'D' },
+      { pattern: /\bHAB(?:-QF)?\b/i, code: 'HAB' },
+      { pattern: /\bFORMATION\b/i, code: 'HAB' },
+      { pattern: /\bINACTIN\b/i, code: 'INACTIN' },
+      { pattern: /\bVISIMED\b/i, code: 'VISIMED' },
+      { pattern: /\bVMT\b/i, code: 'VISIMED' },
+      { pattern: /\bMA\b/i, code: 'MA' },
+      { pattern: /\bMALADIE\b/i, code: 'MA' },
+      { pattern: /\bI\b(?!\d)/i, code: 'I' }
+    ];
+    
+    specialPatterns.forEach(({ pattern, code }) => {
+      if (pattern.test(line) && !codes.includes(code)) {
+        codes.push(code);
+      }
+    });
+    
+    return codes;
+  }
+
+  /**
+   * Obtient la description d'un code spécial
+   */
+  getSpecialCodeDescription(code) {
+    const descriptions = {
+      'RP': 'Repos périodique',
+      'RPP': 'Repos périodique prolongé',
+      'C': 'Congé',
+      'D': 'Disponible',
+      'HAB': 'Formation/Habilitation',
+      'MA': 'Maladie',
+      'I': 'Indisponible',
+      'NU': 'Non utilisé',
+      'INACTIN': 'Inactivité',
+      'VISIMED': 'Visite médicale'
+    };
+    
+    return descriptions[code] || code;
   }
 
   /**
@@ -357,11 +290,33 @@ RÉPONDS UNIQUEMENT AVEC LE JSON.`;
       warnings.push(`Doublons détectés: ${duplicates.join(', ')}`);
     }
 
+    // Vérifier la cohérence des dates
+    const dates = data.planning.map(e => new Date(e.date));
+    const minDate = new Date(Math.min(...dates));
+    const maxDate = new Date(Math.max(...dates));
+    const daysDiff = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+    
+    if (daysDiff > 45) {
+      warnings.push('Période de planning supérieure à 45 jours');
+    }
+
     return { 
       isValid: errors.length === 0, 
       errors, 
       warnings 
     };
+  }
+
+  /**
+   * Méthode principale qui détermine quelle API utiliser
+   */
+  async parsePDF(file, apiKey) {
+    // Toujours utiliser Mistral OCR maintenant
+    if (!apiKey) {
+      throw new Error('Clé API Mistral requise pour l\'extraction PDF');
+    }
+    
+    return await this.parseWithMistralOCR(file, apiKey);
   }
 }
 
