@@ -15,7 +15,7 @@ class MappingService {
   async getMappingFromDB() {
     // Vérifier le cache
     if (this.mappingCache && this.cacheExpiry && Date.now() < this.cacheExpiry) {
-      console.log('📦 Utilisation du cache mapping');
+      console.log('📝 Utilisation du cache mapping');
       return this.mappingCache;
     }
 
@@ -208,6 +208,10 @@ class MappingService {
       // Par service
       stats.byService[value.service] = (stats.byService[value.service] || 0) + 1;
     });
+    
+    // Ajouter les champs attendus par l'interface
+    stats.total = stats.totalCodes;
+    stats.mapped = stats.totalCodes - stats.withoutPoste;
     
     return stats;
   }
