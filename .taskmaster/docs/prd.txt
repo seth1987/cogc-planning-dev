@@ -1,0 +1,47 @@
+# Product Requirements Document - COGC Planning
+
+## Projet
+Application de gestion de planning pour le COGC Paris Nord
+
+## Objectif
+Corriger et améliorer l'application existante de planning COGC
+
+## Fonctionnalités principales
+
+### 1. Corrections urgentes
+- Corriger les jours fériés (actuellement le 14 de chaque mois)
+- Restaurer le module de gestion des agents
+- Restaurer le module d'upload PDF
+- Restaurer le module des habilitations
+- Nettoyer les warnings d'imports non utilisés
+
+### 2. Refactoring
+- Séparer le code en composants modulaires
+- Créer des services dédiés (Supabase, Planning)
+- Optimiser les performances
+
+### 3. Fonctionnalités existantes à maintenir
+- Authentification par email
+- Affichage du planning mensuel
+- Navigation entre les mois
+- Modification des cellules de planning
+- Gestion des agents (CRUD)
+- Upload et parsing de PDF
+- Gestion des habilitations
+
+## Stack technique
+- React 18
+- Supabase (auth + database)
+- Lucide React (icons)
+- Tailwind CSS
+
+## Base de données
+- Table agents
+- Table planning
+- Table habilitations
+- Table uploads_pdf
+
+## Priorités
+1. Corrections critiques
+2. Refactoring du code
+3. Améliorations UX
