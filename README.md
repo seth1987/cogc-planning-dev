@@ -1,71 +1,104 @@
-# COGC Planning Dev
+# Planning COGC Paris Nord
 
-Application de gestion de planning pour le COGC Paris Nord - Version développement
+Application de gestion de planning pour le COGC Paris Nord avec importation automatique des bulletins de commande.
 
-## 🚀 Technologies utilisées
+## Fonctionnalités
 
-- **Frontend**: React 18
-- **Base de données**: Supabase (PostgreSQL)
-- **Authentification**: Supabase Auth
-- **UI Components**: React Calendar
-- **Gestion des dates**: date-fns
+- 📅 **Gestion du planning** : Visualisation et édition du planning mensuel
+- 👥 **Gestion des agents** : Création, modification, suppression d'agents
+- 🎯 **Gestion des habilitations** : Attribution des postes aux agents
+- 📄 **Import PDF** : Importation automatique des bulletins de commande via l'API Mistral
+- 🔒 **Authentification** : Connexion sécurisée via Supabase
+- 📊 **Groupes réductibles** : Interface optimisée avec groupes réductibles
 
-## 📋 Prérequis
+## Installation
 
-- Node.js 16+ et npm
-- Un compte Supabase (gratuit)
-- Git
-
-## 🛠 Installation
-
-1. Cloner le repository
+1. Clonez le repository :
 ```bash
 git clone https://github.com/seth1987/cogc-planning-dev.git
 cd cogc-planning-dev
 ```
 
-2. Installer les dépendances
+2. Installez les dépendances :
 ```bash
 npm install
 ```
 
-3. Configuration de l'environnement
+3. Configurez les variables d'environnement :
 ```bash
 cp .env.example .env
 ```
 
-Modifiez le fichier `.env` avec vos propres clés Supabase si nécessaire.
+Puis éditez le fichier `.env` avec vos clés :
+```
+REACT_APP_SUPABASE_URL=votre_url_supabase
+REACT_APP_SUPABASE_ANON_KEY=votre_clé_anon_supabase
+REACT_APP_MISTRAL_API_KEY=votre_clé_api_mistral
+```
 
-4. Lancer l'application en développement
+## Module Upload PDF
+
+Le module d'upload PDF utilise l'API Mistral pour extraire automatiquement les informations des bulletins de commande.
+
+### Configuration de l'API Mistral
+
+1. Créez un compte sur [Mistral AI](https://console.mistral.ai/)
+2. Générez une clé API dans votre console
+3. Ajoutez la clé dans votre fichier `.env`
+
+### Utilisation
+
+1. Cliquez sur "Upload PDF" dans l'en-tête
+2. Sélectionnez votre bulletin de commande PDF
+3. L'IA extrait automatiquement :
+   - Le nom de l'agent
+   - Les dates et services
+   - Les codes horaires (matin/soir/nuit)
+   - Les postes assignés
+4. **Interface de validation** : Vérifiez et corrigez si nécessaire
+5. Cliquez sur "Valider et Enregistrer"
+
+### Format des codes
+
+Le système convertit automatiquement :
+- **Horaires** : 001 = Matin (-), 002 = Soir (O), 003 = Nuit (X)
+- **Repos** : RP/RPP → RP
+- **Congés** : C/CONGE → C
+- **Disponible** : DISPO → D
+- **Formation** : HAB/FORMATION → HAB
+- **Maladie** : MA/MALADIE → MA
+
+## Structure de la base de données
+
+- `agents` : Informations des agents
+- `planning` : Entrées du planning
+- `habilitations` : Habilitations des agents
+- `uploads_pdf` : Historique des imports PDF
+
+## Technologies utilisées
+
+- React 18
+- Supabase (PostgreSQL)
+- Mistral AI API
+- PDF.js
+- Tailwind CSS
+- Lucide React Icons
+
+## Démarrage
+
 ```bash
 npm start
 ```
 
-L'application sera accessible sur [http://localhost:3000](http://localhost:3000)
+L'application sera accessible sur http://localhost:3000
 
-## 🗄 Base de données
+## Déploiement
 
-Voir [DATABASE.md](DATABASE.md) pour la structure complète de la base de données.
+Build de production :
+```bash
+npm run build
+```
 
-## 🚀 Déploiement
+## Support
 
-Voir [DEPLOYMENT.md](DEPLOYMENT.md) pour les instructions de déploiement.
-
-## 📝 Fonctionnalités principales
-
-- ✅ Authentification des utilisateurs (médecins)
-- ✅ Gestion des plannings (création, modification, suppression)
-- ✅ Vue calendrier interactive
-- ✅ Système de gardes (jour, nuit, weekend)
-- ✅ Gestion des absences et congés
-- ✅ Export des plannings
-- ✅ Notifications et rappels
-- ✅ Statistiques et rapports
-
-## 👥 Équipe
-
-Développé pour le COGC Paris Nord
-
-## 📄 Licence
-
-Propriétaire - COGC Paris Nord
+Pour toute question ou problème, contactez l'équipe de développement.
