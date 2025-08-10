@@ -56,15 +56,40 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     TEXTE DU BULLETIN:
     ${text}
     
-    INSTRUCTIONS:
+    INSTRUCTIONS IMPORTANTES:
     1. Extrais le nom complet de l'agent (nom et prénom)
-    2. Pour chaque date, extrais:
+    2. Pour chaque date, extrais TOUTES les entrées (y compris NU):
        - La date au format YYYY-MM-DD
-       - Le code service principal (exemples: ACR, CCU, CRC, RE, RO, CAC, CENT, SOUF)
-       - Le code horaire: 001=matin(6h-14h), 002=soir(14h-22h), 003=nuit(22h-6h)
-       - Les codes spéciaux: RP (repos), C (congé), DISPO (disponible), NU (non utilisé), HAB (formation), MA (maladie)
-    3. Ignore les lignes avec NU (non utilisé) si elles sont suivies d'un autre service le même jour
-    4. Pour les codes comme ACR001, garde "ACR" comme poste_code et "001" indique l'horaire (matin)
+       - Le code service principal
+       - Le code poste si présent
+    
+    3. RÈGLE CRITIQUE POUR LES NUITS (003):
+       Les services de nuit (codes se terminant par 003) qui commencent à 22h00 doivent être décalés au JOUR SUIVANT
+       car ils se terminent à 6h00 le lendemain.
+       Exemple: 21/04 ACR003 → enregistrer sur le 22/04
+    
+    4. Conversion des codes:
+       - XXX001 (matin 6h-14h) = service "-"
+       - XXX002 (soir 14h-22h) = service "O"
+       - XXX003 (nuit 22h-6h) = service "X" (DÉCALER AU JOUR SUIVANT)
+       - XXX004, XXX005 = vérifier les horaires (généralement matin="-" ou soir="O")
+       - RP ou RPP = "RP"
+       - C ou CONGE = "C"
+       - DISPO = "D"
+       - NU = "NU" (garder tel quel)
+       - HAB ou FORMATION = "HAB"
+       - MA ou MALADIE = "MA"
+       - VISIMED ou VMT = "I"
+       - INACTIN = "I"
+    
+    5. Pour les codes comme ACR001, CRC002, CCU003:
+       - Les 3 lettres = poste_code (ACR, CRC, CCU, RE, RO, CAC, etc.)
+       - Le chiffre = indicateur horaire pour conversion
+    
+    6. Si une date a plusieurs entrées:
+       - Garder TOUTES les entrées
+       - Les nuits (003) sont toujours décalées au lendemain
+       - NU reste sur sa date originale
     
     Format JSON attendu:
     {
@@ -75,22 +100,20 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       "planning": [
         {
           "date": "YYYY-MM-DD",
-          "service_code": "-" ou "O" ou "X" ou "RP" ou "C" ou "D" ou "MA" ou "HAB",
+          "service_code": "-" ou "O" ou "X" ou "RP" ou "C" ou "D" ou "NU" ou "HAB" ou "MA" ou "I",
           "poste_code": "ACR" ou "CCU" ou "CRC" etc. (null si pas de poste)
         }
       ]
     }
     
-    Règles de conversion:
-    - ACR001, CRC001, CCU001, CENT001 = matin = "-"
-    - ACR002, CRC002, CCU002, CENT002 = soir = "O" 
-    - ACR003, CRC003, CCU003, CENT003 = nuit = "X"
-    - RP ou RPP = "RP"
-    - C ou CONGE = "C"
-    - DISPO = "D"
-    - NU = ignorer
-    - HAB ou FORMATION = "HAB"
-    - MA ou MALADIE = "MA"
+    EXEMPLE CONCRET:
+    Si le bulletin montre:
+    21/04/2025 NU
+    21/04/2025 ACR003 (22h-6h)
+    
+    Tu dois retourner:
+    - {"date": "2025-04-21", "service_code": "NU", "poste_code": null}
+    - {"date": "2025-04-22", "service_code": "X", "poste_code": "ACR"} (décalé au lendemain)
     
     Réponds UNIQUEMENT avec le JSON, sans texte supplémentaire.`;
 
@@ -255,10 +278,28 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       'RP': 'Repos',
       'C': 'Congé',
       'D': 'Dispo',
+      'NU': 'Non Utilisé',
       'HAB': 'Formation',
-      'MA': 'Maladie'
+      'MA': 'Maladie',
+      'I': 'Inactif'
     };
     return labels[code] || code;
+  };
+
+  const getServiceColor = (code) => {
+    const colors = {
+      '-': 'bg-blue-100 text-blue-700',
+      'O': 'bg-orange-100 text-orange-700',
+      'X': 'bg-purple-100 text-purple-700',
+      'RP': 'bg-green-100 text-green-700',
+      'C': 'bg-green-100 text-green-700',
+      'D': 'bg-yellow-100 text-yellow-700',
+      'NU': 'bg-gray-100 text-gray-700',
+      'HAB': 'bg-indigo-100 text-indigo-700',
+      'MA': 'bg-red-100 text-red-700',
+      'I': 'bg-pink-100 text-pink-700'
+    };
+    return colors[code] || 'bg-gray-100 text-gray-700';
   };
 
   return (
@@ -311,6 +352,15 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                     <span className="text-red-700">{error}</span>
                   </div>
                 )}
+                
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-yellow-900 mb-2">Rappel important :</h3>
+                  <ul className="text-sm text-yellow-800 space-y-1">
+                    <li>• Les services de nuit (22h-6h) sont automatiquement décalés au jour suivant</li>
+                    <li>• Les codes NU (Non Utilisé) sont conservés</li>
+                    <li>• Vérifiez toujours les données avant validation</li>
+                  </ul>
+                </div>
               </div>
             </>
           ) : (
@@ -326,6 +376,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
                 <div>
                   <h3 className="font-semibold mb-2">Planning extrait ({editedData.planning.length} entrées) :</h3>
+                  <div className="bg-yellow-50 p-2 rounded mb-2 text-sm">
+                    <span className="font-medium">Note :</span> Les nuits (X) ont été automatiquement décalées au jour suivant
+                  </div>
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse">
                       <thead>
@@ -343,20 +396,27 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                               {new Date(entry.date).toLocaleDateString('fr-FR')}
                             </td>
                             <td className="border p-2">
-                              <select
-                                value={entry.service_code}
-                                onChange={(e) => handleCellEdit(index, 'service_code', e.target.value)}
-                                className="w-full p-1 border rounded"
-                              >
-                                <option value="-">Matin (06h-14h)</option>
-                                <option value="O">Soir (14h-22h)</option>
-                                <option value="X">Nuit (22h-06h)</option>
-                                <option value="RP">Repos</option>
-                                <option value="C">Congé</option>
-                                <option value="D">Disponible</option>
-                                <option value="HAB">Formation</option>
-                                <option value="MA">Maladie</option>
-                              </select>
+                              <div className="flex items-center gap-2">
+                                <select
+                                  value={entry.service_code}
+                                  onChange={(e) => handleCellEdit(index, 'service_code', e.target.value)}
+                                  className="flex-1 p-1 border rounded"
+                                >
+                                  <option value="-">Matin (06h-14h)</option>
+                                  <option value="O">Soir (14h-22h)</option>
+                                  <option value="X">Nuit (22h-06h)</option>
+                                  <option value="RP">Repos</option>
+                                  <option value="C">Congé</option>
+                                  <option value="D">Disponible</option>
+                                  <option value="NU">Non Utilisé</option>
+                                  <option value="HAB">Formation</option>
+                                  <option value="MA">Maladie</option>
+                                  <option value="I">Inactif/Visite</option>
+                                </select>
+                                <span className={`px-2 py-1 rounded text-xs font-medium ${getServiceColor(entry.service_code)}`}>
+                                  {getServiceLabel(entry.service_code)}
+                                </span>
+                              </div>
                             </td>
                             <td className="border p-2">
                               <select
@@ -372,6 +432,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                                 <option value="RO">RO</option>
                                 <option value="RE">RE</option>
                                 <option value="CAC">CAC</option>
+                                <option value="CENT">Centre</option>
+                                <option value="SOUF">Souffleur</option>
                               </select>
                             </td>
                             <td className="border p-2">
