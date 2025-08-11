@@ -3,7 +3,29 @@ import React from 'react';
 import { CheckCircle, XCircle, AlertTriangle, BarChart2, Calendar } from 'lucide-react';
 
 const PDFImportResult = ({ importReport, onClose, onRollback }) => {
-  const isSuccess = importReport.errors.length === 0;
+  // 🛡️ Protection: Vérifier si importReport existe
+  if (!importReport) {
+    return (
+      <div className="space-y-4">
+        <div className="p-4 rounded-lg bg-gray-50 border border-gray-200">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <div>
+              <h3 className="font-semibold text-gray-900">Traitement en cours...</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Analyse du fichier PDF et import des données
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 🛡️ Protection: Utiliser optional chaining pour tous les accès
+  const errors = importReport?.errors || [];
+  const warnings = importReport?.warnings || [];
+  const isSuccess = errors.length === 0;
   
   return (
     <div className="space-y-4">
@@ -23,7 +45,7 @@ const PDFImportResult = ({ importReport, onClose, onRollback }) => {
             }`}>
               {isSuccess ? 'Import réussi !' : 'Import échoué'}
             </h3>
-            {importReport.agent && (
+            {importReport?.agent && (
               <p className="text-sm mt-1">
                 Agent : {importReport.agent.nom} {importReport.agent.prenom}
               </p>
@@ -43,35 +65,35 @@ const PDFImportResult = ({ importReport, onClose, onRollback }) => {
           <div className="bg-white p-3 rounded border">
             <p className="text-sm text-gray-600">Entrées traitées</p>
             <p className="text-2xl font-bold text-gray-900">
-              {importReport.entriesProcessed}
+              {importReport?.entriesProcessed || 0}
             </p>
           </div>
           
           <div className="bg-white p-3 rounded border">
             <p className="text-sm text-gray-600">Entrées insérées</p>
             <p className="text-2xl font-bold text-green-600">
-              {importReport.entriesInserted}
+              {importReport?.entriesInserted || 0}
             </p>
           </div>
           
           <div className="bg-white p-3 rounded border">
             <p className="text-sm text-gray-600">Entrées mises à jour</p>
             <p className="text-2xl font-bold text-blue-600">
-              {importReport.entriesUpdated}
+              {importReport?.entriesUpdated || 0}
             </p>
           </div>
           
           <div className="bg-white p-3 rounded border">
             <p className="text-sm text-gray-600">Entrées ignorées</p>
             <p className="text-2xl font-bold text-gray-600">
-              {importReport.entriesSkipped}
+              {importReport?.entriesSkipped || 0}
             </p>
           </div>
         </div>
       </div>
 
       {/* Période */}
-      {importReport.dateRange.min && (
+      {importReport?.dateRange?.min && (
         <div className="bg-blue-50 rounded-lg p-3">
           <div className="flex items-center gap-2">
             <Calendar className="text-blue-600" size={18} />
@@ -87,19 +109,19 @@ const PDFImportResult = ({ importReport, onClose, onRollback }) => {
       )}
 
       {/* Erreurs */}
-      {importReport.errors.length > 0 && (
+      {errors.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-3">
           <div className="flex items-center gap-2 mb-2">
             <XCircle className="text-red-600" size={18} />
             <span className="font-medium text-red-900">Erreurs rencontrées</span>
           </div>
           <ul className="text-sm text-red-800 space-y-1">
-            {importReport.errors.map((error, i) => (
+            {errors.map((error, i) => (
               <li key={i} className="flex items-start gap-2">
                 <span className="text-red-600">•</span>
                 <span>
-                  {error.date && `[${error.date}] `}
-                  {error.error}
+                  {error?.date && `[${error.date}] `}
+                  {error?.error || error}
                 </span>
               </li>
             ))}
@@ -108,22 +130,22 @@ const PDFImportResult = ({ importReport, onClose, onRollback }) => {
       )}
 
       {/* Avertissements */}
-      {importReport.warnings.length > 0 && (
+      {warnings.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle className="text-amber-600" size={18} />
             <span className="font-medium text-amber-900">Avertissements</span>
           </div>
           <ul className="text-sm text-amber-800 space-y-1">
-            {importReport.warnings.slice(0, 5).map((warning, i) => (
+            {warnings.slice(0, 5).map((warning, i) => (
               <li key={i} className="flex items-start gap-2">
                 <span className="text-amber-600">•</span>
                 <span>{warning}</span>
               </li>
             ))}
-            {importReport.warnings.length > 5 && (
+            {warnings.length > 5 && (
               <li className="text-amber-600 italic">
-                ... et {importReport.warnings.length - 5} autres avertissements
+                ... et {warnings.length - 5} autres avertissements
               </li>
             )}
           </ul>
