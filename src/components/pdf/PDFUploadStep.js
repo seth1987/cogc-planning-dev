@@ -4,11 +4,23 @@ import { Upload, Key, Database } from 'lucide-react';
 
 const PDFUploadStep = ({ 
   file, 
-  onFileSelect, 
+  onFileUpload,  // ← Corrigé : onFileSelect → onFileUpload
   error, 
   isApiConfigured,
-  mappingStats 
+  stats  // ← Corrigé : mappingStats → stats
 }) => {
+  
+  // Gestion de la sélection de fichier
+  const handleFileSelect = (event) => {
+    const selectedFile = event.target.files[0];
+    if (selectedFile && selectedFile.type === 'application/pdf') {
+      console.log('📁 Fichier sélectionné:', selectedFile.name);
+      onFileUpload(selectedFile);
+    } else {
+      alert('Veuillez sélectionner un fichier PDF valide.');
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Alerte si API non configurée */}
@@ -28,16 +40,16 @@ const PDFUploadStep = ({
       )}
 
       {/* Stats du mapping */}
-      {mappingStats && (
+      {stats && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <div className="flex items-center gap-2 mb-2">
             <Database className="text-blue-600" size={18} />
             <span className="font-medium text-blue-900">Base de données connectée</span>
           </div>
           <div className="grid grid-cols-3 gap-2 text-xs text-blue-800">
-            <div>📊 {mappingStats.totalCodes} codes</div>
-            <div>🏢 {Object.keys(mappingStats.byPoste).length} postes</div>
-            <div>⏰ {Object.keys(mappingStats.byService).length} services</div>
+            <div>📊 {stats.totalCodes || stats.total || 0} codes</div>
+            <div>🎯 {Object.keys(stats.byPoste || {}).length} postes</div>
+            <div>⚡ {Object.keys(stats.byService || {}).length} services</div>
           </div>
         </div>
       )}
@@ -48,7 +60,7 @@ const PDFUploadStep = ({
         <input
           type="file"
           accept=".pdf"
-          onChange={onFileSelect}
+          onChange={handleFileSelect}  // ← Fonction corrigée
           className="hidden"
           id="pdf-upload"
         />
@@ -78,10 +90,10 @@ const PDFUploadStep = ({
       <div className="bg-gray-50 rounded-lg p-4">
         <h3 className="font-semibold text-gray-900 mb-2">Instructions :</h3>
         <ul className="text-sm text-gray-700 space-y-1">
-          <li>✅ Format accepté : PDF bulletin de commande SNCF</li>
-          <li>✅ Le nom de l'agent sera détecté automatiquement</li>
-          <li>✅ Les services de nuit seront décalés au lendemain</li>
-          <li>✅ Mapping automatique via base de données</li>
+          <li>✓ Format accepté : PDF bulletin de commande SNCF</li>
+          <li>✓ Le nom de l'agent sera détecté automatiquement</li>
+          <li>✓ Les services de nuit seront décalés au lendemain</li>
+          <li>✓ Mapping automatique via base de données</li>
         </ul>
       </div>
     </div>
