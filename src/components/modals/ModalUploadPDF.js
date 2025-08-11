@@ -1,305 +1,321 @@
-// Modal d'upload et d'import de PDF avec Mistral OCR
-import React, { useState, useEffect } from 'react';
-import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info, Key } from 'lucide-react';
-import pdfParserService from '../../services/pdfParserService';
-import mappingService from '../../services/mappingService';
-import planningImportService from '../../services/planningImportService';
+// Modal pour l'upload et traitement de PDF
+import React, { useState } from 'react';
+import { X } from 'lucide-react';
+
+// Composants PDF
 import PDFUploadStep from '../pdf/PDFUploadStep';
 import PDFValidationStep from '../pdf/PDFValidationStep';
 import PDFImportResult from '../pdf/PDFImportResult';
 
+// Services
+import supabaseService from '../../services/supabaseService';
+
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  // États
-  const [currentStep, setCurrentStep] = useState(1); // 1: Upload, 2: Validation, 3: Résultat
-  const [file, setFile] = useState(null);
-  const [extractedData, setExtractedData] = useState(null);
+  const [currentStep, setCurrentStep] = useState('upload'); // 'upload', 'validation', 'result'
+  const [uploadedData, setUploadedData] = useState(null);
   const [editedData, setEditedData] = useState(null);
-  const [importResult, setImportResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [stats, setStats] = useState({ total: 0, mapped: 0 });
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
-  const [apiConfigured, setApiConfigured] = useState(false);
+  const [importReport, setImportReport] = useState(null);
+  const [processing, setProcessing] = useState(false);
 
-  // Charger les stats au montage et vérifier l'API
-  useEffect(() => {
-    if (isOpen) {
-      loadMappingStats();
-      checkApiConfiguration();
-    }
-  }, [isOpen]);
-
-  // Vérifier si l'API est configurée
-  const checkApiConfiguration = () => {
-    // Récupérer la clé depuis les variables d'environnement
-    const apiKey = process.env.REACT_APP_MISTRAL_API_KEY || localStorage.getItem('mistral_api_key');
-    setApiConfigured(apiKey && apiKey.length > 10 && apiKey !== 'sk-proj-default-key');
-  };
-
-  // Charger les statistiques de mapping
-  const loadMappingStats = async () => {
-    const mappingStats = await mappingService.getStats();
-    setStats(mappingStats);
-  };
-
-  // Réinitialiser le modal
+  // Reset modal state
   const resetModal = () => {
-    setCurrentStep(1);
-    setFile(null);
-    setExtractedData(null);
+    setCurrentStep('upload');
+    setUploadedData(null);
     setEditedData(null);
-    setImportResult(null);
-    setError(null);
     setValidation({ errors: [], warnings: [] });
+    setImportReport(null);
+    setProcessing(false);
   };
 
-  // Gestion de l'upload du fichier
-  const handleFileUpload = async (uploadedFile) => {
-    console.log('📂 Fichier reçu dans handleFileUpload:', uploadedFile.name);
+  // Handle modal close
+  const handleClose = () => {
+    resetModal();
+    onClose();
+  };
+
+  // Handle successful upload and parsing
+  const handleUploadSuccess = (data) => {
+    console.log('📄 Données extraites du PDF:', data);
+    setUploadedData(data);
+    setEditedData(data); // Copie pour édition
     
-    // Vérifier d'abord si l'API est configurée
-    const apiKey = process.env.REACT_APP_MISTRAL_API_KEY || localStorage.getItem('mistral_api_key');
+    // Validation des données
+    const errors = [];
+    const warnings = [];
     
-    if (!apiKey || apiKey === 'sk-proj-default-key' || apiKey.length < 10) {
-      setError('Module PDF désactivé : Configurez votre clé API Mistral dans les variables d\'environnement (REACT_APP_MISTRAL_API_KEY)');
+    // Vérifications de base
+    if (!data.agent || !data.agent.nom) {
+      errors.push('Nom de l\'agent manquant ou non détecté');
+    }
+    
+    if (!data.planning || data.planning.length === 0) {
+      errors.push('Aucune donnée de planning extraite');
+    }
+    
+    // Avertissements
+    if (data.planning && data.planning.length > 50) {
+      warnings.push(`Grand nombre d'entrées détectées (${data.planning.length})`);
+    }
+    
+    if (data.parsing_mode === 'manual') {
+      warnings.push('Extraction manuelle - vérifiez les données');
+    }
+    
+    setValidation({ errors, warnings });
+    setCurrentStep('validation');
+  };
+
+  // Handle data changes during validation
+  const handleDataChange = (newData) => {
+    setEditedData(newData);
+    
+    // Re-validation avec les nouvelles données
+    const errors = [];
+    const warnings = [];
+    
+    if (!newData.agent || !newData.agent.nom || !newData.agent.prenom) {
+      errors.push('Nom et prénom de l\'agent requis');
+    }
+    
+    if (!newData.planning || newData.planning.length === 0) {
+      errors.push('Au moins une entrée de planning requise');
+    }
+    
+    setValidation({ errors, warnings });
+  };
+
+  // Handle validation and import
+  const handleValidateAndImport = async () => {
+    if (!editedData || validation.errors.length > 0) {
+      alert('Corrigez les erreurs avant d\'importer');
       return;
     }
 
-    setFile(uploadedFile);
-    setLoading(true);
-    setError(null);
-
+    setProcessing(true);
+    
     try {
-      console.log('🔄 Utilisation de Mistral OCR pour l\'extraction...');
+      console.log('🚀 Début de l\'import en base...');
       
-      // Parser le PDF avec Mistral OCR
-      const parsed = await pdfParserService.parsePDF(uploadedFile, apiKey);
+      // 1. Trouver ou créer l'agent
+      let agent = await supabaseService.findAgentByName(
+        editedData.agent.nom, 
+        editedData.agent.prenom
+      );
       
-      // Valider les données
-      const validationResult = pdfParserService.validateParsedData(parsed);
-      setValidation(validationResult);
-      
-      setExtractedData(parsed);
-      setEditedData(JSON.parse(JSON.stringify(parsed))); // Deep copy
-      setCurrentStep(2);
-      
-    } catch (err) {
-      console.error('Erreur extraction:', err);
-      setError(err.message || 'Erreur lors de l\'extraction du PDF');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Validation et import
-  const handleValidate = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const result = await planningImportService.importPlanning(editedData);
-      setImportResult(result);
-      setCurrentStep(3);
-      
-      if (result.success) {
-        setTimeout(() => {
-          onSuccess && onSuccess();
-        }, 100);
+      if (!agent) {
+        // Créer l'agent s'il n'existe pas
+        agent = await supabaseService.createAgent({
+          nom: editedData.agent.nom,
+          prenom: editedData.agent.prenom,
+          statut: 'roulement', // Statut par défaut
+          groupe: 'A' // Groupe par défaut
+        });
       }
-    } catch (err) {
-      console.error('Erreur import:', err);
-      setError(err.message || 'Erreur lors de l\'import');
+
+      // 2. Import des données de planning
+      const importStats = {
+        entriesProcessed: 0,
+        entriesInserted: 0,
+        entriesUpdated: 0,
+        entriesSkipped: 0,
+        errors: [],
+        warnings: []
+      };
+
+      for (const entry of editedData.planning) {
+        try {
+          importStats.entriesProcessed++;
+          
+          // Vérifier si une entrée existe déjà
+          const existing = await supabaseService.getPlanningEntry(agent.id, entry.date);
+          
+          if (existing) {
+            // Mise à jour
+            await supabaseService.updatePlanning(
+              agent.id,
+              entry.date,
+              entry.service_code,
+              entry.poste_code
+            );
+            importStats.entriesUpdated++;
+          } else {
+            // Création
+            await supabaseService.savePlanning(
+              agent.id,
+              entry.date,
+              entry.service_code,
+              entry.poste_code
+            );
+            importStats.entriesInserted++;
+          }
+          
+        } catch (error) {
+          console.error(`Erreur import entrée ${entry.date}:`, error);
+          importStats.errors.push({
+            date: entry.date,
+            error: error.message
+          });
+        }
+      }
+
+      // 3. Calcul de la période importée
+      const dates = editedData.planning.map(p => p.date).sort();
+      const dateRange = {
+        min: dates[0],
+        max: dates[dates.length - 1]
+      };
+
+      // 4. Créer le rapport d'import
+      const report = {
+        success: importStats.errors.length === 0,
+        agent,
+        ...importStats,
+        dateRange,
+        totalEntries: editedData.planning.length
+      };
+
+      console.log('✅ Import terminé:', report);
+      setImportReport(report);
+      setCurrentStep('result');
+      
+      // Notifier le succès au parent
+      if (report.success) {
+        onSuccess();
+      }
+      
+    } catch (error) {
+      console.error('❌ Erreur durant l\'import:', error);
+      
+      // Rapport d'erreur
+      setImportReport({
+        success: false,
+        errors: [{ error: error.message }],
+        warnings: [],
+        entriesProcessed: 0,
+        entriesInserted: 0,
+        entriesUpdated: 0,
+        entriesSkipped: 0,
+        dateRange: { min: null, max: null }
+      });
+      setCurrentStep('result');
     } finally {
-      setLoading(false);
+      setProcessing(false);
     }
   };
 
-  // Rollback du dernier import
+  // Handle back button from validation
+  const handleBackToUpload = () => {
+    setCurrentStep('upload');
+    setValidation({ errors: [], warnings: [] });
+  };
+
+  // Handle rollback (annuler l'import)
   const handleRollback = async () => {
-    setLoading(true);
+    if (!importReport || !importReport.agent) return;
+    
     try {
-      await planningImportService.rollbackLastImport();
+      setProcessing(true);
+      
+      // Supprimer les entrées importées
+      for (const entry of editedData.planning) {
+        await supabaseService.deletePlanning(importReport.agent.id, entry.date);
+      }
+      
       alert('Import annulé avec succès');
-      onSuccess && onSuccess();
-      onClose();
-    } catch (err) {
-      setError(err.message);
+      handleClose();
+      
+    } catch (error) {
+      console.error('Erreur rollback:', error);
+      alert('Erreur lors de l\'annulation');
     } finally {
-      setLoading(false);
+      setProcessing(false);
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="bg-gray-50 px-6 py-4 border-b flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <FileText className="h-6 w-6 text-blue-600" />
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">
-                Import Bulletin de Commande
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Extraction intelligente avec Mistral OCR
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              resetModal();
-              onClose();
-            }}
-            className="text-gray-400 hover:text-gray-600"
+        <div className="flex items-center justify-between p-4 border-b">
+          <h2 className="text-xl font-semibold">
+            {currentStep === 'upload' && 'Import PDF Planning'}
+            {currentStep === 'validation' && 'Validation des données'}
+            {currentStep === 'result' && 'Résultat de l\'import'}
+          </h2>
+          <button 
+            onClick={handleClose}
+            className="text-gray-500 hover:text-gray-700"
           >
-            <X className="h-5 w-5" />
+            <X size={24} />
           </button>
         </div>
 
-        {/* Progress Bar */}
-        <div className="bg-gray-100 px-6 py-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm text-gray-600">
-              Étape {currentStep} sur 3
-            </span>
-            <span className="text-sm text-blue-600 font-medium">
-              {currentStep === 1 && 'Upload PDF'}
-              {currentStep === 2 && 'Validation'}
-              {currentStep === 3 && 'Résultat'}
-            </span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / 3) * 100}%` }}
-            />
+        {/* Progress indicator */}
+        <div className="px-4 py-2 bg-gray-50 border-b">
+          <div className="flex items-center space-x-4">
+            <div className={`flex items-center ${currentStep === 'upload' ? 'text-blue-600' : 'text-green-600'}`}>
+              <div className={`w-6 h-6 rounded-full ${currentStep === 'upload' ? 'bg-blue-600' : 'bg-green-600'} text-white text-xs flex items-center justify-center mr-2`}>
+                1
+              </div>
+              Upload
+            </div>
+            <div className={`flex items-center ${currentStep === 'validation' ? 'text-blue-600' : currentStep === 'result' ? 'text-green-600' : 'text-gray-400'}`}>
+              <div className={`w-6 h-6 rounded-full ${currentStep === 'validation' ? 'bg-blue-600' : currentStep === 'result' ? 'bg-green-600' : 'bg-gray-400'} text-white text-xs flex items-center justify-center mr-2`}>
+                2
+              </div>
+              Validation
+            </div>
+            <div className={`flex items-center ${currentStep === 'result' ? 'text-blue-600' : 'text-gray-400'}`}>
+              <div className={`w-6 h-6 rounded-full ${currentStep === 'result' ? 'bg-blue-600' : 'bg-gray-400'} text-white text-xs flex items-center justify-center mr-2`}>
+                3
+              </div>
+              Import
+            </div>
           </div>
         </div>
-
-        {/* OCR Info Banner */}
-        {currentStep === 1 && !apiConfigured && (
-          <div className="bg-red-50 border-l-4 border-red-400 p-4 mx-6 mt-4">
-            <div className="flex">
-              <Key className="h-5 w-5 text-red-400 mt-0.5" />
-              <div className="ml-3">
-                <p className="text-sm text-red-700">
-                  <strong>Configuration requise</strong>
-                </p>
-                <p className="text-xs text-red-600 mt-1">
-                  Le module PDF nécessite une clé API Mistral pour fonctionner.<br/>
-                  Configurez la variable d'environnement REACT_APP_MISTRAL_API_KEY<br/>
-                  ou ajoutez votre clé dans les paramètres de l'application.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {currentStep === 1 && apiConfigured && (
-          <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mx-6 mt-4">
-            <div className="flex">
-              <Info className="h-5 w-5 text-blue-400 mt-0.5" />
-              <div className="ml-3">
-                <p className="text-sm text-blue-700">
-                  <strong>Mistral OCR activé</strong> - Extraction précise avec IA
-                </p>
-                <p className="text-xs text-blue-600 mt-1">
-                  ✓ Reconnaissance avancée des tableaux et mise en page complexe<br/>
-                  ✓ Précision de 94.89% sur les documents structurés<br/>
-                  ✓ Coût réduit de 87% par rapport à l'ancienne méthode
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 200px)' }}>
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-              <div className="flex items-start">
-                <AlertCircle className="h-5 w-5 mt-0.5 mr-2" />
-                <div>
-                  <p className="font-medium">Erreur</p>
-                  <p className="text-sm mt-1">{error}</p>
-                </div>
-              </div>
-            </div>
+        <div className="p-4 overflow-y-auto max-h-[calc(90vh-140px)]">
+          {currentStep === 'upload' && (
+            <PDFUploadStep 
+              onSuccess={handleUploadSuccess}
+              onCancel={handleClose}
+            />
           )}
-
-          {loading && (
-            <div className="flex flex-col items-center justify-center py-12">
-              <Loader className="h-8 w-8 text-blue-600 animate-spin mb-4" />
-              <p className="text-gray-600">
-                {currentStep === 1 && 'Extraction OCR en cours...'}
-                {currentStep === 2 && 'Import en cours...'}
-              </p>
-              <p className="text-sm text-gray-500 mt-2">
-                Utilisation de Mistral OCR pour analyser le document
-              </p>
-            </div>
+          
+          {currentStep === 'validation' && editedData && (
+            <PDFValidationStep
+              data={editedData}
+              onChange={handleDataChange}
+              validation={validation}
+              onValidate={handleValidateAndImport}
+              onCancel={handleBackToUpload}
+            />
           )}
-
-          {!loading && (
-            <>
-              {/* Étape 1: Upload */}
-              {currentStep === 1 && (
-                <PDFUploadStep
-                  file={file}
-                  onFileUpload={handleFileUpload}
-                  stats={stats}
-                  error={error}
-                  isApiConfigured={apiConfigured}
-                />
-              )}
-
-              {/* Étape 2: Validation */}
-              {currentStep === 2 && extractedData && (
-                <PDFValidationStep
-                  data={editedData}
-                  onChange={setEditedData}
-                  validation={validation}
-                  onValidate={handleValidate}
-                  onCancel={() => setCurrentStep(1)}
-                />
-              )}
-
-              {/* Étape 3: Résultat */}
-              {currentStep === 3 && importResult && (
-                <PDFImportResult
-                  result={importResult}
-                  onClose={() => {
-                    resetModal();
-                    onClose();
-                  }}
-                  onRollback={handleRollback}
-                />
-              )}
-            </>
+          
+          {currentStep === 'result' && (
+            <PDFImportResult
+              importReport={importReport}
+              onClose={handleClose}
+              onRollback={importReport?.success ? handleRollback : null}
+            />
           )}
         </div>
 
-        {/* Footer avec info OCR */}
-        <div className="bg-gray-50 px-6 py-3 border-t flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            {apiConfigured ? (
-              <>
-                <CheckCircle className="h-3 w-3 text-green-500" />
-                <span>Mistral OCR activé ✓ {stats.mapped}/{stats.total} codes mappés</span>
-              </>
-            ) : (
-              <>
-                <AlertCircle className="h-3 w-3 text-red-500" />
-                <span>API Mistral non configurée - Module désactivé</span>
-              </>
-            )}
+        {/* Loading overlay */}
+        {processing && (
+          <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+            <div className="bg-white p-6 rounded-lg shadow-lg text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-700">
+                {currentStep === 'validation' ? 'Import en cours...' : 'Traitement...'}
+              </p>
+            </div>
           </div>
-          <div className="text-xs text-gray-400">
-            v2.1.0 - COGC Planning
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
