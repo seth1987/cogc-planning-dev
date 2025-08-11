@@ -1,321 +1,388 @@
-// Modal pour l'upload et traitement de PDF
-import React, { useState } from 'react';
-import { X } from 'lucide-react';
-
-// Composants PDF
+// Modal d'upload et d'import de PDF avec Mistral OCR
+import React, { useState, useEffect } from 'react';
+import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info, Key } from 'lucide-react';
+import pdfParserService from '../../services/pdfParserService';
+import mappingService from '../../services/mappingService';
+import planningImportService from '../../services/planningImportService';
 import PDFUploadStep from '../pdf/PDFUploadStep';
 import PDFValidationStep from '../pdf/PDFValidationStep';
 import PDFImportResult from '../pdf/PDFImportResult';
 
-// Services
-import supabaseService from '../../services/supabaseService';
-
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  const [currentStep, setCurrentStep] = useState('upload'); // 'upload', 'validation', 'result'
-  const [uploadedData, setUploadedData] = useState(null);
+  // États
+  const [currentStep, setCurrentStep] = useState(1); // 1: Upload, 2: Validation, 3: Résultat
+  const [file, setFile] = useState(null);
+  const [extractedData, setExtractedData] = useState(null);
   const [editedData, setEditedData] = useState(null);
-  const [validation, setValidation] = useState({ errors: [], warnings: [] });
-  const [importReport, setImportReport] = useState(null);
-  const [processing, setProcessing] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [stats, setStats] = useState({ total: 0, mapped: 0 });
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
 
-  // Reset modal state
+  // Vérifier la configuration de l'API Mistral au montage
+  useEffect(() => {
+    const mistralKey = process.env.REACT_APP_MISTRAL_API_KEY;
+    setApiKeyConfigured(!!mistralKey);
+  }, []);
+
+  // Reset du modal
   const resetModal = () => {
-    setCurrentStep('upload');
-    setUploadedData(null);
+    setCurrentStep(1);
+    setFile(null);
+    setExtractedData(null);
     setEditedData(null);
-    setValidation({ errors: [], warnings: [] });
-    setImportReport(null);
-    setProcessing(false);
+    setImportResult(null);
+    setLoading(false);
+    setError(null);
+    setStats({ total: 0, mapped: 0 });
   };
 
-  // Handle modal close
+  // Fermeture du modal
   const handleClose = () => {
     resetModal();
     onClose();
   };
 
-  // Handle successful upload and parsing
-  const handleUploadSuccess = (data) => {
-    console.log('📄 Données extraites du PDF:', data);
-    setUploadedData(data);
-    setEditedData(data); // Copie pour édition
-    
-    // Validation des données
-    const errors = [];
-    const warnings = [];
-    
-    // Vérifications de base
-    if (!data.agent || !data.agent.nom) {
-      errors.push('Nom de l\'agent manquant ou non détecté');
-    }
-    
-    if (!data.planning || data.planning.length === 0) {
-      errors.push('Aucune donnée de planning extraite');
-    }
-    
-    // Avertissements
-    if (data.planning && data.planning.length > 50) {
-      warnings.push(`Grand nombre d'entrées détectées (${data.planning.length})`);
-    }
-    
-    if (data.parsing_mode === 'manual') {
-      warnings.push('Extraction manuelle - vérifiez les données');
-    }
-    
-    setValidation({ errors, warnings });
-    setCurrentStep('validation');
-  };
+  // ═══════════════════════════════════════════════════════════════
+  // ÉTAPE 1: UPLOAD ET ANALYSE MISTRAL
+  // ═══════════════════════════════════════════════════════════════
 
-  // Handle data changes during validation
-  const handleDataChange = (newData) => {
-    setEditedData(newData);
-    
-    // Re-validation avec les nouvelles données
-    const errors = [];
-    const warnings = [];
-    
-    if (!newData.agent || !newData.agent.nom || !newData.agent.prenom) {
-      errors.push('Nom et prénom de l\'agent requis');
-    }
-    
-    if (!newData.planning || newData.planning.length === 0) {
-      errors.push('Au moins une entrée de planning requise');
-    }
-    
-    setValidation({ errors, warnings });
-  };
-
-  // Handle validation and import
-  const handleValidateAndImport = async () => {
-    if (!editedData || validation.errors.length > 0) {
-      alert('Corrigez les erreurs avant d\'importer');
+  const handleFileUpload = async (uploadedFile) => {
+    if (!apiKeyConfigured) {
+      setError('Clé API Mistral manquante. Configurez REACT_APP_MISTRAL_API_KEY.');
       return;
     }
 
-    setProcessing(true);
-    
+    setFile(uploadedFile);
+    setLoading(true);
+    setError(null);
+
     try {
-      console.log('🚀 Début de l\'import en base...');
+      console.log('🤖 Analyse Mistral du PDF...', uploadedFile.name);
       
-      // 1. Trouver ou créer l'agent
-      let agent = await supabaseService.findAgentByName(
-        editedData.agent.nom, 
-        editedData.agent.prenom
-      );
+      // Analyse via Mistral
+      const analysisResult = await pdfParserService.analyzePDF(uploadedFile);
       
-      if (!agent) {
-        // Créer l'agent s'il n'existe pas
-        agent = await supabaseService.createAgent({
-          nom: editedData.agent.nom,
-          prenom: editedData.agent.prenom,
-          statut: 'roulement', // Statut par défaut
-          groupe: 'A' // Groupe par défaut
-        });
+      if (!analysisResult || !analysisResult.planning) {
+        throw new Error('Aucune donnée de planning extraite par Mistral');
       }
 
-      // 2. Import des données de planning
-      const importStats = {
-        entriesProcessed: 0,
-        entriesInserted: 0,
-        entriesUpdated: 0,
-        entriesSkipped: 0,
-        errors: [],
-        warnings: []
-      };
-
-      for (const entry of editedData.planning) {
-        try {
-          importStats.entriesProcessed++;
-          
-          // Vérifier si une entrée existe déjà
-          const existing = await supabaseService.getPlanningEntry(agent.id, entry.date);
-          
-          if (existing) {
-            // Mise à jour
-            await supabaseService.updatePlanning(
-              agent.id,
-              entry.date,
-              entry.service_code,
-              entry.poste_code
-            );
-            importStats.entriesUpdated++;
-          } else {
-            // Création
-            await supabaseService.savePlanning(
-              agent.id,
-              entry.date,
-              entry.service_code,
-              entry.poste_code
-            );
-            importStats.entriesInserted++;
-          }
-          
-        } catch (error) {
-          console.error(`Erreur import entrée ${entry.date}:`, error);
-          importStats.errors.push({
-            date: entry.date,
-            error: error.message
-          });
-        }
-      }
-
-      // 3. Calcul de la période importée
-      const dates = editedData.planning.map(p => p.date).sort();
-      const dateRange = {
-        min: dates[0],
-        max: dates[dates.length - 1]
-      };
-
-      // 4. Créer le rapport d'import
-      const report = {
-        success: importStats.errors.length === 0,
-        agent,
-        ...importStats,
-        dateRange,
-        totalEntries: editedData.planning.length
-      };
-
-      console.log('✅ Import terminé:', report);
-      setImportReport(report);
-      setCurrentStep('result');
+      // Mapping des codes via le service
+      const mappedData = mappingService.mapPlanningData(analysisResult);
       
-      // Notifier le succès au parent
-      if (report.success) {
+      // Statistiques
+      const totalEntries = mappedData.planning ? mappedData.planning.length : 0;
+      const mappedEntries = totalEntries;
+      
+      setStats({ total: totalEntries, mapped: mappedEntries });
+      setExtractedData(mappedData);
+      setEditedData({ ...mappedData }); // Copie pour édition
+      
+      console.log('✅ Analyse Mistral réussie:', mappedData);
+      
+      // Passage à l'étape de validation
+      setCurrentStep(2);
+      
+    } catch (err) {
+      console.error('❌ Erreur analyse Mistral:', err);
+      setError(`Erreur d'analyse: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // ÉTAPE 2: VALIDATION DES DONNÉES
+  // ═══════════════════════════════════════════════════════════════
+
+  const handleDataEdit = (newData) => {
+    setEditedData(newData);
+  };
+
+  const handleValidateAndImport = async () => {
+    if (!editedData || !editedData.planning) {
+      setError('Aucune donnée à importer');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      console.log('📥 Import en base de données...', editedData);
+      
+      // Import via le service dédié
+      const result = await planningImportService.importPlanning(editedData);
+      
+      console.log('✅ Import terminé:', result);
+      
+      // 🛡️ CORRECTION: S'assurer que importResult contient toutes les propriétés requises
+      const completeResult = {
+        success: result.success || false,
+        errors: result.errors || [],
+        warnings: result.warnings || [],
+        entriesProcessed: result.entriesProcessed || 0,
+        entriesInserted: result.entriesInserted || 0,
+        entriesUpdated: result.entriesUpdated || 0,
+        entriesSkipped: result.entriesSkipped || 0,
+        agent: result.agent || editedData.agent,
+        dateRange: result.dateRange || {
+          min: editedData.planning[0]?.date,
+          max: editedData.planning[editedData.planning.length - 1]?.date
+        },
+        importMode: 'mistral',
+        fileName: file?.name
+      };
+
+      setImportResult(completeResult);
+      setCurrentStep(3);
+      
+      // Notifier le succès si tout s'est bien passé
+      if (completeResult.success && onSuccess) {
         onSuccess();
       }
       
-    } catch (error) {
-      console.error('❌ Erreur durant l\'import:', error);
+    } catch (err) {
+      console.error('❌ Erreur import:', err);
       
-      // Rapport d'erreur
-      setImportReport({
+      // 🛡️ CORRECTION: Créer un rapport d'erreur complet
+      const errorResult = {
         success: false,
-        errors: [{ error: error.message }],
+        errors: [{ error: err.message }],
         warnings: [],
         entriesProcessed: 0,
         entriesInserted: 0,
         entriesUpdated: 0,
         entriesSkipped: 0,
-        dateRange: { min: null, max: null }
-      });
-      setCurrentStep('result');
+        agent: editedData.agent,
+        dateRange: { min: null, max: null },
+        importMode: 'mistral',
+        fileName: file?.name
+      };
+      
+      setImportResult(errorResult);
+      setCurrentStep(3);
     } finally {
-      setProcessing(false);
+      setLoading(false);
     }
   };
 
-  // Handle back button from validation
-  const handleBackToUpload = () => {
-    setCurrentStep('upload');
-    setValidation({ errors: [], warnings: [] });
+  // ═══════════════════════════════════════════════════════════════
+  // NAVIGATION ENTRE ÉTAPES
+  // ═══════════════════════════════════════════════════════════════
+
+  const goBackToUpload = () => {
+    setCurrentStep(1);
+    setExtractedData(null);
+    setEditedData(null);
+    setError(null);
   };
 
-  // Handle rollback (annuler l'import)
+  const goBackToValidation = () => {
+    setCurrentStep(2);
+    setImportResult(null);
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // ROLLBACK (ANNULER L'IMPORT)
+  // ═══════════════════════════════════════════════════════════════
+
   const handleRollback = async () => {
-    if (!importReport || !importReport.agent) return;
-    
+    if (!importResult || !editedData) return;
+
+    setLoading(true);
     try {
-      setProcessing(true);
-      
-      // Supprimer les entrées importées
-      for (const entry of editedData.planning) {
-        await supabaseService.deletePlanning(importReport.agent.id, entry.date);
-      }
-      
+      await planningImportService.rollbackImport(editedData);
       alert('Import annulé avec succès');
       handleClose();
-      
-    } catch (error) {
-      console.error('Erreur rollback:', error);
-      alert('Erreur lors de l\'annulation');
+    } catch (err) {
+      console.error('Erreur rollback:', err);
+      alert(`Erreur lors de l'annulation: ${err.message}`);
     } finally {
-      setProcessing(false);
+      setLoading(false);
     }
   };
+
+  // ═══════════════════════════════════════════════════════════════
+  // VALIDATION DES PRÉREQUIS
+  // ═══════════════════════════════════════════════════════════════
+
+  const getValidationErrors = () => {
+    if (!editedData) return [];
+    
+    const errors = [];
+    
+    if (!editedData.agent || !editedData.agent.nom) {
+      errors.push('Nom de l\'agent manquant');
+    }
+    
+    if (!editedData.planning || editedData.planning.length === 0) {
+      errors.push('Aucune donnée de planning');
+    }
+    
+    return errors;
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // AFFICHAGE DU MODULE NON CONFIGURÉ
+  // ═══════════════════════════════════════════════════════════════
+
+  if (!apiKeyConfigured) {
+    return isOpen ? (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl">
+          <div className="flex items-center justify-between p-4 border-b">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <Key className="text-amber-600" size={24} />
+              Module PDF désactivé
+            </h2>
+            <button onClick={handleClose} className="text-gray-500 hover:text-gray-700">
+              <X size={24} />
+            </button>
+          </div>
+          
+          <div className="p-6 text-center">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <AlertCircle className="text-amber-600 mx-auto mb-2" size={48} />
+              <p className="text-amber-800 font-medium">
+                Ce module nécessite une clé API Mistral pour fonctionner.
+              </p>
+              <p className="text-amber-700 text-sm mt-2">
+                Configurez <code>REACT_APP_MISTRAL_API_KEY</code> dans vos variables d'environnement.
+              </p>
+            </div>
+            
+            <div className="text-sm text-gray-600 mb-4">
+              <p>Obtenez votre clé sur : <a href="https://console.mistral.ai/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">https://console.mistral.ai/</a></p>
+            </div>
+            
+            <button
+              onClick={handleClose}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // AFFICHAGE PRINCIPAL DU MODAL
+  // ═══════════════════════════════════════════════════════════════
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
-        {/* Header */}
+        
+        {/* Header avec titre et indicateur d'étape */}
         <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-xl font-semibold">
-            {currentStep === 'upload' && 'Import PDF Planning'}
-            {currentStep === 'validation' && 'Validation des données'}
-            {currentStep === 'result' && 'Résultat de l\'import'}
-          </h2>
-          <button 
-            onClick={handleClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
+          <div>
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <FileText className="text-blue-600" size={24} />
+              Import PDF Planning
+              {file && <span className="text-sm text-gray-500">({file.name})</span>}
+            </h2>
+            <div className="flex items-center mt-2 space-x-4 text-sm">
+              <div className={`flex items-center ${currentStep >= 1 ? 'text-blue-600' : 'text-gray-400'}`}>
+                <div className={`w-6 h-6 rounded-full ${currentStep >= 1 ? 'bg-blue-600' : 'bg-gray-400'} text-white text-xs flex items-center justify-center mr-2`}>1</div>
+                Upload & Analyse
+              </div>
+              <div className={`flex items-center ${currentStep >= 2 ? 'text-blue-600' : 'text-gray-400'}`}>
+                <div className={`w-6 h-6 rounded-full ${currentStep >= 2 ? 'bg-blue-600' : 'bg-gray-400'} text-white text-xs flex items-center justify-center mr-2`}>2</div>
+                Validation
+              </div>
+              <div className={`flex items-center ${currentStep >= 3 ? 'text-blue-600' : 'text-gray-400'}`}>
+                <div className={`w-6 h-6 rounded-full ${currentStep >= 3 ? 'bg-blue-600' : 'bg-gray-400'} text-white text-xs flex items-center justify-center mr-2`}>3</div>
+                Import
+              </div>
+            </div>
+          </div>
+          
+          <button onClick={handleClose} className="text-gray-500 hover:text-gray-700">
             <X size={24} />
           </button>
         </div>
 
-        {/* Progress indicator */}
-        <div className="px-4 py-2 bg-gray-50 border-b">
-          <div className="flex items-center space-x-4">
-            <div className={`flex items-center ${currentStep === 'upload' ? 'text-blue-600' : 'text-green-600'}`}>
-              <div className={`w-6 h-6 rounded-full ${currentStep === 'upload' ? 'bg-blue-600' : 'bg-green-600'} text-white text-xs flex items-center justify-center mr-2`}>
-                1
-              </div>
-              Upload
-            </div>
-            <div className={`flex items-center ${currentStep === 'validation' ? 'text-blue-600' : currentStep === 'result' ? 'text-green-600' : 'text-gray-400'}`}>
-              <div className={`w-6 h-6 rounded-full ${currentStep === 'validation' ? 'bg-blue-600' : currentStep === 'result' ? 'bg-green-600' : 'bg-gray-400'} text-white text-xs flex items-center justify-center mr-2`}>
-                2
-              </div>
-              Validation
-            </div>
-            <div className={`flex items-center ${currentStep === 'result' ? 'text-blue-600' : 'text-gray-400'}`}>
-              <div className={`w-6 h-6 rounded-full ${currentStep === 'result' ? 'bg-blue-600' : 'bg-gray-400'} text-white text-xs flex items-center justify-center mr-2`}>
-                3
-              </div>
-              Import
+        {/* Statistiques dans l'header */}
+        {stats.total > 0 && (
+          <div className="px-4 py-2 bg-blue-50 border-b">
+            <div className="flex items-center gap-4 text-sm">
+              <span className="flex items-center gap-1">
+                <Info size={16} className="text-blue-600" />
+                <strong>{stats.total}</strong> entrées détectées
+              </span>
+              <span className="flex items-center gap-1">
+                <CheckCircle size={16} className="text-green-600" />
+                <strong>{stats.mapped}</strong> mappées
+              </span>
+              {file && (
+                <span className="text-gray-600">
+                  📄 {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
+                </span>
+              )}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Content */}
-        <div className="p-4 overflow-y-auto max-h-[calc(90vh-140px)]">
-          {currentStep === 'upload' && (
+        {/* Contenu principal */}
+        <div className="p-4 overflow-y-auto max-h-[calc(90vh-200px)]">
+          
+          {/* ÉTAPE 1: Upload */}
+          {currentStep === 1 && (
             <PDFUploadStep 
-              onSuccess={handleUploadSuccess}
+              onSuccess={handleFileUpload}
               onCancel={handleClose}
+              loading={loading}
+              error={error}
             />
           )}
-          
-          {currentStep === 'validation' && editedData && (
+
+          {/* ÉTAPE 2: Validation */}
+          {currentStep === 2 && extractedData && (
             <PDFValidationStep
               data={editedData}
-              onChange={handleDataChange}
-              validation={validation}
+              onChange={handleDataEdit}
+              validation={{
+                errors: getValidationErrors(),
+                warnings: []
+              }}
               onValidate={handleValidateAndImport}
-              onCancel={handleBackToUpload}
+              onCancel={goBackToUpload}
+              loading={loading}
             />
           )}
-          
-          {currentStep === 'result' && (
+
+          {/* ÉTAPE 3: Résultats */}
+          {currentStep === 3 && importResult && (
             <PDFImportResult
-              importReport={importReport}
+              importReport={importResult}
               onClose={handleClose}
-              onRollback={importReport?.success ? handleRollback : null}
+              onRollback={importResult.success ? handleRollback : null}
+              onBackToValidation={goBackToValidation}
             />
           )}
+
         </div>
 
-        {/* Loading overlay */}
-        {processing && (
+        {/* Loading Overlay */}
+        {loading && (
           <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
             <div className="bg-white p-6 rounded-lg shadow-lg text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <Loader className="animate-spin mx-auto mb-4 text-blue-600" size={32} />
               <p className="text-gray-700">
-                {currentStep === 'validation' ? 'Import en cours...' : 'Traitement...'}
+                {currentStep === 1 && 'Analyse du PDF avec Mistral...'}
+                {currentStep === 2 && 'Import en cours...'}
+                {currentStep === 3 && 'Finalisation...'}
               </p>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
