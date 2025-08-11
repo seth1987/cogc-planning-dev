@@ -152,7 +152,8 @@ IMPORTANT :
       } else if (err.message?.includes('413')) {
         throw new Error('Fichier PDF trop volumineux (max 50MB)');
       } else {
-        throw new Error(`Erreur OCR: ${err.message || 'Erreur inconnue'}`);\n      }
+        throw new Error(`Erreur OCR: ${err.message || 'Erreur inconnue'}`);
+      }
     }
   }
 
