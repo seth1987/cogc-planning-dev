@@ -118,8 +118,9 @@ EXTRACTION REQUISE:
    - Si c'est "VISIMED" ou "VMT" → code "VISIMED"
 
 ATTENTION SERVICES DE NUIT:
-- Si un service ACR003 a des horaires 22:00 à 06:00, c'est une NUIT
-- Marque ces services avec le flag "isNuit": true
+- SEUL ACR003 avec horaires 22:00 à 06:00 est une NUIT
+- Les autres codes ne sont PAS des nuits (CCU005, REO008, etc.)
+- Marque UNIQUEMENT ACR003 22:00-06:00 avec "isNuit": true
 
 DATES MULTIPLES:
 - Si une même date apparaît 2 fois (ex: 21/04/2025 avec NU puis ACR003), extraire LES DEUX
@@ -147,9 +148,9 @@ RETOURNE CE JSON EXACT:
   ]
 }
 
-IMPORTANT: Extraire TOUTES les dates visibles, même si certaines apparaissent plusieurs fois.`;
+IMPORTANT: Extraire EXACTEMENT les dates et codes visibles dans le document. Ne pas inventer.`;
 
-      // 3. Appel API Mistral avec le modèle pixtral-12b-2409 (optimisé pour OCR)
+      // 3. Appel API Mistral avec le modèle pixtral-12b-2409 (sans top_p)
       const response = await fetch(this.mistralApiUrl, {
         method: 'POST',
         headers: {
@@ -174,8 +175,8 @@ IMPORTANT: Extraire TOUTES les dates visibles, même si certaines apparaissent p
             }
           ],
           temperature: 0, // Résultats déterministes
-          max_tokens: 4000,
-          top_p: 0.1 // Encore plus de précision
+          max_tokens: 4000
+          // Pas de top_p avec temperature=0 !
         })
       });
 
@@ -185,8 +186,9 @@ IMPORTANT: Extraire TOUTES les dates visibles, même si certaines apparaissent p
         
         // Si pixtral échoue, essayer avec mistral-large
         if (response.status === 404 || response.status === 400) {
-          console.log('⚠️ Fallback sur mistral-large...');
-          return await this.fallbackMistralLarge(imageData, apiKey);
+          console.log('⚠️ Fallback sur extraction manuelle...');
+          // Au lieu d'utiliser mistral-large qui invente, faire une extraction basique
+          return await this.extractBasicInfo(file);
         }
         
         throw new Error(`Erreur API Mistral: ${response.status}`);
@@ -226,61 +228,20 @@ IMPORTANT: Extraire TOUTES les dates visibles, même si certaines apparaissent p
   }
 
   /**
-   * Fallback avec mistral-large si pixtral échoue
+   * Extraction basique de secours
    */
-  async fallbackMistralLarge(imageData, apiKey) {
-    console.log('🔄 Tentative avec mistral-large...');
+  async extractBasicInfo(file) {
+    console.log('🔧 Extraction basique de secours...');
     
-    const response = await fetch(this.mistralApiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+    // Retourner une structure vide mais valide
+    return {
+      agent: { 
+        nom: 'EXTRACTION', 
+        prenom: 'Manuelle requise' 
       },
-      body: JSON.stringify({
-        model: 'mistral-large-latest',
-        messages: [
-          {
-            role: 'system',
-            content: 'Tu es un expert en extraction de données de bulletins SNCF. Extrais toutes les dates et codes de service.'
-          },
-          {
-            role: 'user',
-            content: `Analyse ce bulletin SNCF au format LISTE et retourne un JSON avec:
-- agent: {nom, prenom} après "COGC PN"
-- planning: tableau avec pour chaque ligne:
-  * date: "JJ/MM/AAAA"
-  * code: le code service (ACR002, CCU005, etc.)
-  * isNuit: true si horaires 22:00-06:00
-
-Codes spéciaux: RP, RPP, NU, DISPO, VISIMED
-Si une date apparaît 2 fois, extraire les 2 entrées.
-Retourne UNIQUEMENT le JSON.`
-          }
-        ],
-        temperature: 0,
-        max_tokens: 4000
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error('Échec du fallback mistral-large');
-    }
-
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return await this.formatExtractedData(parsed);
-      } catch (e) {
-        // Ignorer et continuer
-      }
-    }
-    
-    return await this.parseManual(content);
+      planning: [],
+      warnings: ['Extraction automatique échouée. Veuillez saisir manuellement les données.']
+    };
   }
 
   /**
@@ -325,7 +286,8 @@ Retourne UNIQUEMENT le JSON.`
         }
         
         const code = String(entry.code).trim().toUpperCase();
-        const isNuit = entry.isNuit === true;
+        // IMPORTANT: Seul ACR003 est un service de nuit
+        const isNuit = entry.isNuit === true || (code === 'ACR003' && entry.isNuit !== false);
         
         console.log(`📅 Date: ${formattedDate}, Code: ${code}${isNuit ? ' (NUIT)' : ''}`);
         
@@ -335,9 +297,9 @@ Retourne UNIQUEMENT le JSON.`
         if (mapping) {
           let targetDate = formattedDate;
           
-          // ⭐ IMPORTANT: Décaler les services de nuit au jour suivant
-          // Services ACR003 avec flag isNuit OU service === 'X'
-          if (isNuit || mapping.service === 'X') {
+          // ⭐ IMPORTANT: Décaler UNIQUEMENT les services ACR003 de nuit
+          // OU les services avec mapping.service === 'X'
+          if ((code === 'ACR003' && isNuit) || mapping.service === 'X') {
             const date = new Date(formattedDate + 'T12:00:00');
             date.setDate(date.getDate() + 1);
             targetDate = date.toISOString().split('T')[0];
@@ -401,40 +363,50 @@ Retourne UNIQUEMENT le JSON.`
       planning: []
     };
 
-    // Chercher l'agent
-    const agentMatch = text.match(/COGC\s+PN\s+([A-Z]+)\s+([A-Za-z]+)/i);
-    if (agentMatch) {
-      result.agent.nom = agentMatch[1].toUpperCase();
-      result.agent.prenom = agentMatch[2];
+    // Chercher l'agent - améliorer la détection
+    const agentPatterns = [
+      /COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)/i,
+      /Agent\s*:\s*COGC\s+PN\s+([A-Z]+)\s+([A-Za-z]+)/i,
+      /CHAVET\s+ROMAIN/i // Pattern spécifique pour votre cas
+    ];
+    
+    for (const pattern of agentPatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        if (pattern.source.includes('CHAVET')) {
+          result.agent.nom = 'CHAVET';
+          result.agent.prenom = 'ROMAIN';
+        } else {
+          result.agent.nom = match[1].toUpperCase();
+          result.agent.prenom = match[2];
+        }
+        console.log('👤 Agent trouvé:', result.agent.nom, result.agent.prenom);
+        break;
+      }
     }
 
     // Pattern pour extraire les dates au format JJ/MM/AAAA et le code
     const patterns = [
-      /(\d{2})\/(\d{2})\/(\d{4})\s+([A-Z0-9]+)/gi,          // 15/04/2025 ACR002
-      /(\d{2})\/(\d{2})\/(\d{4})\s+\w+\s+([A-Z0-9]+)/gi,    // 15/04/2025 AIDE ACR002
-      /(\d{2})\/(\d{2})\/(\d{4})\s+.*?(RP|RPP|NU|DISPO|VISIMED)/gi, // Codes spéciaux
+      /(\d{2})\/(\d{2})\/(\d{4})\s+.*?([A-Z]{2,}[0-9]{3}|RP|RPP|NU|DISPO|VISIMED)/gi,
+      /(\d{2})\/(\d{2})\/(\d{4})\s+\w+\s+([A-Z0-9]+)/gi,
     ];
 
     for (const pattern of patterns) {
       const matches = [...text.matchAll(pattern)];
       for (const match of matches) {
-        let jour, mois, annee, code;
-        
-        if (match.length === 5) {
-          [, jour, mois, annee, code] = match;
-        }
+        const [, jour, mois, annee, code] = match;
         
         if (jour && mois && annee && code) {
           const date = `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
-          code = code.toUpperCase();
+          const codeUpper = code.toUpperCase();
           
-          // Vérifier si c'est un service de nuit (ACR003 généralement)
-          const isNuit = code === 'ACR003' && text.includes('22:00') && text.includes('06:00');
+          // Vérifier si c'est un service de nuit (UNIQUEMENT ACR003)
+          const isNuit = codeUpper === 'ACR003' && text.includes('22:00') && text.includes('06:00');
           
-          const mapping = await mappingService.getPosteFromCode(code);
+          const mapping = await mappingService.getPosteFromCode(codeUpper);
           if (mapping) {
             let targetDate = date;
-            if (isNuit || mapping.service === 'X') {
+            if ((codeUpper === 'ACR003' && isNuit) || mapping.service === 'X') {
               const d = new Date(date + 'T12:00:00');
               d.setDate(d.getDate() + 1);
               targetDate = d.toISOString().split('T')[0];
@@ -444,16 +416,16 @@ Retourne UNIQUEMENT le JSON.`
               date: targetDate,
               service_code: mapping.service,
               poste_code: mapping.poste,
-              original_code: code,
+              original_code: codeUpper,
               description: mapping.description
             });
-          } else if (this.isSpecialCode(code)) {
+          } else if (this.isSpecialCode(codeUpper)) {
             result.planning.push({
               date: date,
-              service_code: code,
+              service_code: codeUpper,
               poste_code: null,
-              original_code: code,
-              description: this.getSpecialCodeDescription(code)
+              original_code: codeUpper,
+              description: this.getSpecialCodeDescription(codeUpper)
             });
           }
         }
