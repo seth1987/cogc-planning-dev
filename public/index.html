@@ -10,6 +10,12 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- PDF.js pour l'extraction de texte des PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      // Configuration du worker PDF.js
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+    </script>
   </head>
   <body>
     <noscript>Vous devez activer JavaScript pour utiliser cette application.</noscript>
