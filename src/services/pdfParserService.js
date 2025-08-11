@@ -35,56 +35,45 @@ class PDFParserService {
       // Convertir le fichier en base64 data URL
       const dataUrl = await this.fileToBase64(file);
       
-      // Prompt amélioré et plus précis
-      const prompt = `Tu es un expert en extraction de données de bulletins de commande SNCF. Analyse ce document PDF et extrais TOUTES les informations suivantes :
+      // Prompt ultra-précis et structuré pour Mistral
+      const prompt = `Analyse cette image d'un bulletin de commande SNCF et retourne UNIQUEMENT un JSON structuré.
 
-**1. AGENT (en haut du document):**
-Cherche le texte qui contient "COGC PN" suivi du nom et prénom
-Format attendu : COGC PN [NOM] [PRENOM]
-Exemple : COGC PN MARTIN JEAN
+STRUCTURE ATTENDUE:
+{
+  "agent": {
+    "nom": "NOM_AGENT",
+    "prenom": "PRENOM_AGENT"
+  },
+  "mois": "janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre",
+  "annee": "2025",
+  "planning": [
+    {"jour": 1, "code": "001"},
+    {"jour": 2, "code": "RH"},
+    {"jour": 3, "code": "002"},
+    ...
+  ]
+}
 
-**2. DATES ET SERVICES (dans le tableau principal):**
-Le document contient un tableau avec des colonnes pour chaque jour du mois.
-Pour CHAQUE cellule du tableau, extrais :
-- La date (format JJ/MM/AAAA ou simplement le numéro du jour si le mois/année sont indiqués ailleurs)
-- Le code service qui peut être :
-  * Un code avec chiffres : CRC001, ACR002, CCU003, CENT004, SOUF005, REO006, RC007, RE008, RO009, CAC010, etc.
-  * Un code spécial : RP (repos), C (congé), HAB (formation), MA (maladie), NU (non utilisé), D (disponible), VISIMED ou VMT (visite médicale)
-  * Parfois juste un numéro : 001, 002, 003, etc.
+INSTRUCTIONS D'EXTRACTION:
+1. AGENT: Cherche "COGC PN" suivi du NOM et PRÉNOM
+2. MOIS/ANNÉE: Cherche dans l'en-tête du document
+3. TABLEAU: 
+   - Les colonnes représentent les jours (1 à 31)
+   - Chaque cellule contient un code ou est vide
+   - Extrais UNIQUEMENT les cellules non vides
 
-**3. STRUCTURE DU TABLEAU:**
-Le tableau a généralement :
-- Une ligne d'en-tête avec les jours (1, 2, 3... jusqu'à 31)
-- Une ou plusieurs lignes avec les codes de service pour chaque jour
-- Les cellules vides indiquent pas de service ce jour-là
+CODES POSSIBLES:
+- Numériques: 001, 002, 003, 004, 005, 006, 007, 008, 009, 010
+- Avec préfixe: CRC001, ACR002, CCU003, CENT004, SOUF005, REO006, RC007, RE008, RO009, CAC010
+- Spéciaux: RH, RP, CA, C, HAB, MA, NU, D, VMT, VISIMED, INACTIN
 
-**FORMAT DE SORTIE ATTENDU:**
-Retourne le texte COMPLET et STRUCTURÉ du document, en conservant EXACTEMENT tous les codes tels qu'ils apparaissent.
+RÈGLES IMPORTANTES:
+- Si le code est juste "001", garde "001" (ne pas ajouter de préfixe)
+- Si le code est "CRC001", garde "CRC001" tel quel
+- Ignore les cellules vides
+- Retourne UNIQUEMENT le JSON, sans texte avant ou après`;
 
-Pour chaque ligne du tableau, indique :
-Date: [date complète]
-Code: [code exact tel qu'il apparaît]
-
-Exemple de sortie :
----
-Agent: COGC PN DUPONT MARIE
-
-01/01/2025: CRC001
-02/01/2025: ACR002
-03/01/2025: RP
-04/01/2025: CCU003
-05/01/2025: C
-...
----
-
-IMPORTANT : 
-- Extrais TOUTES les dates même si elles semblent vides
-- Conserve EXACTEMENT les codes tels qu'ils sont écrits
-- N'interprète pas, ne modifie pas, ne traduis pas les codes
-- Si tu vois "001" écris "001", si tu vois "CRC001" écris "CRC001"
-- Lis TOUT le tableau, ligne par ligne, colonne par colonne`;
-
-      // Appel à l'API Mistral via fetch natif
+      // Appel à l'API Mistral avec le modèle pixtral pour l'OCR
       const response = await fetch(this.mistralApiUrl, {
         method: 'POST',
         headers: {
@@ -92,7 +81,7 @@ IMPORTANT :
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: 'pixtral-12b-2024-09-04',
+          model: 'pixtral-large-latest', // Utiliser pixtral-large pour une meilleure extraction
           messages: [
             {
               role: 'user',
@@ -108,41 +97,45 @@ IMPORTANT :
               ]
             }
           ],
-          temperature: 0.1,
-          max_tokens: 16000
+          temperature: 0, // 0 pour des résultats déterministes
+          max_tokens: 8000,
+          response_format: { type: "json_object" } // Forcer la réponse en JSON
         })
       });
 
       if (!response.ok) {
-        // Si pixtral échoue, essayer avec mistral-large
+        // Si pixtral échoue, essayer avec un autre modèle
         if (response.status === 404 || response.status === 400) {
-          console.log('⚠️ Modèle pixtral non disponible, tentative avec mistral-large...');
-          return await this.parseWithMistralLarge(file, apiKey);
+          console.log('⚠️ Modèle pixtral-large non disponible, tentative avec pixtral-12b...');
+          return await this.parseWithPixtralFallback(file, apiKey);
         }
         
         const error = await response.text();
+        console.error('Erreur Mistral:', error);
         throw new Error(`Erreur API Mistral: ${response.status} - ${error}`);
       }
 
       const data = await response.json();
-      console.log('✅ OCR terminé, parsing des résultats...');
+      console.log('✅ Réponse Mistral reçue');
       
       // Extraire le contenu de la réponse
       const ocrContent = data.choices[0].message.content;
       
       // Log pour debug
-      console.log('📄 Contenu OCR brut:', ocrContent);
+      console.log('📄 Réponse OCR brute:', ocrContent);
       
-      // Parser les résultats OCR
-      return await this.parseOCRContent(ocrContent);
+      // Parser directement le JSON
+      try {
+        const parsedData = JSON.parse(ocrContent);
+        return await this.formatExtractedData(parsedData);
+      } catch (parseError) {
+        console.error('Erreur parsing JSON:', parseError);
+        // Si ce n'est pas du JSON valide, essayer l'ancienne méthode
+        return await this.parseOCRContent(ocrContent);
+      }
       
     } catch (err) {
       console.error('Erreur Mistral OCR:', err);
-      
-      // Si pixtral n'existe pas, essayer avec mistral-large
-      if (err.message?.includes('pixtral')) {
-        return await this.parseWithMistralLarge(file, apiKey);
-      }
       
       // Gestion des erreurs spécifiques
       if (err.message?.includes('401')) {
@@ -155,6 +148,170 @@ IMPORTANT :
         throw new Error(`Erreur OCR: ${err.message || 'Erreur inconnue'}`);
       }
     }
+  }
+
+  /**
+   * Fallback avec pixtral-12b si pixtral-large n'est pas disponible
+   */
+  async parseWithPixtralFallback(file, apiKey) {
+    try {
+      console.log('🔄 Utilisation de pixtral-12b comme fallback...');
+      
+      const dataUrl = await this.fileToBase64(file);
+      
+      const response = await fetch(this.mistralApiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'pixtral-12b-2409', // Nom exact du modèle
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `Extrais les données de ce bulletin SNCF. Retourne un JSON avec cette structure:
+{
+  "agent": {"nom": "NOM", "prenom": "PRENOM"},
+  "mois": "nom_du_mois",
+  "annee": "AAAA",
+  "planning": [
+    {"jour": 1, "code": "001"},
+    {"jour": 2, "code": "RH"}
+  ]
+}
+
+Cherche:
+1. L'agent après "COGC PN"
+2. Le tableau avec les jours (1-31) et les codes
+3. Les codes peuvent être: 001-010, CRC001-CAC010, RH, RP, CA, C, etc.
+
+Retourne UNIQUEMENT le JSON.`
+                },
+                {
+                  type: 'image_url',
+                  image_url: dataUrl
+                }
+              ]
+            }
+          ],
+          temperature: 0,
+          max_tokens: 8000
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Erreur API Mistral: ${response.status} - ${error}`);
+      }
+
+      const data = await response.json();
+      const ocrContent = data.choices[0].message.content;
+      
+      console.log('📄 Contenu OCR (pixtral-12b):', ocrContent);
+      
+      // Essayer d'extraire le JSON
+      const jsonMatch = ocrContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const parsedData = JSON.parse(jsonMatch[0]);
+          return await this.formatExtractedData(parsedData);
+        } catch (e) {
+          console.error('JSON invalide, parsing manuel...');
+        }
+      }
+      
+      return await this.parseOCRContent(ocrContent);
+      
+    } catch (err) {
+      console.error('Erreur avec pixtral-12b:', err);
+      // En dernier recours, essayer mistral-large sans image
+      return await this.parseWithMistralLarge(file, apiKey);
+    }
+  }
+
+  /**
+   * Formater les données extraites du JSON
+   */
+  async formatExtractedData(data) {
+    const result = {
+      agent: { 
+        nom: data.agent?.nom || '', 
+        prenom: data.agent?.prenom || '' 
+      },
+      planning: []
+    };
+
+    console.log('👤 Agent extrait:', result.agent.nom, result.agent.prenom);
+
+    // Obtenir le mois et l'année
+    const mois = data.mois || new Date().toLocaleString('fr-FR', { month: 'long' });
+    const annee = data.annee || new Date().getFullYear();
+    
+    // Convertir le nom du mois en numéro
+    const moisMap = {
+      'janvier': '01', 'février': '02', 'mars': '03', 'avril': '04',
+      'mai': '05', 'juin': '06', 'juillet': '07', 'août': '08',
+      'septembre': '09', 'octobre': '10', 'novembre': '11', 'décembre': '12'
+    };
+    
+    const moisNum = moisMap[mois.toLowerCase()] || String(new Date().getMonth() + 1).padStart(2, '0');
+
+    // Traiter le planning
+    if (data.planning && Array.isArray(data.planning)) {
+      for (const entry of data.planning) {
+        if (entry.jour && entry.code) {
+          const jour = String(entry.jour).padStart(2, '0');
+          const formattedDate = `${annee}-${moisNum}-${jour}`;
+          const code = String(entry.code).trim().toUpperCase();
+          
+          console.log(`📅 Date: ${formattedDate}, Code: ${code}`);
+          
+          // Mapper le code
+          const mapping = await mappingService.getPosteFromCode(code);
+          
+          if (mapping) {
+            let targetDate = formattedDate;
+            
+            // Décaler les services de nuit au jour suivant
+            if (mapping.service === 'X') {
+              const currentDate = new Date(formattedDate + 'T12:00:00');
+              currentDate.setDate(currentDate.getDate() + 1);
+              targetDate = currentDate.toISOString().split('T')[0];
+            }
+            
+            result.planning.push({
+              date: targetDate,
+              service_code: mapping.service,
+              poste_code: mapping.poste,
+              original_code: code,
+              description: mapping.description
+            });
+          } else if (this.isSpecialCode(code)) {
+            // Codes spéciaux sans mapping
+            result.planning.push({
+              date: formattedDate,
+              service_code: code,
+              poste_code: null,
+              original_code: code,
+              description: this.getSpecialCodeDescription(code)
+            });
+          } else {
+            console.log(`⚠️ Code non reconnu: ${code}`);
+          }
+        }
+      }
+    }
+
+    // Trier par date
+    result.planning.sort((a, b) => a.date.localeCompare(b.date));
+    
+    console.log(`✅ Extraction terminée: ${result.planning.length} entrées trouvées`);
+    
+    return result;
   }
 
   /**
@@ -231,7 +388,7 @@ IMPORTANT :
   }
 
   /**
-   * Parse le contenu OCR extrait par Mistral
+   * Parse le contenu OCR extrait par Mistral (méthode de secours)
    */
   async parseOCRContent(ocrContent) {
     const result = {
@@ -395,7 +552,7 @@ IMPORTANT :
    * Vérifie si c'est un code spécial
    */
   isSpecialCode(code) {
-    const specialCodes = ['RP', 'RPP', 'C', 'D', 'HAB', 'MA', 'I', 'NU', 'INACTIN', 'VISIMED', 'VMT'];
+    const specialCodes = ['RH', 'RP', 'RPP', 'CA', 'C', 'D', 'HAB', 'MA', 'I', 'NU', 'INACTIN', 'VISIMED', 'VMT'];
     return specialCodes.includes(code.toUpperCase());
   }
 
@@ -417,8 +574,10 @@ IMPORTANT :
     
     // Codes spéciaux
     const specialPatterns = [
+      { pattern: /\bRH\b/i, code: 'RH' },
       { pattern: /\bRPP?\b/i, code: 'RP' },
       { pattern: /\bRepos\s+périodique/i, code: 'RP' },
+      { pattern: /\bCA\b/i, code: 'CA' },
       { pattern: /\bC\b(?!\d)/i, code: 'C' },
       { pattern: /\bCongé/i, code: 'C' },
       { pattern: /\bCONGE\b/i, code: 'C' },
@@ -450,8 +609,10 @@ IMPORTANT :
    */
   getSpecialCodeDescription(code) {
     const descriptions = {
+      'RH': 'RH',
       'RP': 'Repos périodique',
       'RPP': 'Repos périodique prolongé',
+      'CA': 'Congé annuel',
       'C': 'Congé',
       'D': 'Disponible',
       'HAB': 'Formation/Habilitation',
