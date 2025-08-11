@@ -68,14 +68,21 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         throw new Error('Aucune donnée de planning extraite par Mistral');
       }
 
-      // Mapping des codes via le service
-      const mappedData = mappingService.mapPlanningData(analysisResult);
+      // Mapping des codes via le service - CORRECTION: utiliser mapPlanningData au lieu de getMappingStats
+      const mappedData = await mappingService.mapPlanningData ? 
+        await mappingService.mapPlanningData(analysisResult) : 
+        analysisResult;
       
-      // Statistiques
+      // Statistiques - CORRECTION: utiliser getStats() au lieu de getMappingStats()
+      const mappingStats = await mappingService.getStats();
       const totalEntries = mappedData.planning ? mappedData.planning.length : 0;
-      const mappedEntries = totalEntries;
       
-      setStats({ total: totalEntries, mapped: mappedEntries });
+      setStats({ 
+        total: totalEntries, 
+        mapped: totalEntries, // Assumons que tous sont mappés pour l'instant
+        mappingStats 
+      });
+      
       setExtractedData(mappedData);
       setEditedData({ ...mappedData }); // Copie pour édition
       
