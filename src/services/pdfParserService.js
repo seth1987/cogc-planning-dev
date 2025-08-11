@@ -22,60 +22,11 @@ class PDFParserService {
   }
 
   /**
-   * Parse manuel du PDF (fallback sans API)
-   */
-  async parseManual(file) {
-    console.log('📋 Utilisation du parsing manuel (sans API)');
-    
-    // Structure de base pour l'import manuel
-    const result = {
-      agent: { nom: '', prenom: '' },
-      planning: []
-    };
-
-    // Extraire le nom de l'agent depuis le nom du fichier si possible
-    const fileName = file.name.replace('.pdf', '');
-    const nameMatch = fileName.match(/([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ]+)[_\s]+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)/i);
-    
-    if (nameMatch) {
-      result.agent.nom = nameMatch[1];
-      result.agent.prenom = nameMatch[2];
-      console.log('👤 Agent extrait du nom de fichier:', result.agent.nom, result.agent.prenom);
-    }
-
-    // Générer un template de planning vide pour le mois en cours
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
-    // Ajouter quelques entrées d'exemple pour test
-    for (let day = 1; day <= Math.min(5, daysInMonth); day++) {
-      const date = new Date(year, month, day);
-      const dateStr = date.toISOString().split('T')[0];
-      
-      // Ajouter une entrée exemple
-      result.planning.push({
-        date: dateStr,
-        service_code: 'RP',
-        poste_code: null,
-        original_code: 'RP',
-        description: 'Repos périodique (À compléter manuellement)'
-      });
-    }
-
-    console.log('⚠️ Mode manuel : Veuillez compléter les données dans l\'étape de validation');
-    
-    return result;
-  }
-
-  /**
    * Parse le PDF avec Mistral API (via fetch natif, sans SDK)
    */
   async parseWithMistralOCR(file, apiKey) {
-    if (!apiKey || apiKey === 'sk-proj-default-key') {
-      console.log('⚠️ Clé API non configurée, utilisation du parsing manuel');
-      return this.parseManual(file);
+    if (!apiKey || apiKey === 'sk-proj-default-key' || apiKey.length < 10) {
+      throw new Error('Clé API Mistral requise. Veuillez configurer votre clé API dans les variables d\'environnement.');
     }
 
     try {
@@ -149,15 +100,13 @@ class PDFParserService {
       
       // Gestion des erreurs spécifiques
       if (err.message?.includes('401')) {
-        console.warn('Clé API invalide, utilisation du parsing manuel');
-        return this.parseManual(file);
+        throw new Error('Clé API Mistral invalide. Vérifiez votre configuration.');
       } else if (err.message?.includes('429')) {
         throw new Error('Limite de requêtes Mistral atteinte. Réessayez plus tard.');
       } else if (err.message?.includes('413')) {
         throw new Error('Fichier PDF trop volumineux (max 50MB)');
       } else {
-        console.warn('Erreur OCR, utilisation du parsing manuel:', err.message);
-        return this.parseManual(file);
+        throw new Error(`Erreur OCR: ${err.message || 'Erreur inconnue'}`);
       }
     }
   }
@@ -218,8 +167,7 @@ class PDFParserService {
       
     } catch (err) {
       console.error('Erreur avec mistral-large:', err);
-      console.warn('Utilisation du parsing manuel en dernier recours');
-      return this.parseManual(file);
+      throw new Error(`Impossible d'extraire le PDF avec l'API Mistral: ${err.message}`);
     }
   }
 
@@ -416,12 +364,12 @@ class PDFParserService {
 
     // Vérifier l'agent
     if (!data.agent || !data.agent.nom || !data.agent.prenom) {
-      warnings.push('Agent non détecté - À compléter manuellement');
+      warnings.push('Agent non détecté dans le document');
     }
 
     // Vérifier le planning
     if (!data.planning || data.planning.length === 0) {
-      warnings.push('Aucune entrée de planning trouvée - Mode manuel activé');
+      errors.push('Aucune entrée de planning trouvée dans le PDF');
     }
 
     // Détection des doublons
@@ -459,15 +407,15 @@ class PDFParserService {
   }
 
   /**
-   * Méthode principale qui détermine quelle API utiliser
+   * Méthode principale qui requiert TOUJOURS une clé API valide
    */
   async parsePDF(file, apiKey) {
-    // Si pas de clé ou clé par défaut, utiliser le parsing manuel
-    if (!apiKey || apiKey === 'sk-proj-default-key') {
-      return this.parseManual(file);
+    // Vérification stricte de la clé API
+    if (!apiKey || apiKey === 'sk-proj-default-key' || apiKey.length < 10) {
+      throw new Error('Module PDF désactivé : Clé API Mistral requise. Configurez REACT_APP_MISTRAL_API_KEY dans vos variables d\'environnement.');
     }
     
-    // Sinon essayer avec l'API
+    // Utiliser uniquement l'API Mistral
     return await this.parseWithMistralOCR(file, apiKey);
   }
 }
