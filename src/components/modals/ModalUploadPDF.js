@@ -46,20 +46,18 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   // Gestion de l'upload du fichier
   const handleFileUpload = async (uploadedFile) => {
+    console.log('📂 Fichier reçu dans handleFileUpload:', uploadedFile.name);
     setFile(uploadedFile);
     setLoading(true);
     setError(null);
 
     try {
-      const apiKey = process.env.REACT_APP_MISTRAL_API_KEY;
+      // Utiliser une clé API par défaut ou ignorer si pas configurée
+      const apiKey = 'sk-proj-default-key'; // Clé temporaire ou par défaut
       
-      if (!apiKey) {
-        throw new Error('Clé API Mistral non configurée');
-      }
-
-      console.log('🔄 Utilisation de Mistral OCR pour l\'extraction...');
+      console.log('🔄 Utilisation de l\'extraction PDF...');
       
-      // Parser le PDF avec Mistral OCR
+      // Parser le PDF - Le service gérera l'absence de clé API
       const parsed = await pdfParserService.parsePDF(uploadedFile, apiKey);
       
       // Valider les données
@@ -72,7 +70,23 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       
     } catch (err) {
       console.error('Erreur extraction:', err);
-      setError(err.message || 'Erreur lors de l\'extraction du PDF');
+      // Si l'erreur est liée à l'API, essayer le parsing manuel
+      if (err.message.includes('API') || err.message.includes('Mistral')) {
+        console.log('⚠️ API non disponible, utilisation du parsing manuel');
+        try {
+          // Appeler directement le parsing manuel si disponible
+          const parsed = await pdfParserService.parseManual(uploadedFile);
+          const validationResult = pdfParserService.validateParsedData(parsed);
+          setValidation(validationResult);
+          setExtractedData(parsed);
+          setEditedData(JSON.parse(JSON.stringify(parsed)));
+          setCurrentStep(2);
+        } catch (manualErr) {
+          setError('Extraction manuelle échouée : ' + manualErr.message);
+        }
+      } else {
+        setError(err.message || 'Erreur lors de l\'extraction du PDF');
+      }
     } finally {
       setLoading(false);
     }
@@ -130,7 +144,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                 Import Bulletin de Commande
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                Powered by Mistral OCR - Extraction intelligente de documents
+                Extraction intelligente de documents
               </p>
             </div>
           </div>
@@ -172,12 +186,12 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
               <Info className="h-5 w-5 text-blue-400 mt-0.5" />
               <div className="ml-3">
                 <p className="text-sm text-blue-700">
-                  <strong>Nouveau !</strong> Utilisation de Mistral OCR pour une extraction plus précise
+                  <strong>Information</strong> Extraction de PDF disponible
                 </p>
                 <p className="text-xs text-blue-600 mt-1">
-                  ✓ Reconnaissance avancée des tableaux et mise en page complexe<br/>
-                  ✓ Précision de 94.89% sur les documents structurés<br/>
-                  ✓ Coût réduit de 87% par rapport à l'ancienne méthode
+                  ✓ Reconnaissance des tableaux et mise en page<br/>
+                  ✓ Détection automatique des services<br/>
+                  ✓ Mapping intelligent avec la base de données
                 </p>
               </div>
             </div>
@@ -202,11 +216,11 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
             <div className="flex flex-col items-center justify-center py-12">
               <Loader className="h-8 w-8 text-blue-600 animate-spin mb-4" />
               <p className="text-gray-600">
-                {currentStep === 1 && 'Extraction OCR en cours...'}
+                {currentStep === 1 && 'Extraction en cours...'}
                 {currentStep === 2 && 'Import en cours...'}
               </p>
               <p className="text-sm text-gray-500 mt-2">
-                Utilisation de Mistral OCR pour analyser le document
+                Analyse du document PDF
               </p>
             </div>
           )}
@@ -216,8 +230,10 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
               {/* Étape 1: Upload */}
               {currentStep === 1 && (
                 <PDFUploadStep
+                  file={file}
                   onFileUpload={handleFileUpload}
                   stats={stats}
+                  error={error}
                 />
               )}
 
@@ -247,14 +263,14 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           )}
         </div>
 
-        {/* Footer avec info OCR */}
+        {/* Footer avec info */}
         <div className="bg-gray-50 px-6 py-3 border-t flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <CheckCircle className="h-3 w-3 text-green-500" />
-            <span>Mistral OCR activé ✓ {stats.mapped}/{stats.total} codes mappés</span>
+            <span>Base de données connectée ✓ {stats.mapped}/{stats.total} codes mappés</span>
           </div>
           <div className="text-xs text-gray-400">
-            v2.0 - Migration OCR
+            v2.1.0 - COGC Planning
           </div>
         </div>
       </div>
