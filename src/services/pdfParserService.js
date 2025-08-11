@@ -82,7 +82,7 @@ class PDFParserService {
   }
 
   /**
-   * Parse le PDF avec Mistral API - Version optimisée
+   * Parse le PDF avec Mistral API - Version adaptée au format liste SNCF
    */
   async parseWithMistralOCR(file, apiKey) {
     if (!apiKey || apiKey === 'sk-proj-default-key' || apiKey.length < 10) {
@@ -95,37 +95,59 @@ class PDFParserService {
       
       console.log('🤖 Envoi à Mistral pixtral pour extraction OCR...');
       
-      // 2. Prompt ultra-optimisé et structuré
-      const prompt = `Analyse cette image d'un bulletin de commande SNCF et extrais les données.
+      // 2. Prompt adapté au format LISTE de bulletin SNCF
+      const prompt = `Analyse cette image d'un bulletin de commande SNCF et extrais TOUTES les données.
 
-STRUCTURE DU DOCUMENT:
+FORMAT DU DOCUMENT:
 - En-tête: "COGC PN" suivi du NOM et PRÉNOM de l'agent
-- Titre: Mois et année (ex: "AVRIL 2025")
-- Tableau: 31 colonnes (jours 1 à 31) avec codes de service
+- Liste chronologique avec pour chaque entrée:
+  * Date au format JJ/MM/AAAA
+  * Code service (ACR002, CCU005, REO008, CENT001, etc.)
+  * Description et horaires
+  * Services spéciaux: RP, RPP, NU, DISPO, VISIMED, VMT
 
-CODES À IDENTIFIER:
-• Numériques simples: 001, 002, 003, 004, 005, 006, 007, 008, 009, 010
-• Codes services: CRC001, ACR002, CCU003, CENT004, SOUF005, REO006, RC007, RE008, RO009, CAC010
-• Codes spéciaux: RH, RP, CA, C, HAB, MA, NU, D, VMT, VISIMED, INACTIN
+EXTRACTION REQUISE:
+1. L'AGENT après "COGC PN"
+2. Pour CHAQUE DATE dans le document:
+   - Extraire la date (JJ/MM/AAAA)
+   - Extraire le CODE principal (ACR002, CCU005, etc.)
+   - Si c'est "RP Repos périodique" → code "RP"
+   - Si c'est "RPP" → code "RPP"
+   - Si c'est "NU" ou "non utilisé" → code "NU"
+   - Si c'est "DISPO" ou "Disponible" → code "DISPO"
+   - Si c'est "VISIMED" ou "VMT" → code "VISIMED"
 
-INSTRUCTIONS:
-1. Lis le tableau colonne par colonne (jours 1 à 31)
-2. Pour chaque cellule non vide, note le jour et le code exact
-3. Conserve les codes EXACTEMENT comme écrits (001 reste 001, pas CRC001)
+ATTENTION SERVICES DE NUIT:
+- Si un service ACR003 a des horaires 22:00 à 06:00, c'est une NUIT
+- Marque ces services avec le flag "isNuit": true
 
-RETOURNE CE JSON (et RIEN d'autre):
+DATES MULTIPLES:
+- Si une même date apparaît 2 fois (ex: 21/04/2025 avec NU puis ACR003), extraire LES DEUX
+
+RETOURNE CE JSON EXACT:
 {
   "agent": {"nom": "NOM_EN_MAJUSCULES", "prenom": "Prenom"},
-  "mois": "avril",
-  "annee": "2025",
   "planning": [
-    {"jour": 1, "code": "001"},
-    {"jour": 2, "code": "RH"},
-    {"jour": 3, "code": "002"},
-    {"jour": 15, "code": "CA"},
-    {"jour": 20, "code": "005"}
+    {"date": "15/04/2025", "code": "ACR002"},
+    {"date": "16/04/2025", "code": "CCU005"},
+    {"date": "17/04/2025", "code": "CCU005"},
+    {"date": "18/04/2025", "code": "REO008"},
+    {"date": "19/04/2025", "code": "RPP"},
+    {"date": "20/04/2025", "code": "RPP"},
+    {"date": "21/04/2025", "code": "NU"},
+    {"date": "21/04/2025", "code": "ACR003", "isNuit": true},
+    {"date": "22/04/2025", "code": "ACR003", "isNuit": true},
+    {"date": "23/04/2025", "code": "ACR003", "isNuit": true},
+    {"date": "25/04/2025", "code": "RP"},
+    {"date": "26/04/2025", "code": "RP"},
+    {"date": "27/04/2025", "code": "CENT001"},
+    {"date": "28/04/2025", "code": "CENT001"},
+    {"date": "29/04/2025", "code": "DISPO"},
+    {"date": "30/04/2025", "code": "VISIMED"}
   ]
-}`;
+}
+
+IMPORTANT: Extraire TOUTES les dates visibles, même si certaines apparaissent plusieurs fois.`;
 
       // 3. Appel API Mistral avec le modèle pixtral-12b-2409 (optimisé pour OCR)
       const response = await fetch(this.mistralApiUrl, {
@@ -220,16 +242,19 @@ RETOURNE CE JSON (et RIEN d'autre):
         messages: [
           {
             role: 'system',
-            content: 'Tu es un expert en extraction de données de documents SNCF. Extrais toutes les informations du bulletin.'
+            content: 'Tu es un expert en extraction de données de bulletins SNCF. Extrais toutes les dates et codes de service.'
           },
           {
             role: 'user',
-            content: `Analyse ce bulletin SNCF et retourne un JSON avec:
+            content: `Analyse ce bulletin SNCF au format LISTE et retourne un JSON avec:
 - agent: {nom, prenom} après "COGC PN"
-- mois et annee
-- planning: [{jour, code}] pour chaque entrée du tableau
+- planning: tableau avec pour chaque ligne:
+  * date: "JJ/MM/AAAA"
+  * code: le code service (ACR002, CCU005, etc.)
+  * isNuit: true si horaires 22:00-06:00
 
-Codes possibles: 001-010, CRC001-CAC010, RH, RP, CA, C, HAB, MA, etc.
+Codes spéciaux: RP, RPP, NU, DISPO, VISIMED
+Si une date apparaît 2 fois, extraire les 2 entrées.
 Retourne UNIQUEMENT le JSON.`
           }
         ],
@@ -272,27 +297,37 @@ Retourne UNIQUEMENT le JSON.`
 
     console.log('👤 Agent:', result.agent.nom, result.agent.prenom);
 
-    // Déterminer le mois et l'année
-    const moisMap = {
-      'janvier': '01', 'février': '02', 'mars': '03', 'avril': '04',
-      'mai': '05', 'juin': '06', 'juillet': '07', 'août': '08',
-      'septembre': '09', 'octobre': '10', 'novembre': '11', 'décembre': '12'
-    };
-    
-    const mois = data.mois || new Date().toLocaleString('fr-FR', { month: 'long' });
-    const annee = data.annee || new Date().getFullYear();
-    const moisNum = moisMap[mois.toLowerCase()] || String(new Date().getMonth() + 1).padStart(2, '0');
-
     // Traiter chaque entrée du planning
     if (data.planning && Array.isArray(data.planning)) {
       for (const entry of data.planning) {
-        if (!entry.jour || !entry.code) continue;
+        if (!entry.date || !entry.code) continue;
         
-        const jour = String(entry.jour).padStart(2, '0');
-        const formattedDate = `${annee}-${moisNum}-${jour}`;
+        // Parser la date au format JJ/MM/AAAA
+        let dateStr = entry.date;
+        let formattedDate;
+        
+        // Gérer différents formats de date
+        if (dateStr.includes('/')) {
+          const parts = dateStr.split('/');
+          if (parts.length === 3) {
+            // Format JJ/MM/AAAA
+            const [jour, mois, annee] = parts;
+            formattedDate = `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
+          } else if (parts.length === 2) {
+            // Format JJ/MM (prendre l'année courante)
+            const [jour, mois] = parts;
+            const annee = new Date().getFullYear();
+            formattedDate = `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
+          }
+        } else {
+          // Si pas de format reconnu, essayer tel quel
+          formattedDate = dateStr;
+        }
+        
         const code = String(entry.code).trim().toUpperCase();
+        const isNuit = entry.isNuit === true;
         
-        console.log(`📅 Jour ${jour}: ${code}`);
+        console.log(`📅 Date: ${formattedDate}, Code: ${code}${isNuit ? ' (NUIT)' : ''}`);
         
         // Obtenir le mapping depuis la BDD
         const mapping = await mappingService.getPosteFromCode(code);
@@ -300,8 +335,9 @@ Retourne UNIQUEMENT le JSON.`
         if (mapping) {
           let targetDate = formattedDate;
           
-          // ⭐ IMPORTANT: Décaler les services de nuit (X) au jour suivant
-          if (mapping.service === 'X') {
+          // ⭐ IMPORTANT: Décaler les services de nuit au jour suivant
+          // Services ACR003 avec flag isNuit OU service === 'X'
+          if (isNuit || mapping.service === 'X') {
             const date = new Date(formattedDate + 'T12:00:00');
             date.setDate(date.getDate() + 1);
             targetDate = date.toISOString().split('T')[0];
@@ -328,6 +364,14 @@ Retourne UNIQUEMENT le JSON.`
           
         } else {
           console.warn(`  ⚠️ Code inconnu: ${code}`);
+          // Ajouter quand même avec le code tel quel
+          result.planning.push({
+            date: formattedDate,
+            service_code: code,
+            poste_code: null,
+            original_code: code,
+            description: code
+          });
         }
       }
     }
@@ -364,42 +408,33 @@ Retourne UNIQUEMENT le JSON.`
       result.agent.prenom = agentMatch[2];
     }
 
-    // Chercher le mois et l'année
-    const monthNames = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
-                       'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-    let month = new Date().getMonth() + 1;
-    let year = new Date().getFullYear();
-    
-    for (let i = 0; i < monthNames.length; i++) {
-      if (text.toLowerCase().includes(monthNames[i])) {
-        month = i + 1;
-        break;
-      }
-    }
-    
-    const yearMatch = text.match(/20\d{2}/);
-    if (yearMatch) year = yearMatch[0];
-
-    // Chercher les entrées jour/code
+    // Pattern pour extraire les dates au format JJ/MM/AAAA et le code
     const patterns = [
-      /(\d{1,2})\s*:\s*([A-Z0-9]+)/gi,
-      /jour\s+(\d{1,2})\s*[:\-]?\s*([A-Z0-9]+)/gi,
-      /^(\d{1,2})\s+([A-Z0-9]+)/gim
+      /(\d{2})\/(\d{2})\/(\d{4})\s+([A-Z0-9]+)/gi,          // 15/04/2025 ACR002
+      /(\d{2})\/(\d{2})\/(\d{4})\s+\w+\s+([A-Z0-9]+)/gi,    // 15/04/2025 AIDE ACR002
+      /(\d{2})\/(\d{2})\/(\d{4})\s+.*?(RP|RPP|NU|DISPO|VISIMED)/gi, // Codes spéciaux
     ];
 
     for (const pattern of patterns) {
       const matches = [...text.matchAll(pattern)];
       for (const match of matches) {
-        const day = parseInt(match[1]);
-        const code = match[2].toUpperCase();
+        let jour, mois, annee, code;
         
-        if (day >= 1 && day <= 31 && this.isValidCode(code)) {
-          const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        if (match.length === 5) {
+          [, jour, mois, annee, code] = match;
+        }
+        
+        if (jour && mois && annee && code) {
+          const date = `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
+          code = code.toUpperCase();
+          
+          // Vérifier si c'est un service de nuit (ACR003 généralement)
+          const isNuit = code === 'ACR003' && text.includes('22:00') && text.includes('06:00');
           
           const mapping = await mappingService.getPosteFromCode(code);
           if (mapping) {
             let targetDate = date;
-            if (mapping.service === 'X') {
+            if (isNuit || mapping.service === 'X') {
               const d = new Date(date + 'T12:00:00');
               d.setDate(d.getDate() + 1);
               targetDate = d.toISOString().split('T')[0];
@@ -411,6 +446,14 @@ Retourne UNIQUEMENT le JSON.`
               poste_code: mapping.poste,
               original_code: code,
               description: mapping.description
+            });
+          } else if (this.isSpecialCode(code)) {
+            result.planning.push({
+              date: date,
+              service_code: code,
+              poste_code: null,
+              original_code: code,
+              description: this.getSpecialCodeDescription(code)
             });
           }
         }
@@ -440,7 +483,7 @@ Retourne UNIQUEMENT le JSON.`
    * Vérifie si c'est un code spécial
    */
   isSpecialCode(code) {
-    const specialCodes = ['RH', 'RP', 'RPP', 'CA', 'C', 'D', 'HAB', 'MA', 'I', 'NU', 'INACTIN', 'VISIMED', 'VMT'];
+    const specialCodes = ['RH', 'RP', 'RPP', 'CA', 'C', 'D', 'DISPO', 'HAB', 'MA', 'I', 'NU', 'INACTIN', 'VISIMED', 'VMT'];
     return specialCodes.includes(code.toUpperCase());
   }
 
@@ -455,6 +498,7 @@ Retourne UNIQUEMENT le JSON.`
       'CA': 'Congé annuel',
       'C': 'Congé',
       'D': 'Disponible',
+      'DISPO': 'Disponible',
       'HAB': 'Formation/Habilitation',
       'MA': 'Maladie',
       'I': 'Indisponible',
@@ -482,14 +526,17 @@ Retourne UNIQUEMENT le JSON.`
       errors.push('Aucune donnée extraite du planning');
     }
 
-    // Vérifier les doublons
-    const seen = new Set();
+    // Vérifier les doublons (sauf s'ils sont légitimes comme NU + ACR003 le même jour)
+    const dateCodeMap = {};
     data.planning.forEach(entry => {
       const key = `${entry.date}_${entry.service_code}`;
-      if (seen.has(key)) {
-        warnings.push(`Doublon détecté: ${entry.date}`);
+      if (dateCodeMap[key]) {
+        // C'est OK si c'est NU + service ou deux services différents le même jour
+        if (entry.service_code !== 'NU' && dateCodeMap[key] !== 'NU') {
+          warnings.push(`Possible doublon: ${entry.date} - ${entry.service_code}`);
+        }
       }
-      seen.add(key);
+      dateCodeMap[key] = entry.service_code;
     });
 
     return { 
