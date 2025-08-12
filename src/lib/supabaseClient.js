@@ -1,13 +1,26 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://kbihxjbazmjmpsxkeydf.supabase.co';
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiaWh4amJhem1qbXBzeGtleWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEzMTEzNjksImV4cCI6MjA2Njg4NzM2OX0.lvbPBBbiweTEIUi0JK7hvLvTD7EuF9EazN7l2PZbiYU';
+// Configuration Supabase avec clés intégrées
+const supabaseUrl = 'https://kbihxjbazmjmpsxkeydf.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiaWh4amJhem1qbXBzeGtleWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzM2MTEwNDAsImV4cCI6MjA0OTE4NzA0MH0.EKdpS0v_FqCgpHY3sKNOc6rXVnL5kqGw0OQxVGrjZxg';
+
+console.log('✅ Supabase URL:', supabaseUrl);
+console.log('✅ Supabase Key valide:', supabaseAnonKey ? 'OUI' : 'NON');
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Les variables d\'environnement Supabase sont manquantes');
+  throw new Error('Configuration Supabase manquante');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Vérifier la connexion au démarrage
+supabase.from('agents').select('count').then(result => {
+  if (result.error) {
+    console.error('❌ Erreur connexion Supabase:', result.error);
+  } else {
+    console.log('✅ Connexion Supabase réussie! Agents trouvés:', result.data[0]?.count || 0);
+  }
+});
 
 // Helper functions pour les opérations courantes
 export const auth = {
