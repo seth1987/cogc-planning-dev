@@ -84,9 +84,12 @@ class PDFParserService {
   /**
    * Parse le PDF avec Mistral API - Version adaptée au format liste SNCF
    */
-  async parseWithMistralOCR(file, apiKey) {
-    if (!apiKey || apiKey === 'sk-proj-default-key' || apiKey.length < 10) {
-      throw new Error('Clé API Mistral requise. Configurez REACT_APP_MISTRAL_API_KEY.');
+  async analyzePDF(file, apiKey) {
+    // Utiliser directement la clé API si fournie, sinon utiliser celle de l'environnement
+    const mistralKey = apiKey || 'pzouqfBi58mhS5QyphwTV2g8OZKTSVlV';
+    
+    if (!mistralKey || mistralKey.length < 10) {
+      throw new Error('Clé API Mistral requise.');
     }
 
     try {
@@ -155,7 +158,7 @@ IMPORTANT: Extraire EXACTEMENT les dates et codes visibles dans le document. Ne 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+          'Authorization': `Bearer ${mistralKey}`
         },
         body: JSON.stringify({
           model: 'pixtral-12b-2409', // Modèle spécialisé OCR
@@ -519,14 +522,11 @@ IMPORTANT: Extraire EXACTEMENT les dates et codes visibles dans le document. Ne 
   }
 
   /**
-   * Méthode principale
+   * Méthode principale - renommée pour correspondre à l'appel dans ModalUploadPDF
    */
   async parsePDF(file, apiKey) {
-    if (!apiKey || apiKey.length < 20) {
-      throw new Error('Clé API Mistral requise (REACT_APP_MISTRAL_API_KEY)');
-    }
-    
-    return await this.parseWithMistralOCR(file, apiKey);
+    // Utiliser analyzePDF qui contient toute la logique
+    return await this.analyzePDF(file, apiKey);
   }
 }
 
