@@ -1,9 +1,16 @@
-// Service de parsing et extraction de PDF avec Mistral API
+// Service de parsing et extraction de PDF avec Mistral API - Version améliorée
 import mappingService from './mappingService';
 
 class PDFParserService {
   constructor() {
     this.mistralApiUrl = 'https://api.mistral.ai/v1/chat/completions';
+    
+    // Liste des éléments à ignorer lors du parsing
+    this.ignoredElements = [
+      'METRO',      // Trajets métro
+      'RS',         // Repos/pauses
+      'N[0-9A-Z]+', // Codes techniques SNCF (N1100010CO72, etc.)
+    ];
   }
 
   /**
@@ -91,7 +98,7 @@ class PDFParserService {
   }
 
   /**
-   * Parse le PDF avec Mistral API - Version adaptée au format liste SNCF
+   * Parse le PDF avec Mistral API - Version améliorée
    */
   async analyzePDF(file, apiKey) {
     // Utiliser directement la clé API si fournie, sinon utiliser celle intégrée dans le code
@@ -107,57 +114,57 @@ class PDFParserService {
       
       console.log('🤖 Envoi à Mistral pixtral pour extraction OCR...');
       
-      // 2. Prompt amélioré pour extraction complète
-      const prompt = `Analyse cette/ces image(s) d'un bulletin de commande SNCF et extrais ABSOLUMENT TOUTES les données du début jusqu'à la fin du document.
+      // 2. Prompt amélioré pour extraction précise
+      const prompt = `Analyse cette/ces image(s) d'un bulletin de commande SNCF et extrais UNIQUEMENT les informations pertinentes.
 
 FORMAT DU DOCUMENT:
 - En-tête: "COGC PN" suivi du NOM et PRÉNOM de l'agent
-- Liste chronologique avec pour chaque entrée:
-  * Date au format JJ/MM/AAAA
-  * Code service (ACR002, CCU005, REO008, CENT001, etc.)
-  * Description et horaires
-  * Services spéciaux: RP, RPP, NU, DISPO, VISIMED, VMT, INACTIN
+- Commande allant du JJ/MM/AAAA au JJ/MM/AAAA
+- Liste chronologique des services
 
-IMPORTANT - EXTRACTION COMPLÈTE:
-1. L'AGENT après "COGC PN"
-2. TOUTES LES DATES du document, du début jusqu'à la fin
-3. Si le document contient plusieurs pages, VÉRIFIER TOUTES LES PAGES
-4. La commande va généralement du 15 ou 21 du mois jusqu'au 30 ou 31
-5. NE PAS S'ARRÊTER avant d'avoir extrait la DERNIÈRE date du document
-6. Vérifier spécialement la fin du document (dates 28, 29, 30, 31 si présentes)
+ÉLÉMENTS À IGNORER ABSOLUMENT:
+- Lignes contenant "METRO" (trajets)
+- Lignes contenant "RS" (repos/pauses)
+- Codes techniques commençant par N (ex: N1100010CO72)
+- Numéros de CP
+- Heures isolées (09:35, 14:00, etc.)
+- Messages et éditions
 
-Pour CHAQUE DATE dans le document:
-- Extraire la date (JJ/MM/AAAA)
-- Extraire le CODE principal (ACR002, CCU005, etc.)
-- Si c'est "RP Repos périodique" → code "RP"
-- Si c'est "RPP" → code "RPP"
-- Si c'est "NU" ou "non utilisé" → code "NU"
-- Si c'est "DISPO" ou "Disponible" → code "DISPO"
-- Si c'est "VISIMED" ou "VMT" → code "VISIMED"
-- Si c'est "INACTIN" → code "INACTIN"
+ÉLÉMENTS À EXTRAIRE:
+1. AGENT: Le nom après "COGC PN" (format: NOM PRENOM)
+2. Pour CHAQUE DATE:
+   - Date au format JJ/MM/AAAA
+   - Le CODE SERVICE principal (ex: ACR002, CCU005, CENT003)
+   - Si la ligne contient "Repos périodique" → code "RP"
+   - Si la ligne contient "Congé" → code "C"
+   - Si la ligne contient "Disponible" ou "DISPO" → code "D"
+   - Si la ligne contient "FORMATION" ou "HAB" → code "HAB"
+   - Si la ligne contient "Utilisable non utilisé" ou "NU" → code "NU"
 
-ATTENTION SERVICES DE NUIT:
-- SEUL ACR003 avec horaires 22:00 à 06:00 est une NUIT
-- Les autres codes ne sont PAS des nuits (CCU005, REO008, etc.)
-- Marque UNIQUEMENT ACR003 22:00-06:00 avec "isNuit": true
+SERVICES MULTIPLES PAR JOUR:
+- Si une date apparaît plusieurs fois (ex: 18/05 avec NU puis CCU003), extraire SEULEMENT le service principal (pas NU)
+- Pour le 30/05 si deux services: prendre celui avec horaires 22:00-06:00 (service de nuit)
 
-DATES MULTIPLES:
-- Si une même date apparaît 2 fois (ex: 21/04/2025 avec NU puis ACR003), extraire LES DEUX
+SERVICES DE NUIT:
+- Les services avec horaires 22:00 à 06:00 sont des services de nuit
+- Noter avec "isNuit": true
 
-VÉRIFICATION FINALE:
-- As-tu bien extrait TOUTES les dates jusqu'à la FIN du document ?
-- Y a-t-il des dates après le 27 ? (28, 29, 30, 31)
-- As-tu vérifié la dernière page si le document en a plusieurs ?
-
-RETOURNE CE JSON EXACT avec TOUTES les dates:
+RETOURNE CE JSON avec UNIQUEMENT les services pertinents:
 {
-  "agent": {"nom": "NOM_EN_MAJUSCULES", "prenom": "Prenom"},
+  "agent": {"nom": "NOM", "prenom": "Prenom"},
   "planning": [
-    // TOUTES les entrées du début jusqu'à la fin
+    {
+      "date": "JJ/MM/AAAA",
+      "code": "CODE_SERVICE",
+      "isNuit": false
+    }
   ]
 }
 
-IMPORTANT: Extraire EXACTEMENT TOUTES les dates et codes visibles dans le document. Ne pas s'arrêter avant la fin.`;
+IMPORTANT: 
+- NE PAS inclure les lignes METRO, RS ou codes techniques
+- Extraire TOUTES les dates du début à la fin
+- Une seule entrée par date (sauf si vraiment deux services distincts)`;
 
       // 3. Construire le contenu pour l'API avec toutes les images
       const messageContent = [
@@ -223,14 +230,17 @@ IMPORTANT: Extraire EXACTEMENT TOUTES les dates et codes visibles dans le docume
       try {
         const parsedData = JSON.parse(jsonMatch[0]);
         
+        // Filtrer et nettoyer les données
+        const cleanedData = this.cleanExtractedData(parsedData);
+        
         // Vérifier que toutes les dates ont été extraites
-        if (parsedData.planning && parsedData.planning.length > 0) {
-          const dates = parsedData.planning.map(e => e.date).sort();
+        if (cleanedData.planning && cleanedData.planning.length > 0) {
+          const dates = cleanedData.planning.map(e => e.date).sort();
           console.log(`📅 Dates extraites: du ${dates[0]} au ${dates[dates.length - 1]}`);
           console.log(`📊 Total: ${dates.length} entrées`);
         }
         
-        return await this.formatExtractedData(parsedData);
+        return await this.formatExtractedData(cleanedData);
       } catch (parseError) {
         console.error('❌ JSON invalide:', parseError);
         return await this.parseManual(ocrContent);
@@ -247,6 +257,94 @@ IMPORTANT: Extraire EXACTEMENT TOUTES les dates et codes visibles dans le docume
       
       throw err;
     }
+  }
+
+  /**
+   * Nettoie les données extraites
+   */
+  cleanExtractedData(data) {
+    if (!data.planning) return data;
+
+    // Filtrer les entrées invalides et les doublons
+    const cleanedPlanning = [];
+    const seenDates = new Map();
+
+    data.planning.forEach(entry => {
+      if (!entry.date || !entry.code) return;
+
+      // Ignorer les codes non pertinents
+      if (this.shouldIgnoreCode(entry.code)) return;
+
+      const date = entry.date;
+      
+      // Gérer les services multiples par jour
+      if (seenDates.has(date)) {
+        const existing = seenDates.get(date);
+        
+        // Préférer les services principaux sur NU
+        if (existing.code === 'NU' && entry.code !== 'NU') {
+          seenDates.set(date, entry);
+          return;
+        }
+        
+        // Pour le même jour, préférer le service de nuit
+        if (entry.isNuit && !existing.isNuit) {
+          seenDates.set(date, entry);
+          return;
+        }
+        
+        // Sinon, garder l'existant
+        return;
+      }
+
+      seenDates.set(date, entry);
+    });
+
+    // Convertir en tableau
+    seenDates.forEach(entry => {
+      cleanedPlanning.push(entry);
+    });
+
+    // Trier par date
+    cleanedPlanning.sort((a, b) => {
+      const dateA = this.parseDate(a.date);
+      const dateB = this.parseDate(b.date);
+      return dateA.localeCompare(dateB);
+    });
+
+    return {
+      ...data,
+      planning: cleanedPlanning
+    };
+  }
+
+  /**
+   * Vérifie si un code doit être ignoré
+   */
+  shouldIgnoreCode(code) {
+    const upperCode = code.toUpperCase();
+    
+    // Ignorer RS, METRO
+    if (upperCode === 'RS' || upperCode === 'METRO') return true;
+    
+    // Ignorer les codes techniques SNCF
+    if (/^N[0-9A-Z]+/.test(upperCode)) return true;
+    
+    return false;
+  }
+
+  /**
+   * Parse une date JJ/MM/AAAA en AAAA-MM-JJ
+   */
+  parseDate(dateStr) {
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      if (parts.length === 3) {
+        const [jour, mois, annee] = parts;
+        return `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
+      }
+    }
+    return dateStr;
   }
 
   /**
@@ -285,31 +383,10 @@ IMPORTANT: Extraire EXACTEMENT TOUTES les dates et codes visibles dans le docume
       for (const entry of data.planning) {
         if (!entry.date || !entry.code) continue;
         
-        // Parser la date au format JJ/MM/AAAA
-        let dateStr = entry.date;
-        let formattedDate;
-        
-        // Gérer différents formats de date
-        if (dateStr.includes('/')) {
-          const parts = dateStr.split('/');
-          if (parts.length === 3) {
-            // Format JJ/MM/AAAA
-            const [jour, mois, annee] = parts;
-            formattedDate = `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
-          } else if (parts.length === 2) {
-            // Format JJ/MM (prendre l'année courante)
-            const [jour, mois] = parts;
-            const annee = new Date().getFullYear();
-            formattedDate = `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
-          }
-        } else {
-          // Si pas de format reconnu, essayer tel quel
-          formattedDate = dateStr;
-        }
-        
+        // Parser la date
+        const formattedDate = this.parseDate(entry.date);
         const code = String(entry.code).trim().toUpperCase();
-        // IMPORTANT: Seul ACR003 est un service de nuit
-        const isNuit = entry.isNuit === true || (code === 'ACR003' && entry.isNuit !== false);
+        const isNuit = entry.isNuit === true;
         
         console.log(`📅 Date: ${formattedDate}, Code: ${code}${isNuit ? ' (NUIT)' : ''}`);
         
@@ -319,9 +396,8 @@ IMPORTANT: Extraire EXACTEMENT TOUTES les dates et codes visibles dans le docume
         if (mapping) {
           let targetDate = formattedDate;
           
-          // ⭐ IMPORTANT: Décaler UNIQUEMENT les services ACR003 de nuit
-          // OU les services avec mapping.service === 'X'
-          if ((code === 'ACR003' && isNuit) || mapping.service === 'X') {
+          // Décaler les services de nuit (service === 'X')
+          if (mapping.service === 'X' || isNuit) {
             const date = new Date(formattedDate + 'T12:00:00');
             date.setDate(date.getDate() + 1);
             targetDate = date.toISOString().split('T')[0];
@@ -385,99 +461,73 @@ IMPORTANT: Extraire EXACTEMENT TOUTES les dates et codes visibles dans le docume
       planning: []
     };
 
-    // Chercher l'agent - améliorer la détection
-    const agentPatterns = [
-      /COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)/i,
-      /Agent\s*:\s*COGC\s+PN\s+([A-Z]+)\s+([A-Za-z]+)/i,
-      /CHAVET\s+ROMAIN/i // Pattern spécifique pour votre cas
-    ];
-    
-    for (const pattern of agentPatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        if (pattern.source.includes('CHAVET')) {
-          result.agent.nom = 'CHAVET';
-          result.agent.prenom = 'ROMAIN';
-        } else {
-          result.agent.nom = match[1].toUpperCase();
-          result.agent.prenom = match[2];
-        }
-        console.log('👤 Agent trouvé:', result.agent.nom, result.agent.prenom);
-        break;
-      }
+    // Chercher l'agent
+    const agentMatch = text.match(/COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)\s+([A-ZÀÂÄÉÈÊËÏÎÔÙÛÜŸÆŒ\-]+)/i);
+    if (agentMatch) {
+      result.agent.nom = agentMatch[1].toUpperCase();
+      result.agent.prenom = agentMatch[2];
+      console.log('👤 Agent trouvé:', result.agent.nom, result.agent.prenom);
     }
 
-    // Pattern pour extraire les dates au format JJ/MM/AAAA et le code
-    const patterns = [
-      /(\d{2})\/(\d{2})\/(\d{4})\s+.*?([A-Z]{2,}[0-9]{3}|RP|RPP|NU|DISPO|VISIMED|INACTIN)/gi,
-      /(\d{2})\/(\d{2})\/(\d{4})\s+\w+\s+([A-Z0-9]+)/gi,
-    ];
-
-    for (const pattern of patterns) {
-      const matches = [...text.matchAll(pattern)];
-      for (const match of matches) {
-        const [, jour, mois, annee, code] = match;
+    // Pattern amélioré pour extraire les dates et codes
+    // Recherche date + description + code
+    const servicePattern = /(\d{2})\/(\d{2})\/(\d{4})\s+.*?((?:CRC|ACR|CCU|CENT|SOUF|REO|RC|RE|RO|CAC)\d{3}|RP|RPP|NU|DISPO|HAB|C|D|MA|I|VISIMED|INACTIN)/gi;
+    const matches = [...text.matchAll(servicePattern)];
+    
+    for (const match of matches) {
+      const [fullMatch, jour, mois, annee, code] = match;
+      
+      if (jour && mois && annee && code) {
+        // Ignorer les codes non pertinents
+        if (this.shouldIgnoreCode(code)) continue;
         
-        if (jour && mois && annee && code) {
-          const date = `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
-          const codeUpper = code.toUpperCase();
-          
-          // Vérifier si c'est un service de nuit (UNIQUEMENT ACR003)
-          const isNuit = codeUpper === 'ACR003' && text.includes('22:00') && text.includes('06:00');
-          
-          const mapping = await mappingService.getPosteFromCode(codeUpper);
-          if (mapping) {
-            let targetDate = date;
-            if ((codeUpper === 'ACR003' && isNuit) || mapping.service === 'X') {
-              const d = new Date(date + 'T12:00:00');
-              d.setDate(d.getDate() + 1);
-              targetDate = d.toISOString().split('T')[0];
-            }
-            
-            result.planning.push({
-              date: targetDate,
-              service_code: mapping.service,
-              poste_code: mapping.poste,
-              original_code: codeUpper,
-              description: mapping.description
-            });
-          } else if (this.isSpecialCode(codeUpper)) {
-            result.planning.push({
-              date: date,
-              service_code: codeUpper,
-              poste_code: null,
-              original_code: codeUpper,
-              description: this.getSpecialCodeDescription(codeUpper)
-            });
+        const date = `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
+        const codeUpper = code.toUpperCase();
+        
+        // Vérifier si c'est un service de nuit
+        const isNuit = fullMatch.includes('22:00') && fullMatch.includes('06:00');
+        
+        const mapping = await mappingService.getPosteFromCode(codeUpper);
+        if (mapping) {
+          let targetDate = date;
+          if (mapping.service === 'X' || isNuit) {
+            const d = new Date(date + 'T12:00:00');
+            d.setDate(d.getDate() + 1);
+            targetDate = d.toISOString().split('T')[0];
           }
+          
+          result.planning.push({
+            date: targetDate,
+            service_code: mapping.service,
+            poste_code: mapping.poste,
+            original_code: codeUpper,
+            description: mapping.description
+          });
+        } else if (this.isSpecialCode(codeUpper)) {
+          result.planning.push({
+            date: date,
+            service_code: codeUpper,
+            poste_code: null,
+            original_code: codeUpper,
+            description: this.getSpecialCodeDescription(codeUpper)
+          });
         }
       }
     }
 
-    result.planning.sort((a, b) => a.date.localeCompare(b.date));
-    console.log(`✅ Parsing manuel: ${result.planning.length} entrées`);
+    // Nettoyer les doublons
+    const cleanedData = this.cleanExtractedData(result);
     
-    return result;
-  }
-
-  /**
-   * Vérifie si un code est valide
-   */
-  isValidCode(code) {
-    // Codes numériques (001-010)
-    if (/^0(0[1-9]|10)$/.test(code)) return true;
-    // Codes avec préfixe
-    if (/^(CRC|ACR|CCU|CENT|SOUF|REO|RC|RE|RO|CAC)\d{3}$/i.test(code)) return true;
-    // Codes spéciaux
-    if (this.isSpecialCode(code)) return true;
-    return false;
+    console.log(`✅ Parsing manuel: ${cleanedData.planning.length} entrées`);
+    
+    return cleanedData;
   }
 
   /**
    * Vérifie si c'est un code spécial
    */
   isSpecialCode(code) {
-    const specialCodes = ['RH', 'RP', 'RPP', 'CA', 'C', 'D', 'DISPO', 'HAB', 'MA', 'I', 'NU', 'INACTIN', 'VISIMED', 'VMT'];
+    const specialCodes = ['RH', 'RP', 'RPP', 'CA', 'C', 'D', 'DISPO', 'HAB', 'HAB-QF', 'MA', 'I', 'NU', 'INACTIN', 'VISIMED', 'VMT'];
     return specialCodes.includes(code.toUpperCase());
   }
 
@@ -494,6 +544,7 @@ IMPORTANT: Extraire EXACTEMENT TOUTES les dates et codes visibles dans le docume
       'D': 'Disponible',
       'DISPO': 'Disponible',
       'HAB': 'Formation/Habilitation',
+      'HAB-QF': 'Formation/Perfectionnement',
       'MA': 'Maladie',
       'I': 'Indisponible',
       'NU': 'Non utilisé',
@@ -520,17 +571,14 @@ IMPORTANT: Extraire EXACTEMENT TOUTES les dates et codes visibles dans le docume
       errors.push('Aucune donnée extraite du planning');
     }
 
-    // Vérifier les doublons (sauf s'ils sont légitimes comme NU + ACR003 le même jour)
-    const dateCodeMap = {};
+    // Vérifier les doublons
+    const dateCount = {};
     data.planning.forEach(entry => {
-      const key = `${entry.date}_${entry.service_code}`;
-      if (dateCodeMap[key]) {
-        // C'est OK si c'est NU + service ou deux services différents le même jour
-        if (entry.service_code !== 'NU' && dateCodeMap[key] !== 'NU') {
-          warnings.push(`Possible doublon: ${entry.date} - ${entry.service_code}`);
-        }
+      const date = entry.date;
+      dateCount[date] = (dateCount[date] || 0) + 1;
+      if (dateCount[date] > 1) {
+        warnings.push(`Date en double: ${date}`);
       }
-      dateCodeMap[key] = entry.service_code;
     });
 
     return { 
