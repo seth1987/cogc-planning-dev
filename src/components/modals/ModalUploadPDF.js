@@ -21,7 +21,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
 
   // Clé API Mistral intégrée directement
-  const MISTRAL_API_KEY = 'SABnA5l5iTJh4wdTHKpVwhcQ9D1g4wWD';
+  const MISTRAL_API_KEY = 'duQZd7M1SHUuJtUe0KyMLGr5ROhBiLM6';
   // API toujours configurée car la clé est intégrée
   const isApiConfigured = true;
 
