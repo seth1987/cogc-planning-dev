@@ -15,7 +15,7 @@ L'application utilise maintenant **Mistral OCR** (`mistral-ocr-latest`) pour l'e
 - 📅 **Gestion du planning** : Visualisation et édition du planning mensuel
 - 👥 **Gestion des agents** : Création, modification, suppression d'agents
 - 🎯 **Gestion des habilitations** : Attribution des postes aux agents
-- 📄 **Import PDF avec OCR** : Extraction intelligente via Mistral OCR API
+- 📄 **Import PDF avec OCR** : Extraction intelligente via Mistral OCR API avec UPSERT intelligent
 - 🔐 **Authentification** : Connexion sécurisée via Supabase
 - 📊 **Groupes réductibles** : Interface optimisée avec groupes réductibles
 - 🗄️ **Base de données** : 69 codes services mappés dans la BDD
@@ -91,7 +91,7 @@ Le système convertit automatiquement avec la table `codes_services` :
 ## Structure de la base de données
 
 - `agents` : Informations des agents
-- `planning` : Entrées du planning
+- `planning` : Entrées du planning (contrainte unique sur agent_id + date)
 - `habilitations` : Habilitations des agents
 - `uploads_pdf` : Historique des imports PDF
 - `codes_services` : Mapping des codes SNCF (69 codes)
@@ -129,16 +129,26 @@ npm run build
 - 🗄️ [Structure de la base de données](DATABASE.md)
 - 🚀 [Guide de déploiement](DEPLOYMENT.md)
 - 🐛 [Correction du bug de calcul des dates](docs/BUG_FIX_DATES.md)
+- 🔧 [Correction du bug de contrainte unique](docs/BUG_FIX_UNIQUE_CONSTRAINT.md)
 
 ## Versions
 
+- **v2.3.0** : Correction du bug de contrainte unique dans l'import PDF (13/08/2025)
 - **v2.2.0** : Correction du bug de calcul des dates (13/08/2025)
 - **v2.1.0** : Corrections et améliorations (10/08/2025)
 - **v2.0.0-ocr** : Migration vers Mistral OCR
 - **v1.5.0** : Refactoring complet du module Upload PDF
 - **v1.0.0** : Version initiale avec PDF.js
 
-## Corrections récentes (v2.2.0)
+## Corrections récentes (v2.3.0)
+
+✅ **Correction du bug de contrainte unique lors de l'import PDF**
+- Implémentation d'un vrai UPSERT (UPDATE si existe, INSERT sinon)
+- Respect de la contrainte unique `agent_id + date`
+- Avertissements en cas d'écrasement de données existantes
+- [Détails de la correction](docs/BUG_FIX_UNIQUE_CONSTRAINT.md)
+
+## Corrections v2.2.0
 
 ✅ **Correction critique du calcul des dates**
 - Fix du bug excluant le dernier jour de chaque mois
