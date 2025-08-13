@@ -85,8 +85,8 @@ class PDFParserService {
    * Parse le PDF avec Mistral API - Version adaptée au format liste SNCF
    */
   async analyzePDF(file, apiKey) {
-    // Utiliser directement la clé API si fournie, sinon utiliser celle de l'environnement
-    const mistralKey = apiKey || 'pzouqfBi58mhS5QyphwTV2g8OZKTSVlV';
+    // Utiliser directement la clé API si fournie, sinon utiliser celle intégrée dans le code
+    const mistralKey = apiKey || 'SABnA5l5iTJh4wdTHKpVwhcQ9D1g4wWD';
     
     if (!mistralKey || mistralKey.length < 10) {
       throw new Error('Clé API Mistral requise.');
