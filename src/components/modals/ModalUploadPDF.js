@@ -22,6 +22,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   // Clé API Mistral intégrée directement
   const MISTRAL_API_KEY = 'SABnA5l5iTJh4wdTHKpVwhcQ9D1g4wWD';
+  // API toujours configurée car la clé est intégrée
+  const isApiConfigured = true;
 
   // Charger les stats au montage
   useEffect(() => {
@@ -178,10 +180,13 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
               </div>
 
               <PDFUploadStep 
-                onSuccess={handleFileUpload}
+                file={file}
+                onFileUpload={handleFileUpload}
                 onCancel={handleClose}
                 loading={loading}
                 error={error}
+                isApiConfigured={isApiConfigured}
+                stats={stats}
               />
             </div>
           )}
