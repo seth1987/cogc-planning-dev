@@ -119,8 +119,19 @@ const App = () => {
       
       // Load planning for the month
       const monthIndex = MONTHS.indexOf(month);
-      const startDate = new Date(2025, monthIndex, 1).toISOString().split('T')[0];
-      const endDate = new Date(2025, monthIndex + 1, 0).toISOString().split('T')[0];
+      const year = 2025;
+      
+      // FIX: Calcul correct des dates sans problème de fuseau horaire
+      // Premier jour du mois
+      const firstDay = new Date(year, monthIndex, 1);
+      const startDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
+      
+      // Dernier jour du mois
+      const lastDay = new Date(year, monthIndex + 1, 0);
+      const lastDayOfMonth = lastDay.getDate();
+      const endDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+      
+      console.log(`📅 Chargement planning ${month} ${year}: du ${startDate} au ${endDate}`);
       
       const planningFromDB = await supabaseService.getPlanningForMonth(startDate, endDate);
       
