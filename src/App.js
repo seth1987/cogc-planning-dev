@@ -12,6 +12,7 @@ import Header from './components/Header';
 import MonthTabs from './components/MonthTabs';
 import PlanningTable from './components/PlanningTable';
 import LoginPage from './components/LoginPage';
+import DebugPlanning from './components/DebugPlanning'; // TEMPORAIRE: Debug
 
 // Modals
 import ModalCellEdit from './components/modals/ModalCellEdit';
@@ -45,6 +46,9 @@ const App = () => {
   const [showEditAgent, setShowEditAgent] = useState(false);
   const [showUploadPDF, setShowUploadPDF] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(null);
+  
+  // TEMPORAIRE: Debug state
+  const [showDebug, setShowDebug] = useState(false);
 
   // Check authentication on mount
   useEffect(() => {
@@ -347,6 +351,23 @@ const App = () => {
           onCellClick={handleCellClick}
           onAgentClick={handleAgentClick}
         />
+        
+        {/* TEMPORAIRE: Bouton Debug */}
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+          >
+            🔍 {showDebug ? 'Masquer' : 'Afficher'} Debug Planning
+          </button>
+        </div>
+        
+        {/* TEMPORAIRE: Composant Debug */}
+        {showDebug && (
+          <div className="mt-4">
+            <DebugPlanning currentMonth={currentMonth} />
+          </div>
+        )}
       </div>
       
       {/* Modals */}
