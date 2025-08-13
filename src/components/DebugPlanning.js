@@ -24,9 +24,9 @@ const DebugPlanning = ({ currentMonth = 'Août' }) => {
     const lastDay = new Date(year, monthIndex + 1, 0);
     const daysInMonth = lastDay.getDate();
     
-    // Dates pour la requête
-    const startDate = firstDay.toISOString().split('T')[0];
-    const endDate = lastDay.toISOString().split('T')[0];
+    // FIX: Utiliser la même logique que App.js pour les dates
+    const startDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
     
     console.log('🔍 Debug Planning pour', currentMonth, year);
     console.log('📅 Premier jour:', startDate);
