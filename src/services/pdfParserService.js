@@ -28,30 +28,39 @@ class PDFParserService {
       const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       console.log(`📄 PDF chargé: ${pdf.numPages} page(s)`);
       
-      // Récupérer la première page
-      const page = await pdf.getPage(1);
+      // IMPORTANT: Traiter TOUTES les pages du PDF
+      const images = [];
       
-      // Utiliser une échelle élevée pour une meilleure qualité OCR
-      const scale = 3.0; // Haute résolution pour meilleure précision
-      const viewport = page.getViewport({ scale });
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        console.log(`📄 Traitement page ${pageNum}/${pdf.numPages}...`);
+        
+        // Récupérer la page
+        const page = await pdf.getPage(pageNum);
+        
+        // Utiliser une échelle élevée pour une meilleure qualité OCR
+        const scale = 3.0; // Haute résolution pour meilleure précision
+        const viewport = page.getViewport({ scale });
+        
+        // Créer un canvas pour rendre la page
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        
+        // Rendre la page PDF sur le canvas
+        await page.render({
+          canvasContext: context,
+          viewport: viewport
+        }).promise;
+        
+        // Convertir en base64 avec qualité maximale
+        const imageData = canvas.toDataURL('image/png', 1.0);
+        images.push(imageData);
+        
+        console.log(`✅ Page ${pageNum} convertie en image (${canvas.width}x${canvas.height}px)`);
+      }
       
-      // Créer un canvas pour rendre la page
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      
-      // Rendre la page PDF sur le canvas
-      await page.render({
-        canvasContext: context,
-        viewport: viewport
-      }).promise;
-      
-      // Convertir en base64 avec qualité maximale
-      const imageData = canvas.toDataURL('image/png', 1.0);
-      
-      console.log(`✅ PDF converti en image (${canvas.width}x${canvas.height}px)`);
-      return imageData;
+      return images;
       
     } catch (error) {
       console.error('❌ Erreur conversion PDF:', error);
@@ -93,13 +102,13 @@ class PDFParserService {
     }
 
     try {
-      // 1. Convertir le PDF en image
-      const imageData = await this.pdfToImage(file);
+      // 1. Convertir TOUTES les pages du PDF en images
+      const images = await this.pdfToImage(file);
       
       console.log('🤖 Envoi à Mistral pixtral pour extraction OCR...');
       
-      // 2. Prompt adapté au format LISTE de bulletin SNCF
-      const prompt = `Analyse cette image d'un bulletin de commande SNCF et extrais TOUTES les données.
+      // 2. Prompt amélioré pour extraction complète
+      const prompt = `Analyse cette/ces image(s) d'un bulletin de commande SNCF et extrais ABSOLUMENT TOUTES les données du début jusqu'à la fin du document.
 
 FORMAT DU DOCUMENT:
 - En-tête: "COGC PN" suivi du NOM et PRÉNOM de l'agent
@@ -107,18 +116,25 @@ FORMAT DU DOCUMENT:
   * Date au format JJ/MM/AAAA
   * Code service (ACR002, CCU005, REO008, CENT001, etc.)
   * Description et horaires
-  * Services spéciaux: RP, RPP, NU, DISPO, VISIMED, VMT
+  * Services spéciaux: RP, RPP, NU, DISPO, VISIMED, VMT, INACTIN
 
-EXTRACTION REQUISE:
+IMPORTANT - EXTRACTION COMPLÈTE:
 1. L'AGENT après "COGC PN"
-2. Pour CHAQUE DATE dans le document:
-   - Extraire la date (JJ/MM/AAAA)
-   - Extraire le CODE principal (ACR002, CCU005, etc.)
-   - Si c'est "RP Repos périodique" → code "RP"
-   - Si c'est "RPP" → code "RPP"
-   - Si c'est "NU" ou "non utilisé" → code "NU"
-   - Si c'est "DISPO" ou "Disponible" → code "DISPO"
-   - Si c'est "VISIMED" ou "VMT" → code "VISIMED"
+2. TOUTES LES DATES du document, du début jusqu'à la fin
+3. Si le document contient plusieurs pages, VÉRIFIER TOUTES LES PAGES
+4. La commande va généralement du 15 ou 21 du mois jusqu'au 30 ou 31
+5. NE PAS S'ARRÊTER avant d'avoir extrait la DERNIÈRE date du document
+6. Vérifier spécialement la fin du document (dates 28, 29, 30, 31 si présentes)
+
+Pour CHAQUE DATE dans le document:
+- Extraire la date (JJ/MM/AAAA)
+- Extraire le CODE principal (ACR002, CCU005, etc.)
+- Si c'est "RP Repos périodique" → code "RP"
+- Si c'est "RPP" → code "RPP"
+- Si c'est "NU" ou "non utilisé" → code "NU"
+- Si c'est "DISPO" ou "Disponible" → code "DISPO"
+- Si c'est "VISIMED" ou "VMT" → code "VISIMED"
+- Si c'est "INACTIN" → code "INACTIN"
 
 ATTENTION SERVICES DE NUIT:
 - SEUL ACR003 avec horaires 22:00 à 06:00 est une NUIT
@@ -128,32 +144,38 @@ ATTENTION SERVICES DE NUIT:
 DATES MULTIPLES:
 - Si une même date apparaît 2 fois (ex: 21/04/2025 avec NU puis ACR003), extraire LES DEUX
 
-RETOURNE CE JSON EXACT:
+VÉRIFICATION FINALE:
+- As-tu bien extrait TOUTES les dates jusqu'à la FIN du document ?
+- Y a-t-il des dates après le 27 ? (28, 29, 30, 31)
+- As-tu vérifié la dernière page si le document en a plusieurs ?
+
+RETOURNE CE JSON EXACT avec TOUTES les dates:
 {
   "agent": {"nom": "NOM_EN_MAJUSCULES", "prenom": "Prenom"},
   "planning": [
-    {"date": "15/04/2025", "code": "ACR002"},
-    {"date": "16/04/2025", "code": "CCU005"},
-    {"date": "17/04/2025", "code": "CCU005"},
-    {"date": "18/04/2025", "code": "REO008"},
-    {"date": "19/04/2025", "code": "RPP"},
-    {"date": "20/04/2025", "code": "RPP"},
-    {"date": "21/04/2025", "code": "NU"},
-    {"date": "21/04/2025", "code": "ACR003", "isNuit": true},
-    {"date": "22/04/2025", "code": "ACR003", "isNuit": true},
-    {"date": "23/04/2025", "code": "ACR003", "isNuit": true},
-    {"date": "25/04/2025", "code": "RP"},
-    {"date": "26/04/2025", "code": "RP"},
-    {"date": "27/04/2025", "code": "CENT001"},
-    {"date": "28/04/2025", "code": "CENT001"},
-    {"date": "29/04/2025", "code": "DISPO"},
-    {"date": "30/04/2025", "code": "VISIMED"}
+    // TOUTES les entrées du début jusqu'à la fin
   ]
 }
 
-IMPORTANT: Extraire EXACTEMENT les dates et codes visibles dans le document. Ne pas inventer.`;
+IMPORTANT: Extraire EXACTEMENT TOUTES les dates et codes visibles dans le document. Ne pas s'arrêter avant la fin.`;
 
-      // 3. Appel API Mistral avec le modèle pixtral-12b-2409 (sans top_p)
+      // 3. Construire le contenu pour l'API avec toutes les images
+      const messageContent = [
+        {
+          type: 'text',
+          text: prompt
+        }
+      ];
+      
+      // Ajouter toutes les images
+      for (const image of images) {
+        messageContent.push({
+          type: 'image_url',
+          image_url: image
+        });
+      }
+
+      // 4. Appel API Mistral avec le modèle pixtral-12b-2409
       const response = await fetch(this.mistralApiUrl, {
         method: 'POST',
         headers: {
@@ -165,21 +187,11 @@ IMPORTANT: Extraire EXACTEMENT les dates et codes visibles dans le document. Ne 
           messages: [
             {
               role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: prompt
-                },
-                {
-                  type: 'image_url',
-                  image_url: imageData // Image PNG haute résolution
-                }
-              ]
+              content: messageContent
             }
           ],
           temperature: 0, // Résultats déterministes
           max_tokens: 4000
-          // Pas de top_p avec temperature=0 !
         })
       });
 
@@ -187,10 +199,9 @@ IMPORTANT: Extraire EXACTEMENT les dates et codes visibles dans le document. Ne 
         const errorText = await response.text();
         console.error('❌ Erreur Mistral:', errorText);
         
-        // Si pixtral échoue, essayer avec mistral-large
+        // Si pixtral échoue, essayer avec extraction manuelle
         if (response.status === 404 || response.status === 400) {
           console.log('⚠️ Fallback sur extraction manuelle...');
-          // Au lieu d'utiliser mistral-large qui invente, faire une extraction basique
           return await this.extractBasicInfo(file);
         }
         
@@ -202,7 +213,7 @@ IMPORTANT: Extraire EXACTEMENT les dates et codes visibles dans le document. Ne 
       
       console.log('📄 Réponse Mistral:', ocrContent);
       
-      // 4. Extraire et parser le JSON
+      // 5. Extraire et parser le JSON
       const jsonMatch = ocrContent.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         console.warn('⚠️ Pas de JSON trouvé, parsing manuel...');
@@ -211,6 +222,14 @@ IMPORTANT: Extraire EXACTEMENT les dates et codes visibles dans le document. Ne 
 
       try {
         const parsedData = JSON.parse(jsonMatch[0]);
+        
+        // Vérifier que toutes les dates ont été extraites
+        if (parsedData.planning && parsedData.planning.length > 0) {
+          const dates = parsedData.planning.map(e => e.date).sort();
+          console.log(`📅 Dates extraites: du ${dates[0]} au ${dates[dates.length - 1]}`);
+          console.log(`📊 Total: ${dates.length} entrées`);
+        }
+        
         return await this.formatExtractedData(parsedData);
       } catch (parseError) {
         console.error('❌ JSON invalide:', parseError);
@@ -390,7 +409,7 @@ IMPORTANT: Extraire EXACTEMENT les dates et codes visibles dans le document. Ne 
 
     // Pattern pour extraire les dates au format JJ/MM/AAAA et le code
     const patterns = [
-      /(\d{2})\/(\d{2})\/(\d{4})\s+.*?([A-Z]{2,}[0-9]{3}|RP|RPP|NU|DISPO|VISIMED)/gi,
+      /(\d{2})\/(\d{2})\/(\d{4})\s+.*?([A-Z]{2,}[0-9]{3}|RP|RPP|NU|DISPO|VISIMED|INACTIN)/gi,
       /(\d{2})\/(\d{2})\/(\d{4})\s+\w+\s+([A-Z0-9]+)/gi,
     ];
 
