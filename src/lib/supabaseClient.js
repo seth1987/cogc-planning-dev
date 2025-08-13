@@ -1,26 +1,33 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Configuration Supabase à partir des variables d'environnement
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://kbihxjbazmjmpsxkeydf.supabase.co';
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiaWh4amJhem1qbXBzeGtleWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEzMTEzNjksImV4cCI6MjA2Njg4NzM2OX0.lvbPBBbiweTEIUi0JK7hvLvTD7EuF9EazN7l2PZbiYU';
+// Configuration Supabase directe (temporaire - à migrer vers .env en production)
+const supabaseUrl = 'https://kbihxjbazmjmpsxkeydf.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiaWh4amJhem1qbXBzeGtleWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEzMTEzNjksImV4cCI6MjA2Njg4NzM2OX0.lvbPBBbiweTEIUi0JK7hvLvTD7EuF9EazN7l2PZbiYU';
 
 console.log('✅ Supabase URL:', supabaseUrl);
 console.log('✅ Supabase Key valide:', supabaseAnonKey ? 'OUI' : 'NON');
+console.log('🔑 Clé API utilisée (10 premiers caractères):', supabaseAnonKey.substring(0, 10));
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Configuration Supabase manquante!');
-  console.error('Assurez-vous que le fichier .env contient REACT_APP_SUPABASE_URL et REACT_APP_SUPABASE_ANON_KEY');
   throw new Error('Configuration Supabase manquante');
 }
 
-// Créer le client Supabase
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Créer le client Supabase avec les bonnes options
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false
+  }
+});
 
 // Vérifier la connexion au démarrage
 supabase.from('agents').select('count').then(result => {
   if (result.error) {
     console.error('❌ Erreur connexion Supabase:', result.error);
     console.error('Détails:', result.error.message, result.error.hint);
+    console.error('Code erreur:', result.error.code);
   } else {
     console.log('✅ Connexion Supabase réussie! Agents trouvés:', result.data[0]?.count || 0);
   }
