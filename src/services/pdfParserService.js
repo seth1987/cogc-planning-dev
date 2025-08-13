@@ -86,7 +86,7 @@ class PDFParserService {
    */
   async analyzePDF(file, apiKey) {
     // Utiliser directement la clé API si fournie, sinon utiliser celle intégrée dans le code
-    const mistralKey = apiKey || 'SABnA5l5iTJh4wdTHKpVwhcQ9D1g4wWD';
+    const mistralKey = apiKey || 'duQZd7M1SHUuJtUe0KyMLGr5ROhBiLM6';
     
     if (!mistralKey || mistralKey.length < 10) {
       throw new Error('Clé API Mistral requise.');
