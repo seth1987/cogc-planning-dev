@@ -70,8 +70,8 @@ class PlanningImportService {
       );
       report.agent = agent;
 
-      // 2. Regrouper les entrées par date pour gérer les doublons
-      const entriesByDate = this.groupEntriesByDate(parsedData.planning);
+      // 2. Regrouper les entrées par date et garder seulement la dernière
+      const entriesByDate = this.consolidateEntriesByDate(parsedData.planning);
       
       // 3. Déterminer la plage de dates
       const dates = Object.keys(entriesByDate).sort();
@@ -80,22 +80,22 @@ class PlanningImportService {
         report.dateRange.max = dates[dates.length - 1];
       }
 
-      // 4. Traiter chaque date
-      for (const [date, entries] of Object.entries(entriesByDate)) {
+      // 4. Traiter chaque date avec UPSERT
+      for (const [date, entry] of Object.entries(entriesByDate)) {
         try {
-          const result = await this.processDateEntries(
+          const result = await this.upsertPlanningEntry(
             agent.id,
             date,
-            entries
+            entry
           );
           
-          report.entriesProcessed += result.processed;
-          report.entriesInserted += result.inserted;
-          report.entriesUpdated += result.updated;
-          report.entriesSkipped += result.skipped;
+          report.entriesProcessed++;
+          if (result.inserted) report.entriesInserted++;
+          if (result.updated) report.entriesUpdated++;
+          if (result.skipped) report.entriesSkipped++;
           
-          if (result.warnings.length > 0) {
-            report.warnings.push(...result.warnings);
+          if (result.warning) {
+            report.warnings.push(result.warning);
           }
           
         } catch (error) {
@@ -110,7 +110,10 @@ class PlanningImportService {
       await this.recordUpload(agent, parsedData, report);
 
       this.lastImportReport = report;
-      return report;
+      return {
+        success: report.errors.length === 0,
+        ...report
+      };
       
     } catch (error) {
       report.errors.push({
@@ -122,115 +125,96 @@ class PlanningImportService {
   }
 
   /**
-   * Regroupe les entrées par date
+   * Consolide les entrées par date (garde seulement la dernière)
    */
-  groupEntriesByDate(planning) {
-    const grouped = {};
+  consolidateEntriesByDate(planning) {
+    const consolidated = {};
     
     planning.forEach(entry => {
-      if (!grouped[entry.date]) {
-        grouped[entry.date] = [];
-      }
-      
-      // Éviter les doublons exacts
-      const exists = grouped[entry.date].some(e => 
-        e.service_code === entry.service_code && 
-        e.poste_code === entry.poste_code
-      );
-      
-      if (!exists) {
-        grouped[entry.date].push(entry);
-      }
+      // S'il y a plusieurs entrées pour la même date, on garde la dernière
+      // ou on peut implémenter une logique pour combiner service et poste
+      consolidated[entry.date] = entry;
     });
     
-    return grouped;
+    return consolidated;
   }
 
   /**
-   * Traite les entrées pour une date donnée
+   * Effectue un UPSERT pour une entrée de planning
    */
-  async processDateEntries(agentId, date, entries) {
+  async upsertPlanningEntry(agentId, date, entry) {
     const result = {
-      processed: entries.length,
-      inserted: 0,
-      updated: 0,
-      skipped: 0,
-      warnings: []
+      inserted: false,
+      updated: false,
+      skipped: false,
+      warning: null
     };
 
-    // 1. Récupérer les entrées existantes
-    const { data: existing, error: fetchError } = await supabase
-      .from('planning')
-      .select('id, service_code, poste_code')
-      .eq('agent_id', agentId)
-      .eq('date', date);
+    try {
+      // 1. Vérifier si une entrée existe déjà
+      const { data: existing, error: fetchError } = await supabase
+        .from('planning')
+        .select('id, service_code, poste_code')
+        .eq('agent_id', agentId)
+        .eq('date', date)
+        .single();
 
-    if (fetchError) {
-      throw new Error(`Erreur récupération planning: ${fetchError.message}`);
-    }
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        // PGRST116 = pas de résultat trouvé, ce qui est OK
+        throw new Error(`Erreur vérification existant: ${fetchError.message}`);
+      }
 
-    // 2. Déterminer les opérations à effectuer
-    const toInsert = [];
-    const toUpdate = [];
-    
-    for (const entry of entries) {
-      const existingEntry = existing?.find(e => 
-        e.service_code === entry.service_code && 
-        e.poste_code === entry.poste_code
-      );
+      const planningData = {
+        agent_id: agentId,
+        date: date,
+        service_code: entry.service_code,
+        poste_code: entry.poste_code,
+        statut: 'actif',
+        commentaire: entry.original_code ? `Import PDF: ${entry.original_code}` : null
+      };
 
-      if (existingEntry) {
-        // Entrée existe déjà, skip
-        result.skipped++;
-        result.warnings.push(`${date}: ${entry.service_code}/${entry.poste_code} existe déjà`);
+      if (existing) {
+        // Mise à jour de l'entrée existante
+        const { error: updateError } = await supabase
+          .from('planning')
+          .update({
+            service_code: entry.service_code,
+            poste_code: entry.poste_code,
+            commentaire: entry.original_code ? `Import PDF: ${entry.original_code}` : existing.commentaire,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id);
+
+        if (updateError) {
+          throw new Error(`Erreur mise à jour: ${updateError.message}`);
+        }
+
+        result.updated = true;
+        
+        // Avertir si on écrase des données différentes
+        if (existing.service_code !== entry.service_code || 
+            existing.poste_code !== entry.poste_code) {
+          result.warning = `[${date}] Écrasement: ${existing.service_code}/${existing.poste_code} → ${entry.service_code}/${entry.poste_code}`;
+        }
       } else {
-        // Nouvelle entrée à insérer
-        toInsert.push({
-          agent_id: agentId,
-          date: date,
-          service_code: entry.service_code,
-          poste_code: entry.poste_code,
-          statut: 'actif',
-          commentaire: entry.original_code ? `Import PDF: ${entry.original_code}` : null
-        });
+        // Insertion d'une nouvelle entrée
+        const { error: insertError } = await supabase
+          .from('planning')
+          .insert(planningData);
+
+        if (insertError) {
+          throw new Error(`Erreur insertion: ${insertError.message}`);
+        }
+
+        result.inserted = true;
       }
-    }
 
-    // 3. Supprimer les anciennes entrées qui ne sont plus présentes
-    const entriesToDelete = existing?.filter(e => 
-      !entries.some(entry => 
-        entry.service_code === e.service_code && 
-        entry.poste_code === e.poste_code
-      )
-    ) || [];
-
-    if (entriesToDelete.length > 0) {
-      const { error: deleteError } = await supabase
-        .from('planning')
-        .delete()
-        .in('id', entriesToDelete.map(e => e.id));
-
-      if (deleteError) {
-        throw new Error(`Erreur suppression: ${deleteError.message}`);
-      }
+      return result;
       
-      result.updated += entriesToDelete.length;
+    } catch (error) {
+      console.error(`❌ Erreur UPSERT pour ${date}:`, error);
+      throw error;
     }
-
-    // 4. Insérer les nouvelles entrées
-    if (toInsert.length > 0) {
-      const { error: insertError } = await supabase
-        .from('planning')
-        .insert(toInsert);
-
-      if (insertError) {
-        throw new Error(`Erreur insertion: ${insertError.message}`);
-      }
-      
-      result.inserted += toInsert.length;
-    }
-
-    return result;
   }
 
   /**
@@ -244,7 +228,7 @@ class PlanningImportService {
           agent_id: agent.id,
           fichier_nom: `Import_${new Date().toISOString()}`,
           agent_nom: `${agent.nom} ${agent.prenom}`,
-          services_count: report.entriesInserted,
+          services_count: report.entriesInserted + report.entriesUpdated,
           metadata: {
             agent: {
               id: agent.id,
@@ -310,20 +294,19 @@ class PlanningImportService {
       warnings.push(`${invalidCodes.length} entrées sans code service`);
     }
 
-    // Détecter les doublons
-    const seen = new Set();
-    const duplicates = [];
-    
+    // Détecter les doublons par date
+    const dateCount = {};
     parsedData.planning.forEach(entry => {
-      const key = `${entry.date}_${entry.service_code}_${entry.poste_code || ''}`;
-      if (seen.has(key)) {
-        duplicates.push(key);
-      }
-      seen.add(key);
+      dateCount[entry.date] = (dateCount[entry.date] || 0) + 1;
     });
+    
+    const duplicateDates = Object.entries(dateCount)
+      .filter(([date, count]) => count > 1)
+      .map(([date, count]) => `${date} (${count} entrées)`);
 
-    if (duplicates.length > 0) {
-      warnings.push(`${duplicates.length} doublons détectés`);
+    if (duplicateDates.length > 0) {
+      warnings.push(`Dates avec plusieurs entrées: ${duplicateDates.join(', ')}`);
+      warnings.push('⚠️ Une seule entrée par date sera conservée');
     }
 
     return {
