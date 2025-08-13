@@ -128,15 +128,25 @@ npm run build
 - 📄 [Refactoring du module PDF](REFACTORING_UPLOAD_PDF.md)
 - 🗄️ [Structure de la base de données](DATABASE.md)
 - 🚀 [Guide de déploiement](DEPLOYMENT.md)
+- 🐛 [Correction du bug de calcul des dates](docs/BUG_FIX_DATES.md)
 
 ## Versions
 
+- **v2.2.0** : Correction du bug de calcul des dates (13/08/2025)
 - **v2.1.0** : Corrections et améliorations (10/08/2025)
 - **v2.0.0-ocr** : Migration vers Mistral OCR
 - **v1.5.0** : Refactoring complet du module Upload PDF
 - **v1.0.0** : Version initiale avec PDF.js
 
-## Corrections récentes (v2.1.0)
+## Corrections récentes (v2.2.0)
+
+✅ **Correction critique du calcul des dates**
+- Fix du bug excluant le dernier jour de chaque mois
+- Résolution du problème de fuseau horaire avec `toISOString()`
+- Le planning affiche maintenant correctement tous les jours du mois
+- [Détails de la correction](docs/BUG_FIX_DATES.md)
+
+## Corrections v2.1.0
 
 ✅ **Correction du problème "api key invalid"**
 - Mise à jour de la clé API Supabase
@@ -156,4 +166,4 @@ Pour toute question ou problème, contactez l'équipe de développement.
 
 ---
 
-*Dernière mise à jour : 10 Août 2025*
+*Dernière mise à jour : 13 Août 2025*
