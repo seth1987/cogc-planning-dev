@@ -1,25 +1,31 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Configuration Supabase avec clés intégrées
-const supabaseUrl = 'https://kbihxjbazmjmpsxkeydf.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiaWh4amJhem1qbXBzeGtleWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzM2MTEwNDAsImV4cCI6MjA0OTE4NzA0MH0.EKdpS0v_FqCgpHY3sKNOc6rXVnL5kqGw0OQxVGrjZxg';
+// Configuration Supabase à partir des variables d'environnement
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://kbihxjbazmjmpsxkeydf.supabase.co';
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiaWh4amJhem1qbXBzeGtleWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEzMTEzNjksImV4cCI6MjA2Njg4NzM2OX0.lvbPBBbiweTEIUi0JK7hvLvTD7EuF9EazN7l2PZbiYU';
 
 console.log('✅ Supabase URL:', supabaseUrl);
 console.log('✅ Supabase Key valide:', supabaseAnonKey ? 'OUI' : 'NON');
 
 if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ Configuration Supabase manquante!');
+  console.error('Assurez-vous que le fichier .env contient REACT_APP_SUPABASE_URL et REACT_APP_SUPABASE_ANON_KEY');
   throw new Error('Configuration Supabase manquante');
 }
 
+// Créer le client Supabase
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Vérifier la connexion au démarrage
 supabase.from('agents').select('count').then(result => {
   if (result.error) {
     console.error('❌ Erreur connexion Supabase:', result.error);
+    console.error('Détails:', result.error.message, result.error.hint);
   } else {
     console.log('✅ Connexion Supabase réussie! Agents trouvés:', result.data[0]?.count || 0);
   }
+}).catch(err => {
+  console.error('❌ Erreur lors de la vérification de connexion:', err);
 });
 
 // Helper functions pour les opérations courantes
