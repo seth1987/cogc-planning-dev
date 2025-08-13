@@ -182,8 +182,6 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
               <PDFUploadStep 
                 file={file}
                 onFileUpload={handleFileUpload}
-                onCancel={handleClose}
-                loading={loading}
                 error={error}
                 isApiConfigured={isApiConfigured}
                 stats={stats}
