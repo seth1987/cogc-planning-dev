@@ -5,11 +5,24 @@ class PDFParserService {
   constructor() {
     this.mistralApiUrl = 'https://api.mistral.ai/v1/chat/completions';
     
-    // Liste des éléments à ignorer lors du parsing
+    // Liste étendue des éléments à ignorer lors du parsing
     this.ignoredElements = [
-      'METRO',      // Trajets métro
-      'RS',         // Repos/pauses
-      'N[0-9A-Z]+', // Codes techniques SNCF (N1100010CO72, etc.)
+      'METRO',          // Trajets métro
+      'RS',             // Repos/pauses  
+      'TRAIN',          // Mentions train
+      'TGV',            // Mentions TGV
+      'PAUSE',          // Pauses
+      'TRAJET',         // Trajets
+      'N[0-9A-Z]+',     // Codes techniques SNCF (N1100010CO72, etc.)
+      'du [A-Z]+',      // Codes sites (du SOUCEN, du ACR601, etc.)
+    ];
+
+    // Codes de services valides
+    this.validServicePatterns = [
+      // Services avec numéros
+      /^(CRC|ACR|CCU|CENT|SOUF|REO|RC|RE|RO|CAC)\d{3}$/,
+      // Codes simples
+      /^(RP|RPP|CA|RU|MA|DISPO|HAB|HAB-QF|NU|INACTIN|JF|I|C|D|F|FO|VM|VL|VISIMED|VMT)$/
     ];
   }
 
@@ -120,36 +133,34 @@ class PDFParserService {
 FORMAT DU DOCUMENT:
 - En-tête: "COGC PN" suivi du NOM et PRÉNOM de l'agent
 - Commande allant du JJ/MM/AAAA au JJ/MM/AAAA
-- Liste chronologique des services
+- Liste chronologique des services jour par jour
 
 ÉLÉMENTS À IGNORER ABSOLUMENT:
 - Lignes contenant "METRO" (trajets)
-- Lignes contenant "RS" (repos/pauses)
+- Lignes contenant uniquement "RS" suivies d'horaires (repos/pauses)
 - Codes techniques commençant par N (ex: N1100010CO72)
+- Codes sites après "du" (ex: du SOUCEN, du ACR601)
 - Numéros de CP
 - Heures isolées (09:35, 14:00, etc.)
-- Messages et éditions
+- Messages, éditions et signatures
+- "SOCIETE NATIONALE DES CHEMINS DE FER FRANCAIS"
+- Numéros de page
 
-ÉLÉMENTS À EXTRAIRE:
-1. AGENT: Le nom après "COGC PN" (format: NOM PRENOM)
-2. Pour CHAQUE DATE:
-   - Date au format JJ/MM/AAAA
-   - Le CODE SERVICE principal (ex: ACR002, CCU005, CENT003)
-   - Si la ligne contient "Repos périodique" → code "RP"
-   - Si la ligne contient "Congé" → code "C"
-   - Si la ligne contient "Disponible" ou "DISPO" → code "D"
-   - Si la ligne contient "FORMATION" ou "HAB" → code "HAB"
-   - Si la ligne contient "Utilisable non utilisé" ou "NU" → code "NU"
+CODES DE SERVICES VALIDES À EXTRAIRE:
+- Services avec numéros: CRC001-003, ACR001-003, CCU001-006, CENT001-003, SOUF001-002, REO007-008
+- Repos/Congés: RP, RPP, CA, RU, MA, DISPO, JF
+- Formation: HAB-QF, HAB, FO
+- Autres: NU, INACTIN, I, C, D, F, VM, VISIMED
 
-SERVICES MULTIPLES PAR JOUR:
-- Si une date apparaît plusieurs fois (ex: 18/05 avec NU puis CCU003), extraire SEULEMENT le service principal (pas NU)
-- Pour le 30/05 si deux services: prendre celui avec horaires 22:00-06:00 (service de nuit)
+RÈGLES D'EXTRACTION:
+1. AGENT: Le nom complet après "COGC PN" (format: NOM PRENOM)
+2. Pour CHAQUE DATE du bulletin:
+   - Extraire la date au format JJ/MM/AAAA
+   - Extraire UNIQUEMENT le code service principal (pas les codes techniques)
+   - Si plusieurs lignes pour une date, prendre le service principal (pas NU)
+   - Les services avec horaires 22:00-06:00 sont des services de nuit
 
-SERVICES DE NUIT:
-- Les services avec horaires 22:00 à 06:00 sont des services de nuit
-- Noter avec "isNuit": true
-
-RETOURNE CE JSON avec UNIQUEMENT les services pertinents:
+RETOURNE CE JSON:
 {
   "agent": {"nom": "NOM", "prenom": "Prenom"},
   "planning": [
@@ -162,9 +173,9 @@ RETOURNE CE JSON avec UNIQUEMENT les services pertinents:
 }
 
 IMPORTANT: 
-- NE PAS inclure les lignes METRO, RS ou codes techniques
-- Extraire TOUTES les dates du début à la fin
-- Une seule entrée par date (sauf si vraiment deux services distincts)`;
+- Une seule entrée par date
+- Extraire TOUTES les dates du bulletin
+- Ne pas inclure RS, METRO ou codes techniques`;
 
       // 3. Construire le contenu pour l'API avec toutes les images
       const messageContent = [
@@ -260,7 +271,7 @@ IMPORTANT:
   }
 
   /**
-   * Nettoie les données extraites
+   * Nettoie les données extraites - Version améliorée
    */
   cleanExtractedData(data) {
     if (!data.planning) return data;
@@ -273,7 +284,16 @@ IMPORTANT:
       if (!entry.date || !entry.code) return;
 
       // Ignorer les codes non pertinents
-      if (this.shouldIgnoreCode(entry.code)) return;
+      if (this.shouldIgnoreCode(entry.code)) {
+        console.log(`🚫 Code ignoré: ${entry.code}`);
+        return;
+      }
+
+      // Vérifier que le code est valide
+      if (!this.isValidServiceCode(entry.code)) {
+        console.log(`⚠️ Code invalide ignoré: ${entry.code}`);
+        return;
+      }
 
       const date = entry.date;
       
@@ -324,13 +344,26 @@ IMPORTANT:
   shouldIgnoreCode(code) {
     const upperCode = code.toUpperCase();
     
-    // Ignorer RS, METRO
-    if (upperCode === 'RS' || upperCode === 'METRO') return true;
+    // Ignorer RS seul (mais pas RP)
+    if (upperCode === 'RS') return true;
+    
+    // Ignorer METRO, TRAIN, TGV
+    if (['METRO', 'TRAIN', 'TGV'].includes(upperCode)) return true;
     
     // Ignorer les codes techniques SNCF
     if (/^N[0-9A-Z]+/.test(upperCode)) return true;
     
     return false;
+  }
+
+  /**
+   * Vérifie si un code est valide
+   */
+  isValidServiceCode(code) {
+    const upperCode = code.toUpperCase();
+    
+    // Vérifier contre les patterns valides
+    return this.validServicePatterns.some(pattern => pattern.test(upperCode));
   }
 
   /**
@@ -451,7 +484,7 @@ IMPORTANT:
   }
 
   /**
-   * Parsing manuel de secours si le JSON échoue
+   * Parsing manuel de secours si le JSON échoue - Version améliorée
    */
   async parseManual(text) {
     console.log('🔧 Parsing manuel du texte...');
@@ -470,47 +503,69 @@ IMPORTANT:
     }
 
     // Pattern amélioré pour extraire les dates et codes
-    // Recherche date + description + code
-    const servicePattern = /(\d{2})\/(\d{2})\/(\d{4})\s+.*?((?:CRC|ACR|CCU|CENT|SOUF|REO|RC|RE|RO|CAC)\d{3}|RP|RPP|NU|DISPO|HAB|C|D|MA|I|VISIMED|INACTIN)/gi;
-    const matches = [...text.matchAll(servicePattern)];
-    
-    for (const match of matches) {
-      const [fullMatch, jour, mois, annee, code] = match;
-      
-      if (jour && mois && annee && code) {
-        // Ignorer les codes non pertinents
-        if (this.shouldIgnoreCode(code)) continue;
+    // Format: JJ/MM/AAAA ... CODE_SERVICE
+    const lines = text.split('\n');
+    let currentDate = null;
+
+    for (const line of lines) {
+      // Ignorer les lignes non pertinentes
+      if (this.ignoredElements.some(pattern => new RegExp(pattern, 'i').test(line))) {
+        continue;
+      }
+
+      // Chercher une date
+      const dateMatch = line.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (dateMatch) {
+        currentDate = `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`;
+      }
+
+      // Si on a une date, chercher un code service valide
+      if (currentDate) {
+        // Chercher les codes services dans la ligne
+        const codeMatches = line.match(/(CRC|ACR|CCU|CENT|SOUF|REO|RC|RE|RO|CAC)\d{3}|RP|RPP|CA|RU|MA|DISPO|HAB-QF|HAB|FO|NU|INACTIN|JF|I|C|D|F|VM|VISIMED/gi);
         
-        const date = `${annee}-${mois.padStart(2, '0')}-${jour.padStart(2, '0')}`;
-        const codeUpper = code.toUpperCase();
-        
-        // Vérifier si c'est un service de nuit
-        const isNuit = fullMatch.includes('22:00') && fullMatch.includes('06:00');
-        
-        const mapping = await mappingService.getPosteFromCode(codeUpper);
-        if (mapping) {
-          let targetDate = date;
-          if (mapping.service === 'X' || isNuit) {
-            const d = new Date(date + 'T12:00:00');
-            d.setDate(d.getDate() + 1);
-            targetDate = d.toISOString().split('T')[0];
+        if (codeMatches) {
+          for (const code of codeMatches) {
+            const codeUpper = code.toUpperCase();
+            
+            // Vérifier que c'est un code valide
+            if (!this.isValidServiceCode(codeUpper)) continue;
+            
+            // Vérifier si c'est un service de nuit
+            const isNuit = line.includes('22:00') && line.includes('06:00');
+            
+            const mapping = await mappingService.getPosteFromCode(codeUpper);
+            if (mapping) {
+              let targetDate = currentDate;
+              if (mapping.service === 'X' || isNuit) {
+                const d = new Date(currentDate + 'T12:00:00');
+                d.setDate(d.getDate() + 1);
+                targetDate = d.toISOString().split('T')[0];
+              }
+              
+              result.planning.push({
+                date: targetDate,
+                service_code: mapping.service,
+                poste_code: mapping.poste,
+                original_code: codeUpper,
+                description: mapping.description
+              });
+              
+              // On a trouvé le code pour cette date, passer à la suivante
+              currentDate = null;
+              break;
+            } else if (this.isSpecialCode(codeUpper)) {
+              result.planning.push({
+                date: currentDate,
+                service_code: codeUpper,
+                poste_code: null,
+                original_code: codeUpper,
+                description: this.getSpecialCodeDescription(codeUpper)
+              });
+              currentDate = null;
+              break;
+            }
           }
-          
-          result.planning.push({
-            date: targetDate,
-            service_code: mapping.service,
-            poste_code: mapping.poste,
-            original_code: codeUpper,
-            description: mapping.description
-          });
-        } else if (this.isSpecialCode(codeUpper)) {
-          result.planning.push({
-            date: date,
-            service_code: codeUpper,
-            poste_code: null,
-            original_code: codeUpper,
-            description: this.getSpecialCodeDescription(codeUpper)
-          });
         }
       }
     }
@@ -527,7 +582,7 @@ IMPORTANT:
    * Vérifie si c'est un code spécial
    */
   isSpecialCode(code) {
-    const specialCodes = ['RH', 'RP', 'RPP', 'CA', 'C', 'D', 'DISPO', 'HAB', 'HAB-QF', 'MA', 'I', 'NU', 'INACTIN', 'VISIMED', 'VMT'];
+    const specialCodes = ['RH', 'RP', 'RPP', 'CA', 'C', 'D', 'DISPO', 'HAB', 'HAB-QF', 'MA', 'I', 'NU', 'INACTIN', 'VISIMED', 'VMT', 'RU', 'JF', 'F', 'FO', 'VM', 'VL'];
     return specialCodes.includes(code.toUpperCase());
   }
 
@@ -546,11 +601,17 @@ IMPORTANT:
       'HAB': 'Formation/Habilitation',
       'HAB-QF': 'Formation/Perfectionnement',
       'MA': 'Maladie',
-      'I': 'Indisponible',
+      'I': 'Inaction',
       'NU': 'Non utilisé',
       'INACTIN': 'Inactivité',
       'VISIMED': 'Visite médicale',
-      'VMT': 'Visite médicale'
+      'VMT': 'Visite médicale',
+      'RU': 'RTT',
+      'JF': 'Jour férié',
+      'F': 'Jour férié',
+      'FO': 'Formation',
+      'VM': 'Visite médicale',
+      'VL': 'Visite ligne'
     };
     
     return descriptions[code] || code;
