@@ -5,6 +5,31 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2025-08-14
+
+### 🔧 Corrigé
+- **Import PDF - Services multiples** : Correction de la gestion des services multiples par jour
+  - Les services jour + nuit sur la même date sont maintenant correctement gérés
+  - Le décalage des services de nuit (22h-06h) est appliqué AVANT le dédoublonnage
+  - Stratégie intelligente pour choisir quel service garder en cas de doublon
+  - [Documentation détaillée](docs/fix-services-multiples-par-jour.md)
+
+- **Mapping codes services** :
+  - SOUF002 correctement mappé : service `O`, poste `S/S` (Souffleur soir)
+  - Ajout des codes MA (Maladie) et RU (RTT)
+  - Validation stricte des codes pour éviter l'import de codes techniques
+
+### 🚀 Amélioré
+- **Parser PDF** :
+  - Meilleur filtrage des éléments non pertinents (METRO, RS, codes techniques SNCF)
+  - Parsing manuel amélioré pour les cas de fallback
+  - Conservation de tous les services avant traitement final
+  - [Documentation complète](docs/ameliorations-upload-pdf-aout-2025.md)
+
+### 📊 Données
+- Correction des imports d'avril 2025 (dates 21-24)
+- Import complet d'août 2025 pour CHAVET Romain
+
 ## [2.3.0] - 2025-08-13
 
 ### 🔧 Corrigé
@@ -73,6 +98,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+[2.4.0]: https://github.com/seth1987/cogc-planning-dev/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/seth1987/cogc-planning-dev/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/seth1987/cogc-planning-dev/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/seth1987/cogc-planning-dev/compare/v2.0.0-ocr...v2.1.0
