@@ -152,13 +152,14 @@ CODES DE SERVICES VALIDES À EXTRAIRE:
 - Formation: HAB-QF, HAB, FO
 - Autres: NU, INACTIN, I, C, D, F, VM, VISIMED
 
-RÈGLES D'EXTRACTION:
+RÈGLES D'EXTRACTION IMPORTANTES:
 1. AGENT: Le nom complet après "COGC PN" (format: NOM PRENOM)
 2. Pour CHAQUE DATE du bulletin:
    - Extraire la date au format JJ/MM/AAAA
-   - Extraire UNIQUEMENT le code service principal (pas les codes techniques)
-   - Si plusieurs lignes pour une date, prendre le service principal (pas NU)
+   - Extraire TOUS les codes services de la journée (il peut y en avoir plusieurs)
+   - Si une date apparaît DEUX FOIS (ex: 21/04 avec NU puis 21/04 avec ACR003), extraire LES DEUX services
    - Les services avec horaires 22:00-06:00 sont des services de nuit
+   - Ne pas ignorer NU même s'il y a un autre service le même jour
 
 RETOURNE CE JSON:
 {
@@ -173,7 +174,8 @@ RETOURNE CE JSON:
 }
 
 IMPORTANT: 
-- Une seule entrée par date
+- Extraire TOUS les services, même plusieurs par date
+- Ne pas filtrer ou dédupliquer
 - Extraire TOUTES les dates du bulletin
 - Ne pas inclure RS, METRO ou codes techniques`;
 
@@ -241,17 +243,10 @@ IMPORTANT:
       try {
         const parsedData = JSON.parse(jsonMatch[0]);
         
-        // Filtrer et nettoyer les données
-        const cleanedData = this.cleanExtractedData(parsedData);
+        // NE PAS nettoyer les données ici - garder tous les services
+        console.log(`📊 Données brutes extraites: ${parsedData.planning?.length || 0} entrées`);
         
-        // Vérifier que toutes les dates ont été extraites
-        if (cleanedData.planning && cleanedData.planning.length > 0) {
-          const dates = cleanedData.planning.map(e => e.date).sort();
-          console.log(`📅 Dates extraites: du ${dates[0]} au ${dates[dates.length - 1]}`);
-          console.log(`📊 Total: ${dates.length} entrées`);
-        }
-        
-        return await this.formatExtractedData(cleanedData);
+        return await this.formatExtractedData(parsedData);
       } catch (parseError) {
         console.error('❌ JSON invalide:', parseError);
         return await this.parseManual(ocrContent);
@@ -271,71 +266,11 @@ IMPORTANT:
   }
 
   /**
-   * Nettoie les données extraites - Version améliorée
+   * NE PLUS UTILISER - Remplacé par une logique dans formatExtractedData
    */
   cleanExtractedData(data) {
-    if (!data.planning) return data;
-
-    // Filtrer les entrées invalides et les doublons
-    const cleanedPlanning = [];
-    const seenDates = new Map();
-
-    data.planning.forEach(entry => {
-      if (!entry.date || !entry.code) return;
-
-      // Ignorer les codes non pertinents
-      if (this.shouldIgnoreCode(entry.code)) {
-        console.log(`🚫 Code ignoré: ${entry.code}`);
-        return;
-      }
-
-      // Vérifier que le code est valide
-      if (!this.isValidServiceCode(entry.code)) {
-        console.log(`⚠️ Code invalide ignoré: ${entry.code}`);
-        return;
-      }
-
-      const date = entry.date;
-      
-      // Gérer les services multiples par jour
-      if (seenDates.has(date)) {
-        const existing = seenDates.get(date);
-        
-        // Préférer les services principaux sur NU
-        if (existing.code === 'NU' && entry.code !== 'NU') {
-          seenDates.set(date, entry);
-          return;
-        }
-        
-        // Pour le même jour, préférer le service de nuit
-        if (entry.isNuit && !existing.isNuit) {
-          seenDates.set(date, entry);
-          return;
-        }
-        
-        // Sinon, garder l'existant
-        return;
-      }
-
-      seenDates.set(date, entry);
-    });
-
-    // Convertir en tableau
-    seenDates.forEach(entry => {
-      cleanedPlanning.push(entry);
-    });
-
-    // Trier par date
-    cleanedPlanning.sort((a, b) => {
-      const dateA = this.parseDate(a.date);
-      const dateB = this.parseDate(b.date);
-      return dateA.localeCompare(dateB);
-    });
-
-    return {
-      ...data,
-      planning: cleanedPlanning
-    };
+    // On ne nettoie plus ici pour garder tous les services
+    return data;
   }
 
   /**
@@ -399,6 +334,7 @@ IMPORTANT:
 
   /**
    * Formater les données extraites avec mapping et décalage nuit
+   * NOUVELLE VERSION qui gère les services multiples par jour
    */
   async formatExtractedData(data) {
     const result = {
@@ -411,8 +347,11 @@ IMPORTANT:
 
     console.log('👤 Agent:', result.agent.nom, result.agent.prenom);
 
-    // Traiter chaque entrée du planning
+    // Traiter chaque entrée du planning SANS DEDOUBLONNER
     if (data.planning && Array.isArray(data.planning)) {
+      // D'abord, traiter toutes les entrées et appliquer le décalage des nuits
+      const entriesWithMapping = [];
+      
       for (const entry of data.planning) {
         if (!entry.date || !entry.code) continue;
         
@@ -420,6 +359,18 @@ IMPORTANT:
         const formattedDate = this.parseDate(entry.date);
         const code = String(entry.code).trim().toUpperCase();
         const isNuit = entry.isNuit === true;
+        
+        // Ignorer les codes non pertinents
+        if (this.shouldIgnoreCode(code)) {
+          console.log(`🚫 Code ignoré: ${code}`);
+          continue;
+        }
+
+        // Vérifier que le code est valide
+        if (!this.isValidServiceCode(code) && !this.isSpecialCode(code)) {
+          console.log(`⚠️ Code invalide ignoré: ${code}`);
+          continue;
+        }
         
         console.log(`📅 Date: ${formattedDate}, Code: ${code}${isNuit ? ' (NUIT)' : ''}`);
         
@@ -429,7 +380,7 @@ IMPORTANT:
         if (mapping) {
           let targetDate = formattedDate;
           
-          // Décaler les services de nuit (service === 'X')
+          // Décaler les services de nuit (service === 'X' ou horaires 22h-06h)
           if (mapping.service === 'X' || isNuit) {
             const date = new Date(formattedDate + 'T12:00:00');
             date.setDate(date.getDate() + 1);
@@ -437,36 +388,103 @@ IMPORTANT:
             console.log(`  🌙 Service nuit → décalé au ${targetDate}`);
           }
           
-          result.planning.push({
+          entriesWithMapping.push({
             date: targetDate,
+            originalDate: formattedDate,
             service_code: mapping.service,
             poste_code: mapping.poste,
             original_code: code,
-            description: mapping.description
+            description: mapping.description,
+            isNuit: mapping.service === 'X' || isNuit
           });
           
         } else if (this.isSpecialCode(code)) {
           // Codes spéciaux (congés, repos, etc.)
-          result.planning.push({
+          entriesWithMapping.push({
             date: formattedDate,
+            originalDate: formattedDate,
             service_code: code,
             poste_code: null,
             original_code: code,
-            description: this.getSpecialCodeDescription(code)
+            description: this.getSpecialCodeDescription(code),
+            isNuit: false
           });
           
         } else {
           console.warn(`  ⚠️ Code inconnu: ${code}`);
           // Ajouter quand même avec le code tel quel
-          result.planning.push({
+          entriesWithMapping.push({
             date: formattedDate,
+            originalDate: formattedDate,
             service_code: code,
             poste_code: null,
             original_code: code,
-            description: code
+            description: code,
+            isNuit: false
           });
         }
       }
+
+      // Maintenant, gérer les services multiples par jour
+      // Grouper par date finale (après décalage)
+      const entriesByDate = {};
+      
+      entriesWithMapping.forEach(entry => {
+        const date = entry.date;
+        
+        if (!entriesByDate[date]) {
+          entriesByDate[date] = [];
+        }
+        
+        entriesByDate[date].push(entry);
+      });
+
+      // Pour chaque date, décider quel(s) service(s) garder
+      Object.keys(entriesByDate).sort().forEach(date => {
+        const dayEntries = entriesByDate[date];
+        
+        if (dayEntries.length === 1) {
+          // Un seul service, on le garde
+          result.planning.push(dayEntries[0]);
+        } else {
+          // Plusieurs services pour la même date
+          console.log(`⚠️ ${dayEntries.length} services pour le ${date}:`);
+          dayEntries.forEach(e => {
+            console.log(`   - ${e.original_code} (${e.service_code}/${e.poste_code || '-'})`);
+          });
+          
+          // Stratégie : 
+          // 1. Si un des services est NU et l'autre est un vrai service, on prend le vrai service
+          // 2. Si plusieurs vrais services (ex: service jour + service nuit décalé), on prend celui avec poste
+          // 3. Sinon on prend le dernier
+          
+          const nonNUServices = dayEntries.filter(e => e.service_code !== 'NU');
+          const servicesWithPoste = dayEntries.filter(e => e.poste_code !== null);
+          
+          if (nonNUServices.length === 1) {
+            // Un seul service non-NU, on le prend
+            result.planning.push(nonNUServices[0]);
+          } else if (servicesWithPoste.length === 1) {
+            // Un seul service avec poste, on le prend
+            result.planning.push(servicesWithPoste[0]);
+          } else if (servicesWithPoste.length > 1) {
+            // Plusieurs services avec poste, privilégier les services de nuit (X)
+            const nightService = servicesWithPoste.find(e => e.service_code === 'X');
+            if (nightService) {
+              result.planning.push(nightService);
+            } else {
+              // Prendre le dernier
+              result.planning.push(servicesWithPoste[servicesWithPoste.length - 1]);
+            }
+          } else {
+            // Aucun service avec poste, prendre le dernier non-NU ou le dernier tout court
+            const serviceToUse = nonNUServices.length > 0 
+              ? nonNUServices[nonNUServices.length - 1]
+              : dayEntries[dayEntries.length - 1];
+            result.planning.push(serviceToUse);
+          }
+        }
+      });
     }
 
     // Trier par date
@@ -505,9 +523,10 @@ IMPORTANT:
     // Pattern amélioré pour extraire les dates et codes
     // Format: JJ/MM/AAAA ... CODE_SERVICE
     const lines = text.split('\n');
-    let currentDate = null;
-
-    for (const line of lines) {
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
       // Ignorer les lignes non pertinentes
       if (this.ignoredElements.some(pattern => new RegExp(pattern, 'i').test(line))) {
         continue;
@@ -516,66 +535,48 @@ IMPORTANT:
       // Chercher une date
       const dateMatch = line.match(/(\d{2})\/(\d{2})\/(\d{4})/);
       if (dateMatch) {
-        currentDate = `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`;
-      }
-
-      // Si on a une date, chercher un code service valide
-      if (currentDate) {
-        // Chercher les codes services dans la ligne
-        const codeMatches = line.match(/(CRC|ACR|CCU|CENT|SOUF|REO|RC|RE|RO|CAC)\d{3}|RP|RPP|CA|RU|MA|DISPO|HAB-QF|HAB|FO|NU|INACTIN|JF|I|C|D|F|VM|VISIMED/gi);
+        const currentDate = `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`;
+        
+        // Chercher les codes services dans cette ligne et les suivantes
+        let searchLines = [line];
+        
+        // Regarder aussi les lignes suivantes jusqu'à la prochaine date
+        for (let j = i + 1; j < lines.length && j < i + 5; j++) {
+          if (/\d{2}\/\d{2}\/\d{4}/.test(lines[j])) break; // Nouvelle date
+          searchLines.push(lines[j]);
+        }
+        
+        const fullText = searchLines.join(' ');
+        
+        // Chercher tous les codes services valides
+        const codeMatches = fullText.match(new RegExp('(CRC|ACR|CCU|CENT|SOUF|REO|RC|RE|RO|CAC)\\d{3}|RP|RPP|CA|RU|MA|DISPO|HAB-QF|HAB|FO|NU|INACTIN|JF|I|C|D|F|VM|VISIMED|VMT', 'gi'));
         
         if (codeMatches) {
           for (const code of codeMatches) {
             const codeUpper = code.toUpperCase();
             
             // Vérifier que c'est un code valide
-            if (!this.isValidServiceCode(codeUpper)) continue;
+            if (!this.isValidServiceCode(codeUpper) && !this.isSpecialCode(codeUpper)) continue;
             
             // Vérifier si c'est un service de nuit
-            const isNuit = line.includes('22:00') && line.includes('06:00');
+            const isNuit = fullText.includes('22:00') && fullText.includes('06:00');
             
-            const mapping = await mappingService.getPosteFromCode(codeUpper);
-            if (mapping) {
-              let targetDate = currentDate;
-              if (mapping.service === 'X' || isNuit) {
-                const d = new Date(currentDate + 'T12:00:00');
-                d.setDate(d.getDate() + 1);
-                targetDate = d.toISOString().split('T')[0];
-              }
-              
-              result.planning.push({
-                date: targetDate,
-                service_code: mapping.service,
-                poste_code: mapping.poste,
-                original_code: codeUpper,
-                description: mapping.description
-              });
-              
-              // On a trouvé le code pour cette date, passer à la suivante
-              currentDate = null;
-              break;
-            } else if (this.isSpecialCode(codeUpper)) {
-              result.planning.push({
-                date: currentDate,
-                service_code: codeUpper,
-                poste_code: null,
-                original_code: codeUpper,
-                description: this.getSpecialCodeDescription(codeUpper)
-              });
-              currentDate = null;
-              break;
-            }
+            result.planning.push({
+              date: currentDate,
+              code: codeUpper,
+              isNuit: isNuit
+            });
+            
+            console.log(`📅 Trouvé: ${currentDate} - ${codeUpper}${isNuit ? ' (NUIT)' : ''}`);
           }
         }
       }
     }
-
-    // Nettoyer les doublons
-    const cleanedData = this.cleanExtractedData(result);
     
-    console.log(`✅ Parsing manuel: ${cleanedData.planning.length} entrées`);
+    console.log(`✅ Parsing manuel: ${result.planning.length} entrées`);
     
-    return cleanedData;
+    // Formater les données extraites manuellement
+    return await this.formatExtractedData(result);
   }
 
   /**
