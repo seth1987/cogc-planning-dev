@@ -450,38 +450,45 @@ IMPORTANT:
           // Plusieurs services pour la même date
           console.log(`⚠️ ${dayEntries.length} services pour le ${date}:`);
           dayEntries.forEach(e => {
-            console.log(`   - ${e.original_code} (${e.service_code}/${e.poste_code || '-'})`);
+            console.log(`   - ${e.original_code} (${e.service_code}/${e.poste_code || '-'}) [date originale: ${e.originalDate}]`);
           });
           
-          // Stratégie : 
-          // 1. Si un des services est NU et l'autre est un vrai service, on prend le vrai service
-          // 2. Si plusieurs vrais services (ex: service jour + service nuit décalé), on prend celui avec poste
-          // 3. Sinon on prend le dernier
+          // NOUVELLE STRATÉGIE pour gérer NU + service de nuit
+          // Si on a un NU et un service de nuit qui vient d'une date antérieure, garder le NU
+          const nuService = dayEntries.find(e => e.service_code === 'NU');
+          const nightServiceFromPreviousDay = dayEntries.find(e => e.isNuit && e.originalDate !== date);
           
-          const nonNUServices = dayEntries.filter(e => e.service_code !== 'NU');
-          const servicesWithPoste = dayEntries.filter(e => e.poste_code !== null);
-          
-          if (nonNUServices.length === 1) {
-            // Un seul service non-NU, on le prend
-            result.planning.push(nonNUServices[0]);
-          } else if (servicesWithPoste.length === 1) {
-            // Un seul service avec poste, on le prend
-            result.planning.push(servicesWithPoste[0]);
-          } else if (servicesWithPoste.length > 1) {
-            // Plusieurs services avec poste, privilégier les services de nuit (X)
-            const nightService = servicesWithPoste.find(e => e.service_code === 'X');
-            if (nightService) {
-              result.planning.push(nightService);
-            } else {
-              // Prendre le dernier
-              result.planning.push(servicesWithPoste[servicesWithPoste.length - 1]);
-            }
+          if (nuService && nightServiceFromPreviousDay) {
+            // Cas spécial : NU en journée + service de nuit de la veille
+            console.log(`   → Garde NU car service de nuit vient du ${nightServiceFromPreviousDay.originalDate}`);
+            result.planning.push(nuService);
           } else {
-            // Aucun service avec poste, prendre le dernier non-NU ou le dernier tout court
-            const serviceToUse = nonNUServices.length > 0 
-              ? nonNUServices[nonNUServices.length - 1]
-              : dayEntries[dayEntries.length - 1];
-            result.planning.push(serviceToUse);
+            // Stratégie normale
+            const nonNUServices = dayEntries.filter(e => e.service_code !== 'NU');
+            const servicesWithPoste = dayEntries.filter(e => e.poste_code !== null);
+            
+            if (nonNUServices.length === 1) {
+              // Un seul service non-NU, on le prend
+              result.planning.push(nonNUServices[0]);
+            } else if (servicesWithPoste.length === 1) {
+              // Un seul service avec poste, on le prend
+              result.planning.push(servicesWithPoste[0]);
+            } else if (servicesWithPoste.length > 1) {
+              // Plusieurs services avec poste, privilégier les services de nuit (X)
+              const nightService = servicesWithPoste.find(e => e.service_code === 'X');
+              if (nightService) {
+                result.planning.push(nightService);
+              } else {
+                // Prendre le dernier
+                result.planning.push(servicesWithPoste[servicesWithPoste.length - 1]);
+              }
+            } else {
+              // Aucun service avec poste, prendre le dernier non-NU ou le dernier tout court
+              const serviceToUse = nonNUServices.length > 0 
+                ? nonNUServices[nonNUServices.length - 1]
+                : dayEntries[dayEntries.length - 1];
+              result.planning.push(serviceToUse);
+            }
           }
         }
       });
