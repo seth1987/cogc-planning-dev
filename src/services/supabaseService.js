@@ -67,9 +67,32 @@ class SupabaseService {
   }
 
   async createAgent(agentData) {
+    // Nettoyer les données avant l'envoi
+    const cleanData = {
+      nom: agentData.nom,
+      prenom: agentData.prenom,
+      statut: agentData.statut,
+      groupe: agentData.groupe,
+      site: agentData.site
+    };
+
+    // Ajouter les dates seulement si elles existent et sont valides
+    if (agentData.date_arrivee) {
+      cleanData.date_arrivee = agentData.date_arrivee;
+    }
+    
+    // Gérer date_depart : null si vide
+    if (agentData.date_depart && agentData.date_depart !== '') {
+      cleanData.date_depart = agentData.date_depart;
+    } else {
+      cleanData.date_depart = null;
+    }
+
+    console.log('Création agent avec données nettoyées:', cleanData);
+
     const { data, error } = await supabase
       .from('agents')
-      .insert(agentData)
+      .insert(cleanData)
       .select();
     
     if (error) {
