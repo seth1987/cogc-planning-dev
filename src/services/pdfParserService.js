@@ -1,4 +1,4 @@
-// Service de parsing des bulletins de commande SNCF avec intégration Mistral OCR
+// Service de parsing des bulletins de commande SNCF avec Mistral OCR
 class PDFParserService {
   // Codes de service valides SNCF
   static VALID_SERVICE_CODES = {
@@ -33,100 +33,25 @@ class PDFParserService {
   static FILTER_ELEMENTS = ['METRO', 'RS', 'du', 'au', 'TRACTION'];
 
   /**
-   * Méthode principale pour parser un PDF avec Mistral OCR
+   * Méthode unique pour parser un PDF avec Mistral OCR
    * @param {File} file - Fichier PDF à parser
    * @param {string} apiKey - Clé API Mistral
    * @returns {Object} Données parsées et structurées
    */
   static async parsePDF(file, apiKey) {
     try {
-      // 1. Extraire le texte du PDF
-      const text = await this.extractTextFromPDF(file);
+      console.log('🚀 Début extraction Mistral OCR...');
       
-      // 2. Si extraction directe échouée, utiliser Mistral OCR
-      if (!text || text.trim().length < 100) {
-        console.log('📄 Texte insuffisant, utilisation de Mistral OCR...');
-        const ocrText = await this.callMistralOCR(file, apiKey);
-        return this.parseMistralOCR(ocrText);
-      }
-      
-      // 3. Parser le texte extrait
-      return this.parseBulletin(text);
-      
-    } catch (error) {
-      console.error('Erreur lors du parsing PDF:', error);
-      throw new Error(`Échec du parsing PDF: ${error.message}`);
-    }
-  }
+      // 1. Convertir le fichier en base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
-  /**
-   * Extraire le texte d'un PDF
-   * @param {File} file - Fichier PDF
-   * @returns {string} Texte extrait
-   */
-  static async extractTextFromPDF(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      
-      reader.onload = async (e) => {
-        try {
-          // Tentative d'extraction basique du texte
-          // Note: En production, on utiliserait PDF.js pour une extraction plus robuste
-          const arrayBuffer = e.target.result;
-          const uint8Array = new Uint8Array(arrayBuffer);
-          
-          // Convertir en texte (méthode simplifiée)
-          let text = '';
-          const decoder = new TextDecoder('utf-8');
-          
-          // Rechercher les sections de texte dans le PDF
-          for (let i = 0; i < uint8Array.length - 100; i++) {
-            // Rechercher les marqueurs de flux de texte PDF
-            if (uint8Array[i] === 66 && uint8Array[i+1] === 84) { // "BT"
-              let j = i + 2;
-              let chunk = [];
-              
-              // Lire jusqu'à "ET"
-              while (j < uint8Array.length - 1 && 
-                     !(uint8Array[j] === 69 && uint8Array[j+1] === 84)) {
-                chunk.push(uint8Array[j]);
-                j++;
-              }
-              
-              // Tenter de décoder le chunk
-              try {
-                const chunkText = decoder.decode(new Uint8Array(chunk));
-                text += chunkText + ' ';
-              } catch (e) {
-                // Ignorer les erreurs de décodage
-              }
-            }
-          }
-          
-          resolve(text);
-        } catch (error) {
-          resolve(''); // Retourner une chaîne vide si l'extraction échoue
-        }
-      };
-      
-      reader.onerror = () => reject(new Error('Erreur lors de la lecture du fichier'));
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  /**
-   * Appeler l'API Mistral pour l'OCR
-   * @param {File} file - Fichier PDF
-   * @param {string} apiKey - Clé API Mistral
-   * @returns {string} Texte extrait par OCR
-   */
-  static async callMistralOCR(file, apiKey) {
-    try {
-      // Convertir le fichier en base64
-      const base64 = await this.fileToBase64(file);
-      
-      // Appel à l'API Mistral
-      const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+      // 2. Appel API Mistral avec pixtral pour OCR
+      let response = await fetch('https://api.mistral.ai/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -134,109 +59,85 @@ class PDFParserService {
         },
         body: JSON.stringify({
           model: 'pixtral-12b-2409',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: `Extrais le texte complet de ce bulletin de commande SNCF. 
-                         Retourne UNIQUEMENT le texte brut sans formatage, en conservant la structure originale.
-                         Inclus TOUS les éléments : dates, codes service, horaires, noms d'agents, numéros CP.`
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:application/pdf;base64,${base64}`
-                  }
-                }
-              ]
-            }
-          ],
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Extrais TOUT le texte de ce bulletin SNCF. Format attendu:
+                       - Chaque date sur une nouvelle ligne
+                       - Format date: JJ/MM/AAAA suivi du jour (Lun, Mar, etc.)
+                       - Codes service: CCU001, CCU002, CRC001, RP, DISPO, etc.
+                       - Horaires au format HH:MM HH:MM
+                       - Conserve TOUS les éléments: Agent, N° CP, périodes, codes
+                       Retourne le texte EXACT sans modification.`
+              },
+              {
+                type: 'image_url',
+                image_url: { url: `data:application/pdf;base64,${base64}` }
+              }
+            ]
+          }],
           temperature: 0.1,
           max_tokens: 4000
         })
       });
 
+      // 3. Si pixtral échoue, fallback sur mistral-large
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Erreur Mistral API:', errorData);
+        console.log('⚠️ Pixtral indisponible, fallback sur mistral-large...');
         
-        // Fallback vers mistral-large si pixtral échoue
-        if (response.status === 400 || response.status === 422) {
-          console.log('Fallback vers mistral-large-latest...');
-          return await this.callMistralOCRFallback(file, apiKey);
-        }
-        
+        response = await fetch('https://api.mistral.ai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: 'mistral-large-latest',
+            messages: [{
+              role: 'user',
+              content: `Tu reçois un PDF de bulletin de commande SNCF. Analyse et retourne:
+                       BULLETIN DE COMMANDE UOP:
+                       Agent: [NOM PRENOM]
+                       N° CP: [NUMERO]
+                       Commande allant du [DATE] au [DATE]
+                       
+                       [DATE] [CODE_SERVICE] [JOUR]
+                       [HORAIRES si présents]
+                       
+                       Utilise ces codes service valides: CCU001-004, CRC001-002, RP, DISPO, NU, INACTIN, CA, RTT
+                       Format dates: JJ/MM/AAAA
+                       Conserve TOUT le contenu important.`
+            }],
+            temperature: 0.1,
+            max_tokens: 4000
+          })
+        });
+      }
+
+      if (!response.ok) {
         throw new Error(`Erreur API Mistral: ${response.status}`);
       }
 
       const data = await response.json();
-      return data.choices[0]?.message?.content || '';
+      const ocrText = data.choices[0]?.message?.content || '';
+      
+      console.log('✅ Texte extrait avec succès');
+      
+      // 4. Parser le texte extrait
+      return this.parseBulletin(ocrText);
       
     } catch (error) {
-      console.error('Erreur lors de l\'appel Mistral OCR:', error);
-      throw error;
+      console.error('❌ Erreur parsing PDF:', error);
+      throw new Error(`Échec extraction PDF: ${error.message}`);
     }
-  }
-
-  /**
-   * Fallback vers mistral-large pour l'extraction de texte
-   */
-  static async callMistralOCRFallback(file, apiKey) {
-    const text = await this.extractTextFromPDF(file);
-    
-    const response = await fetch('https://api.mistral.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'mistral-large-latest',
-        messages: [
-          {
-            role: 'user',
-            content: `Voici le texte extrait d'un bulletin de commande SNCF (peut contenir des erreurs).
-                     Nettoie et restructure ce texte pour qu'il soit lisible et bien formaté.
-                     Conserve TOUS les éléments importants : dates, codes service, horaires, noms, numéros CP.
-                     
-                     Texte brut:
-                     ${text}`
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 4000
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Erreur API Mistral (fallback): ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0]?.message?.content || '';
-  }
-
-  /**
-   * Convertir un fichier en base64
-   */
-  static fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result.split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
   }
 
   /**
    * Valider les données parsées
    * @param {Object} parsedData - Données parsées
-   * @returns {Object} Résultat de validation avec erreurs et warnings
+   * @returns {Object} Résultat de validation
    */
   static validateParsedData(parsedData) {
     const validation = {
@@ -245,48 +146,24 @@ class PDFParserService {
       isValid: true
     };
 
-    // Vérifier la présence des métadonnées
-    if (!parsedData.metadata) {
-      validation.errors.push('Métadonnées manquantes');
+    // Vérifier métadonnées
+    if (!parsedData.metadata?.agent) {
+      validation.errors.push('Nom agent manquant');
       validation.isValid = false;
-    } else {
-      if (!parsedData.metadata.agent) {
-        validation.errors.push('Nom de l\'agent manquant');
-        validation.isValid = false;
-      }
-      if (!parsedData.metadata.numeroCP) {
-        validation.warnings.push('Numéro CP manquant');
-      }
-      if (!parsedData.metadata.periode) {
-        validation.warnings.push('Période non définie');
-      }
+    }
+    if (!parsedData.metadata?.numeroCP) {
+      validation.warnings.push('Numéro CP manquant');
     }
 
-    // Vérifier les entrées
-    if (!parsedData.entries || parsedData.entries.length === 0) {
-      validation.errors.push('Aucune entrée de planning trouvée');
+    // Vérifier entrées
+    if (!parsedData.entries?.length) {
+      validation.errors.push('Aucune entrée trouvée');
       validation.isValid = false;
     } else {
-      // Vérifier chaque entrée
-      parsedData.entries.forEach((entry, index) => {
-        if (!entry.date) {
-          validation.errors.push(`Entrée ${index + 1}: Date manquante`);
-          validation.isValid = false;
-        }
-        if (!entry.serviceCode) {
-          validation.warnings.push(`Entrée ${index + 1}: Code service manquant`);
-        } else if (!this.VALID_SERVICE_CODES[entry.serviceCode]) {
-          validation.warnings.push(`Entrée ${index + 1}: Code service inconnu (${entry.serviceCode})`);
-        }
+      parsedData.entries.forEach((entry, i) => {
+        if (!entry.date) validation.errors.push(`Ligne ${i+1}: Date manquante`);
+        if (!entry.serviceCode) validation.warnings.push(`Ligne ${i+1}: Code service manquant`);
       });
-
-      // Statistiques
-      const validEntries = parsedData.entries.filter(e => e.isValid).length;
-      const totalEntries = parsedData.entries.length;
-      
-      if (validEntries < totalEntries) {
-        validation.warnings.push(`${totalEntries - validEntries} entrées sur ${totalEntries} nécessitent une vérification`);
-      }
     }
 
     return validation;
