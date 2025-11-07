@@ -235,11 +235,33 @@ const App = () => {
     setShowEditAgent(true);
   };
 
+  // NOUVEAU: Handler pour créer un nouvel agent
+  const handleAddAgent = () => {
+    setSelectedAgent(null); // Pas d'agent sélectionné = mode création
+    setShowEditAgent(true);
+    setShowGestionAgents(false); // Fermer le modal de gestion
+  };
+
+  // NOUVEAU: Handler pour créer un agent dans la DB
+  const handleCreateAgent = async (formData) => {
+    try {
+      console.log('Création nouvel agent:', formData);
+      await supabaseService.createAgent(formData);
+      await loadData(currentMonth);
+      setConnectionStatus('✅ Nouvel agent créé avec succès');
+      setShowEditAgent(false);
+    } catch (error) {
+      console.error('Erreur création agent:', error);
+      alert(`Erreur lors de la création: ${error.message}`);
+    }
+  };
+
   const handleSaveAgent = async (agentId, formData) => {
     try {
       await supabaseService.updateAgent(agentId, formData);
       await loadData(currentMonth);
       setConnectionStatus('✅ Agent mis à jour');
+      setShowEditAgent(false);
     } catch (error) {
       console.error('Erreur mise à jour agent:', error);
       alert(`Erreur lors de la mise à jour: ${error.message}`);
@@ -251,6 +273,7 @@ const App = () => {
       await supabaseService.deleteAgent(agentId);
       await loadData(currentMonth);
       setConnectionStatus('✅ Agent supprimé');
+      setShowEditAgent(false);
     } catch (error) {
       console.error('Erreur suppression agent:', error);
       alert(`Erreur lors de la suppression: ${error.message}`);
@@ -397,14 +420,19 @@ const App = () => {
         onClose={() => setShowGestionAgents(false)}
         onEditAgent={handleEditAgent}
         onViewHabilitations={handleAgentClick}
+        onAddAgent={handleAddAgent} // AJOUT: Passer le handler
       />
 
       <ModalEditAgent
         isOpen={showEditAgent}
         agent={selectedAgent}
-        onClose={() => setShowEditAgent(false)}
+        onClose={() => {
+          setShowEditAgent(false);
+          setSelectedAgent(null);
+        }}
         onSave={handleSaveAgent}
         onDelete={handleDeleteAgent}
+        onCreate={handleCreateAgent} // AJOUT: Passer le handler de création
       />
       
       <ModalHabilitations
