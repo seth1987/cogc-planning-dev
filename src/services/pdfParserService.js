@@ -1,11 +1,4 @@
-// Service de parsing des bulletins de commande SNCF - Extraction locale sans API externe
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
-
-// Configuration PDF.js
-if (typeof window !== 'undefined' && pdfjsLib) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js`;
-}
-
+// Service de parsing des bulletins de commande SNCF - Extraction locale avec PDF.js
 class PDFParserService {
   // Codes de service valides SNCF
   static VALID_SERVICE_CODES = {
@@ -40,7 +33,25 @@ class PDFParserService {
   static FILTER_ELEMENTS = ['METRO', 'RS', 'du', 'au', 'TRACTION'];
 
   /**
-   * Parse un PDF avec extraction locale via PDF.js
+   * Initialise PDF.js de manière dynamique
+   */
+  static async initPDFJS() {
+    try {
+      // Essayer d'importer PDF.js dynamiquement
+      const pdfjsLib = await import('pdfjs-dist');
+      
+      // Configurer le worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      
+      return pdfjsLib;
+    } catch (error) {
+      console.log('PDF.js non disponible, utilisation du fallback');
+      return null;
+    }
+  }
+
+  /**
+   * Parse un PDF avec extraction locale (PDF.js si disponible, sinon fallback)
    * @param {File} file - Fichier PDF à parser
    * @param {string} apiKey - Paramètre gardé pour compatibilité mais non utilisé
    * @returns {Object} Données parsées et structurées
@@ -59,10 +70,13 @@ class PDFParserService {
 
       let extractedText = '';
 
-      // 2. Extraire le texte avec PDF.js
+      // 2. Essayer d'utiliser PDF.js si disponible
+      const pdfjsLib = await this.initPDFJS();
+      
       if (pdfjsLib) {
         try {
-          const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+          console.log('📑 Extraction avec PDF.js...');
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
           console.log(`📑 PDF chargé: ${pdf.numPages} pages`);
 
           // Extraire le texte de toutes les pages
@@ -73,126 +87,171 @@ class PDFParserService {
             // Reconstruire le texte avec les positions
             let pageText = '';
             let lastY = null;
+            let lastX = null;
             
             textContent.items.forEach(item => {
-              // Ajouter un saut de ligne si changement de position Y significatif
-              if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+              // Si le texte est sur une nouvelle ligne (Y différent)
+              if (lastY !== null && Math.abs(item.transform[5] - lastY) > 2) {
                 pageText += '\n';
+                lastX = null;
               }
-              pageText += item.str + ' ';
+              // Si le texte est espacé horizontalement
+              else if (lastX !== null && item.transform[4] - lastX > 10) {
+                pageText += ' ';
+              }
+              
+              pageText += item.str;
               lastY = item.transform[5];
+              lastX = item.transform[4] + item.width;
             });
             
-            extractedText += pageText + '\n';
+            extractedText += pageText + '\n\n';
           }
+          
+          console.log('✅ Extraction PDF.js réussie');
         } catch (pdfError) {
-          console.warn('⚠️ PDF.js indisponible, extraction basique...', pdfError);
+          console.warn('⚠️ Erreur PDF.js, tentative fallback...', pdfError);
         }
       }
 
-      // 3. Si PDF.js échoue, extraction basique
+      // 3. Si PDF.js n'a pas fonctionné, extraction basique
       if (!extractedText || extractedText.trim().length < 50) {
         console.log('🔍 Extraction alternative...');
-        extractedText = await this.basicTextExtraction(arrayBuffer);
+        extractedText = this.basicTextExtraction(arrayBuffer);
       }
 
-      // 4. Si toujours pas de texte, utiliser un template de test
+      // 4. Si toujours pas de texte, utiliser le template de démonstration
       if (!extractedText || extractedText.trim().length < 50) {
-        console.log('📝 Utilisation du template de démonstration...');
+        console.log('📝 Mode démonstration activé');
         extractedText = this.getDemoTemplate();
       }
 
-      console.log('✅ Texte extrait avec succès');
+      console.log('✅ Texte extrait:', extractedText.substring(0, 200) + '...');
       
       // 5. Parser le texte extrait
-      return this.parseBulletin(extractedText);
+      const result = this.parseBulletin(extractedText);
+      
+      // Ajouter un flag pour indiquer la méthode utilisée
+      result.extractionMethod = extractedText.includes('BULLETIN DE COMMANDE UOP') ? 
+        (pdfjsLib ? 'PDF.js' : 'Extraction basique') : 'Template démo';
+      
+      return result;
       
     } catch (error) {
       console.error('❌ Erreur extraction PDF:', error);
       // Retourner un template de démonstration en cas d'erreur
-      return this.parseBulletin(this.getDemoTemplate());
+      const demoResult = this.parseBulletin(this.getDemoTemplate());
+      demoResult.extractionMethod = 'Template démo (erreur)';
+      return demoResult;
     }
   }
 
   /**
    * Extraction basique de texte depuis un ArrayBuffer PDF
+   * Méthode de fallback si PDF.js n'est pas disponible
    */
-  static async basicTextExtraction(arrayBuffer) {
+  static basicTextExtraction(arrayBuffer) {
     const uint8Array = new Uint8Array(arrayBuffer);
     const decoder = new TextDecoder('utf-8', { fatal: false });
     let text = '';
+    let foundText = false;
     
-    // Rechercher les patterns de texte dans le PDF
+    console.log('🔧 Extraction basique du PDF...');
+    
+    // Convertir en string pour recherche de patterns
+    let binaryStr = '';
+    for (let i = 0; i < Math.min(uint8Array.length, 100000); i++) {
+      binaryStr += String.fromCharCode(uint8Array[i]);
+    }
+    
+    // Rechercher des patterns de texte courants dans les PDF
+    const patterns = [
+      /BULLETIN DE COMMANDE/gi,
+      /Agent\s*:\s*([A-Z\s]+)/gi,
+      /N[°o]\s*CP\s*:\s*([A-Z0-9]+)/gi,
+      /\d{2}\/\d{2}\/\d{4}/g,
+      /CCU\d{3}/g,
+      /CRC\d{3}/g,
+      /DISPO|RP|NU|INACTIN|RTT|CA/g
+    ];
+    
+    patterns.forEach(pattern => {
+      const matches = binaryStr.match(pattern);
+      if (matches) {
+        foundText = true;
+        matches.forEach(match => {
+          text += match + '\n';
+        });
+      }
+    });
+    
+    // Si on a trouvé du texte, essayer d'extraire plus de contexte
+    if (foundText) {
+      console.log('✅ Patterns trouvés dans le PDF');
+      
+      // Rechercher les sections de texte entre parenthèses (format PDF courant)
+      const textMatches = binaryStr.match(/\(([^)]+)\)/g);
+      if (textMatches) {
+        textMatches.forEach(match => {
+          const cleaned = match
+            .substring(1, match.length - 1)
+            .replace(/\\(\d{3})/g, '') // Enlever les codes octaux
+            .replace(/\\/g, '')
+            .trim();
+          
+          if (cleaned.length > 2) {
+            text += cleaned + ' ';
+          }
+        });
+      }
+    }
+    
+    // Rechercher aussi les streams de texte
     for (let i = 0; i < uint8Array.length - 100; i++) {
-      // Rechercher "BT" (Begin Text)
-      if (uint8Array[i] === 66 && uint8Array[i+1] === 84) {
+      // Rechercher "BT" (Begin Text) et "ET" (End Text)
+      if (uint8Array[i] === 66 && uint8Array[i+1] === 84) { // "BT"
         let j = i + 2;
         let chunk = [];
         
-        // Lire jusqu'à "ET" (End Text)
-        while (j < uint8Array.length - 1) {
-          if (uint8Array[j] === 69 && uint8Array[j+1] === 84) break;
+        // Lire jusqu'à "ET"
+        while (j < uint8Array.length - 1 && j - i < 5000) {
+          if (uint8Array[j] === 69 && uint8Array[j+1] === 84) { // "ET"
+            break;
+          }
           chunk.push(uint8Array[j]);
           j++;
-          if (j - i > 10000) break; // Limite de sécurité
         }
         
-        // Décoder le chunk
-        if (chunk.length > 0) {
+        // Essayer de décoder le chunk
+        if (chunk.length > 10 && chunk.length < 5000) {
           try {
             const chunkText = decoder.decode(new Uint8Array(chunk));
-            // Nettoyer le texte extrait
+            // Nettoyer et filtrer
             const cleaned = chunkText
               .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ')
+              .replace(/[()[\]<>]/g, ' ')
               .replace(/\s+/g, ' ')
               .trim();
             
-            if (cleaned.length > 2) {
-              text += cleaned + ' ';
+            // Vérifier si le texte contient des mots clés SNCF
+            if (cleaned.length > 5 && 
+                (cleaned.includes('CCU') || cleaned.includes('CRC') || 
+                 cleaned.includes('Agent') || cleaned.includes('CP') ||
+                 cleaned.includes('/2025') || cleaned.includes('/2024'))) {
+              text += '\n' + cleaned;
+              foundText = true;
             }
           } catch (e) {
             // Ignorer les erreurs de décodage
           }
         }
       }
-      
-      // Rechercher aussi les streams
-      if (uint8Array[i] === 115 && uint8Array[i+1] === 116 && 
-          uint8Array[i+2] === 114 && uint8Array[i+3] === 101 &&
-          uint8Array[i+4] === 97 && uint8Array[i+5] === 109) { // "stream"
-        
-        i += 6;
-        let streamData = [];
-        
-        // Lire jusqu'à "endstream"
-        while (i < uint8Array.length - 9) {
-          if (uint8Array[i] === 101 && uint8Array[i+1] === 110 && 
-              uint8Array[i+2] === 100 && uint8Array[i+3] === 115) {
-            break;
-          }
-          streamData.push(uint8Array[i]);
-          i++;
-          if (streamData.length > 50000) break; // Limite de sécurité
-        }
-        
-        // Essayer de décoder le stream
-        if (streamData.length > 0) {
-          try {
-            const streamText = decoder.decode(new Uint8Array(streamData));
-            const cleaned = streamText
-              .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ')
-              .replace(/[()]/g, '')
-              .replace(/\s+/g, ' ')
-              .trim();
-            
-            if (cleaned.length > 5) {
-              text += '\n' + cleaned;
-            }
-          } catch (e) {
-            // Ignorer
-          }
-        }
-      }
+    }
+    
+    if (foundText) {
+      console.log('✅ Extraction basique réussie');
+    } else {
+      console.log('⚠️ Aucun texte trouvé dans le PDF');
     }
     
     return text;
@@ -263,23 +322,35 @@ N82Z00100000 08:00 15:45
       isValid: true
     };
 
+    // Indiquer la méthode d'extraction utilisée
+    if (parsedData.extractionMethod) {
+      if (parsedData.extractionMethod === 'Template démo') {
+        validation.warnings.push('📝 Mode démonstration - Données de test utilisées');
+      } else if (parsedData.extractionMethod === 'Extraction basique') {
+        validation.warnings.push('⚠️ Extraction basique utilisée - Vérifiez les données');
+      }
+    }
+
     // Vérifier métadonnées
     if (!parsedData.metadata?.agent) {
-      validation.warnings.push('Nom agent manquant - vérifiez le format du PDF');
+      validation.warnings.push('Nom agent manquant');
     }
     if (!parsedData.metadata?.numeroCP) {
-      validation.warnings.push('Numéro CP manquant - sera à compléter manuellement');
+      validation.warnings.push('Numéro CP manquant');
     }
 
     // Vérifier entrées
     if (!parsedData.entries?.length) {
-      validation.errors.push('Aucune entrée trouvée - vérifiez le format du PDF');
+      validation.errors.push('Aucune entrée de planning trouvée');
       validation.isValid = false;
     } else {
       let validCount = 0;
+      let errorCount = 0;
+      
       parsedData.entries.forEach((entry, i) => {
         if (!entry.date) {
-          validation.warnings.push(`Ligne ${i+1}: Date manquante`);
+          validation.errors.push(`Ligne ${i+1}: Date manquante`);
+          errorCount++;
         }
         if (!entry.serviceCode) {
           validation.warnings.push(`Ligne ${i+1}: Code service manquant`);
@@ -288,11 +359,12 @@ N82Z00100000 08:00 15:45
         }
       });
       
+      // Résumé
+      validation.warnings.unshift(`📊 ${validCount}/${parsedData.entries.length} entrées valides`);
+      
       if (validCount === 0) {
         validation.errors.push('Aucune entrée valide trouvée');
         validation.isValid = false;
-      } else {
-        validation.warnings.push(`${validCount}/${parsedData.entries.length} entrées valides détectées`);
       }
     }
 
@@ -316,7 +388,8 @@ N82Z00100000 08:00 15:45
       const normalizedText = rawText
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n')
-        .replace(/\t/g, ' ');
+        .replace(/\t/g, ' ')
+        .replace(/\s+/g, ' '); // Normaliser les espaces multiples
 
       // Extraire les entrées jour par jour
       const lines = normalizedText.split('\n');
@@ -328,8 +401,8 @@ N82Z00100000 08:00 15:45
         if (!line) continue;
         
         // Détecter une date (formats: JJ/MM/AAAA ou AAAA-MM-JJ)
-        const dateMatch = line.match(/(\d{2})\/(\d{2})\/(\d{4})/) || 
-                         line.match(/(\d{4})-(\d{2})-(\d{2})/);
+        const dateMatch = line.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/) || 
+                         line.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
         
         if (dateMatch) {
           // Sauvegarder l'entrée précédente si elle existe
@@ -338,54 +411,47 @@ N82Z00100000 08:00 15:45
           }
 
           // Créer une nouvelle entrée
+          let dateISO, dateDisplay;
+          
           if (dateMatch[0].includes('/')) {
-            currentDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`; // Format ISO
-            currentEntry = {
-              date: currentDate,
-              dateDisplay: `${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`,
-              dayOfWeek: this.extractDayOfWeek(line),
-              serviceCode: null,
-              serviceLabel: null,
-              horaires: [],
-              isValid: false,
-              hasError: false,
-              errorMessage: null
-            };
+            // Format JJ/MM/AAAA
+            const jour = dateMatch[1].padStart(2, '0');
+            const mois = dateMatch[2].padStart(2, '0');
+            const annee = dateMatch[3];
+            dateISO = `${annee}-${mois}-${jour}`;
+            dateDisplay = `${jour}/${mois}/${annee}`;
           } else {
-            currentDate = dateMatch[0];
-            currentEntry = {
-              date: currentDate,
-              dateDisplay: `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`,
-              dayOfWeek: this.extractDayOfWeek(line),
-              serviceCode: null,
-              serviceLabel: null,
-              horaires: [],
-              isValid: false,
-              hasError: false,
-              errorMessage: null
-            };
+            // Format AAAA-MM-JJ
+            dateISO = dateMatch[0];
+            dateDisplay = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}`;
           }
           
-          // Chercher le code de service sur la même ligne
-          const serviceCode = this.extractServiceCode(line);
-          if (serviceCode) {
-            currentEntry.serviceCode = serviceCode;
-            currentEntry.serviceLabel = this.VALID_SERVICE_CODES[serviceCode] || serviceCode;
-            currentEntry.isValid = true;
+          currentEntry = {
+            date: dateISO,
+            dateDisplay: dateDisplay,
+            dayOfWeek: this.extractDayOfWeek(line) || this.extractDayOfWeek(lines[i+1] || ''),
+            serviceCode: null,
+            serviceLabel: null,
+            horaires: [],
+            isValid: false,
+            hasError: false,
+            errorMessage: null
+          };
+          
+          // Chercher le code de service sur la même ligne ou les suivantes
+          for (let j = 0; j < 3 && i + j < lines.length; j++) {
+            const checkLine = lines[i + j];
+            const serviceCode = this.extractServiceCode(checkLine);
+            if (serviceCode) {
+              currentEntry.serviceCode = serviceCode;
+              currentEntry.serviceLabel = this.VALID_SERVICE_CODES[serviceCode] || serviceCode;
+              currentEntry.isValid = true;
+              break;
+            }
           }
         }
 
-        // Extraire le code de service si pas encore trouvé
-        if (currentEntry && !currentEntry.serviceCode) {
-          const serviceCode = this.extractServiceCode(line);
-          if (serviceCode) {
-            currentEntry.serviceCode = serviceCode;
-            currentEntry.serviceLabel = this.VALID_SERVICE_CODES[serviceCode] || serviceCode;
-            currentEntry.isValid = true;
-          }
-        }
-
-        // Extraire les horaires (format: HH:MM HH:MM)
+        // Extraire les horaires si on a une entrée courante
         if (currentEntry) {
           const horaireMatch = line.match(/(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/);
           if (horaireMatch) {
@@ -424,40 +490,49 @@ N82Z00100000 08:00 15:45
    */
   static extractPermissive(rawText) {
     const entries = [];
-    const lines = rawText.split(/[\n\r]+/);
+    const text = rawText.replace(/\s+/g, ' ');
     
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    // Rechercher toutes les dates
+    const dateRegex = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/g;
+    let dateMatch;
+    
+    while ((dateMatch = dateRegex.exec(text)) !== null) {
+      const entry = {
+        date: `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`,
+        dateDisplay: `${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`,
+        dayOfWeek: null,
+        serviceCode: 'INCONNU',
+        serviceLabel: 'À vérifier',
+        horaires: [],
+        isValid: false,
+        hasError: false,
+        errorMessage: 'Extraction automatique - À vérifier'
+      };
       
-      // Chercher n'importe quelle date
-      const dateMatch = line.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-      if (dateMatch) {
-        const entry = {
-          date: `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`,
-          dateDisplay: `${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`,
-          dayOfWeek: this.extractDayOfWeek(line),
-          serviceCode: this.extractServiceCode(line) || 'INCONNU',
-          serviceLabel: 'À vérifier',
-          horaires: [],
-          isValid: false,
-          hasError: false,
-          errorMessage: 'Extraction automatique - à vérifier'
-        };
-        
-        // Chercher des horaires dans les lignes suivantes
-        for (let j = i; j < Math.min(i + 5, lines.length); j++) {
-          const horaires = lines[j].match(/(\d{1,2}:\d{2})/g);
-          if (horaires && horaires.length >= 2) {
-            entry.horaires.push({
-              debut: horaires[0],
-              fin: horaires[1],
-              code: null
-            });
-          }
-        }
-        
-        entries.push(entry);
+      // Chercher un code de service proche de cette date
+      const contextStart = Math.max(0, dateMatch.index - 50);
+      const contextEnd = Math.min(text.length, dateMatch.index + 100);
+      const context = text.substring(contextStart, contextEnd);
+      
+      const serviceCode = this.extractServiceCode(context);
+      if (serviceCode) {
+        entry.serviceCode = serviceCode;
+        entry.serviceLabel = this.VALID_SERVICE_CODES[serviceCode] || serviceCode;
+        entry.isValid = true;
+        entry.errorMessage = null;
       }
+      
+      // Chercher des horaires
+      const horaireMatches = context.match(/(\d{1,2}:\d{2})/g);
+      if (horaireMatches && horaireMatches.length >= 2) {
+        entry.horaires.push({
+          debut: horaireMatches[0],
+          fin: horaireMatches[1],
+          code: null
+        });
+      }
+      
+      entries.push(entry);
     }
     
     return entries;
@@ -480,7 +555,8 @@ N82Z00100000 08:00 15:45
       metadata.agent = agentMatch[1]
         .replace(/COGC\s+PN/gi, '')
         .replace(/^\s+|\s+$/g, '')
-        .replace(/\s+/g, ' ');
+        .replace(/\s+/g, ' ')
+        .toUpperCase();
     }
 
     // Extraire numéro CP
@@ -511,28 +587,38 @@ N82Z00100000 08:00 15:45
    * Extrait le code de service d'une ligne
    */
   static extractServiceCode(line) {
+    if (!line) return null;
+    
     const upperLine = line.toUpperCase();
     
-    // Chercher les codes de service valides
-    for (const code of Object.keys(this.VALID_SERVICE_CODES)) {
+    // Chercher les codes de service valides (ordre de priorité)
+    // D'abord les codes avec numéros
+    const codesWithNumbers = ['CCU001', 'CCU002', 'CCU003', 'CCU004', 'CRC001', 'CRC002', 'REO001', 'REO002'];
+    for (const code of codesWithNumbers) {
       if (upperLine.includes(code)) {
         return code;
       }
     }
-
-    // Cas spéciaux pour les codes sans numéro
+    
+    // Ensuite les codes simples
+    const simpleCodes = ['ACR', 'RP', 'NU', 'DISPO', 'INACTIN', 'CA', 'RTT', 'RQ'];
+    for (const code of simpleCodes) {
+      // Vérifier que c'est un mot complet (pas une partie d'un autre mot)
+      const regex = new RegExp(`\\b${code}\\b`);
+      if (regex.test(upperLine)) {
+        return code;
+      }
+    }
+    
+    // Cas spéciaux avec descriptions
     if (upperLine.includes('REPOS') && upperLine.includes('PÉRIODIQUE')) return 'RP';
-    if (upperLine.includes('RP ')) return 'RP';
     if (upperLine.includes('NON UTILISÉ')) return 'NU';
-    if (upperLine.includes('NU ')) return 'NU';
+    if (upperLine.includes('UTILISABLE NON UTILISÉ')) return 'NU';
     if (upperLine.includes('DISPONIBLE')) return 'DISPO';
-    if (upperLine.includes('DISPO ')) return 'DISPO';
-    if (upperLine.includes('INACTIN')) return 'INACTIN';
+    if (upperLine.includes('INACTIF')) return 'INACTIN';
+    if (upperLine.includes('FORMATION')) return 'INACTIN';
     if (upperLine.includes('CONGÉ')) return 'CA';
-    if (upperLine.includes('CA ')) return 'CA';
-    if (upperLine.includes('RTT')) return 'RTT';
-    if (upperLine.includes('RQ')) return 'RQ';
-
+    
     return null;
   }
 
@@ -540,6 +626,8 @@ N82Z00100000 08:00 15:45
    * Extrait le jour de la semaine
    */
   static extractDayOfWeek(line) {
+    if (!line) return null;
+    
     const jours = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
     const upperLine = line.toUpperCase();
     
@@ -597,6 +685,14 @@ N82Z00100000 08:00 15:45
       entry.hasError = true;
       entry.errorMessage = 'Date manquante';
       entry.isValid = false;
+    } else {
+      // Vérifier que la date est valide
+      const dateObj = new Date(entry.date);
+      if (isNaN(dateObj.getTime())) {
+        entry.hasError = true;
+        entry.errorMessage = 'Date invalide';
+        entry.isValid = false;
+      }
     }
 
     return entry;
