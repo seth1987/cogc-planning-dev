@@ -1,19 +1,29 @@
-// Service de parsing des bulletins de commande SNCF - Extraction locale pure JavaScript
+// Service de parsing des bulletins de commande SNCF - Version hybride avec Mistral OCR
+import MistralOCRService from './mistralOCRService';
+
 class PDFParserService {
-  // Codes de service valides SNCF
+  // Codes de service valides SNCF (étendu avec les nouveaux codes)
   static VALID_SERVICE_CODES = {
     // Codes CCU (Centre de Commande Unique)
     CCU001: 'CRC/CCU DENFERT',
     CCU002: 'CRC/CCU DENFERT',
     CCU003: 'CRC/CCU DENFERT',
     CCU004: 'Régulateur Table PARC Denfert',
+    CCU005: 'Régulateur Table PARC Denfert',
     
     // Codes CRC (Coordonnateur Régional Circulation)
     CRC001: 'Coordonnateur Régional Circulation',
     CRC002: 'Coordonnateur Régional Circulation',
     
-    // Codes ACR
-    ACR: 'Agent Circulation Rail',
+    // Codes ACR (Aide Coordonnateur Régional)
+    ACR001: 'Aide Coordonnateur Régional',
+    ACR002: 'Aide Coordonnateur Régional',
+    ACR003: 'Aide Coordonnateur Régional',
+    
+    // Codes Centre Souffleur
+    CENT001: 'Centre Souffleur',
+    CENT002: 'Centre Souffleur',
+    CENT003: 'Centre Souffleur',
     
     // Codes REO
     REO001: 'Référent Équipe Opérationnelle',
@@ -24,24 +34,77 @@ class PDFParserService {
     NU: 'Non Utilisé',
     DISPO: 'Disponible',
     INACTIN: 'Inactif/Formation',
+    'HAB-QF': 'Formation/Perfectionnement',
     CA: 'Congé Annuel',
+    CONGE: 'Congé Annuel',
     RQ: 'Repos Compensateur',
-    RTT: 'RTT'
+    RTT: 'RTT',
+    C: 'Congé Annuel'  // Version abrégée
   };
 
   // Éléments à filtrer (ne sont pas des codes de service)
   static FILTER_ELEMENTS = ['METRO', 'RS', 'du', 'au', 'TRACTION'];
 
   /**
-   * Parse un PDF avec extraction locale pure JavaScript
+   * Parse un PDF avec extraction hybride Mistral + Locale
    * @param {File} file - Fichier PDF à parser
-   * @param {string} apiKey - Paramètre gardé pour compatibilité mais non utilisé
+   * @param {string} apiKey - API Key Mistral (optionnelle, utilise celle par défaut si non fournie)
    * @returns {Object} Données parsées et structurées
    */
   static async parsePDF(file, apiKey = null) {
     try {
-      console.log('📄 Extraction locale du PDF...');
+      console.log('📄 Début extraction PDF hybride...');
       
+      // 1. Essayer d'abord avec Mistral OCR (le plus précis)
+      try {
+        console.log('🚀 Tentative avec Mistral AI OCR...');
+        const mistralResult = await MistralOCRService.extractWithMistral(file);
+        
+        if (mistralResult && mistralResult.entries && mistralResult.entries.length > 0) {
+          console.log('✅ Extraction Mistral réussie:', mistralResult.entries.length, 'entrées');
+          
+          // Enrichir avec les codes de service valides
+          mistralResult.entries = mistralResult.entries.map(entry => {
+            if (!this.VALID_SERVICE_CODES[entry.serviceCode]) {
+              entry.hasWarning = true;
+              entry.warningMessage = `Code service ${entry.serviceCode} non reconnu`;
+            }
+            return entry;
+          });
+          
+          mistralResult.extractionMethod = 'Mistral AI OCR (94.89% précision)';
+          return mistralResult;
+        }
+      } catch (mistralError) {
+        console.warn('⚠️ Erreur Mistral OCR:', mistralError.message);
+      }
+      
+      // 2. Fallback sur extraction locale JavaScript
+      console.log('📑 Fallback sur extraction locale...');
+      const localResult = await this.extractLocally(file);
+      
+      if (localResult && localResult.entries && localResult.entries.length > 0) {
+        console.log('✅ Extraction locale réussie:', localResult.entries.length, 'entrées');
+        localResult.extractionMethod = 'Extraction locale PDF.js';
+        return localResult;
+      }
+      
+      // 3. Si tout échoue, retourner un template de démonstration
+      console.log('📝 Mode démonstration activé');
+      return this.getDemoResult();
+      
+    } catch (error) {
+      console.error('❌ Erreur extraction PDF:', error);
+      // Retourner un template de démonstration en cas d'erreur
+      return this.getDemoResult();
+    }
+  }
+
+  /**
+   * Extraction locale avec PDF.js
+   */
+  static async extractLocally(file) {
+    try {
       // 1. Lire le fichier comme ArrayBuffer
       const arrayBuffer = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -52,20 +115,20 @@ class PDFParserService {
 
       let extractedText = '';
 
-      // 2. Essayer PDF.js si disponible (sans worker pour éviter les erreurs CORS)
+      // 2. Essayer PDF.js si disponible
       try {
-        const pdfjsLib = await import('pdfjs-dist');
+        const pdfjsLib = window.pdfjsLib || await import('pdfjs-dist');
         
         // Désactiver le worker pour éviter les problèmes CORS/CSP
         pdfjsLib.GlobalWorkerOptions.workerSrc = false;
         
-        console.log('📑 Extraction avec PDF.js (mode inline)...');
+        console.log('📑 Extraction avec PDF.js...');
         
         // Charger le document sans worker
         const loadingTask = pdfjsLib.getDocument({
           data: arrayBuffer,
-          disableWorker: true, // Désactiver le worker
-          verbosity: 0 // Réduire les logs
+          disableWorker: true,
+          verbosity: 0
         });
         
         const pdf = await loadingTask.promise;
@@ -101,90 +164,57 @@ class PDFParserService {
         
         console.log('✅ Extraction PDF.js réussie');
       } catch (pdfError) {
-        console.log('⚠️ PDF.js non disponible ou erreur, utilisation du fallback');
-      }
-
-      // 3. Si pas assez de texte extrait, utiliser l'extraction basique
-      if (!extractedText || extractedText.trim().length < 50) {
-        console.log('🔍 Extraction alternative...');
+        console.log('⚠️ PDF.js non disponible, extraction binaire...');
         extractedText = this.extractTextFromBinary(arrayBuffer);
       }
 
-      // 4. Si toujours pas de texte, utiliser le template de démonstration
-      if (!extractedText || extractedText.trim().length < 50) {
-        console.log('📝 Mode démonstration activé');
-        extractedText = this.getDemoTemplate();
+      // 3. Parser le texte extrait
+      if (extractedText && extractedText.trim().length > 50) {
+        return this.parseBulletin(extractedText);
       }
-
-      console.log('✅ Texte extrait:', extractedText.substring(0, 200) + '...');
       
-      // 5. Parser le texte extrait
-      const result = this.parseBulletin(extractedText);
-      
-      // Ajouter un flag pour indiquer la méthode utilisée
-      result.extractionMethod = extractedText.includes('BULLETIN DE COMMANDE UOP') ? 
-        'Extraction réussie' : 'Template démonstration';
-      
-      return result;
+      return null;
       
     } catch (error) {
-      console.error('❌ Erreur extraction PDF:', error);
-      // Retourner un template de démonstration en cas d'erreur
-      const demoResult = this.parseBulletin(this.getDemoTemplate());
-      demoResult.extractionMethod = 'Template démonstration (erreur)';
-      return demoResult;
+      console.error('❌ Erreur extraction locale:', error);
+      return null;
     }
   }
 
   /**
    * Extraction de texte depuis le binaire du PDF
-   * Méthode robuste qui fonctionne sans dépendances
    */
   static extractTextFromBinary(arrayBuffer) {
     const uint8Array = new Uint8Array(arrayBuffer);
     const decoder = new TextDecoder('utf-8', { fatal: false });
     let extractedText = '';
-    let foundData = false;
     
     console.log('🔧 Extraction binaire du PDF...');
     
-    // Stratégie 1: Rechercher les patterns de texte entre parenthèses
+    // Rechercher les patterns de texte entre parenthèses
     for (let i = 0; i < uint8Array.length - 1; i++) {
-      // Rechercher les parenthèses ouvrantes
       if (uint8Array[i] === 0x28) { // '(' en ASCII
         let j = i + 1;
         let textBytes = [];
         
-        // Lire jusqu'à la parenthèse fermante
         while (j < uint8Array.length && j - i < 1000) {
           if (uint8Array[j] === 0x29) { // ')' en ASCII
-            // On a trouvé une chaîne complète
             if (textBytes.length > 0) {
               try {
                 let text = decoder.decode(new Uint8Array(textBytes));
-                // Nettoyer le texte
                 text = text
                   .replace(/\\(\d{3})/g, (match, oct) => String.fromCharCode(parseInt(oct, 8)))
                   .replace(/\\n/g, '\n')
-                  .replace(/\\r/g, '\r')
-                  .replace(/\\t/g, '\t')
-                  .replace(/\\/g, '')
                   .trim();
                 
-                // Garder seulement le texte pertinent
                 if (text.length > 2 && text.length < 500) {
-                  // Vérifier si c'est du texte SNCF pertinent
                   const upperText = text.toUpperCase();
                   if (upperText.includes('AGENT') || 
                       upperText.includes('CCU') || 
                       upperText.includes('CRC') ||
                       upperText.includes('BULLETIN') ||
-                      upperText.includes('COMMANDE') ||
-                      upperText.includes('2025') ||
-                      upperText.includes('2024') ||
                       /\d{2}\/\d{2}\/\d{4}/.test(text)) {
                     extractedText += text + ' ';
-                    foundData = true;
                   }
                 }
               } catch (e) {
@@ -193,194 +223,13 @@ class PDFParserService {
             }
             break;
           }
-          // Gérer les échappements
-          if (uint8Array[j] === 0x5C && j + 1 < uint8Array.length) { // '\' en ASCII
-            if (uint8Array[j + 1] === 0x29) { // '\)' - parenthèse échappée
-              textBytes.push(0x29);
-              j += 2;
-              continue;
-            }
-          }
           textBytes.push(uint8Array[j]);
           j++;
         }
       }
     }
     
-    // Stratégie 2: Rechercher les sections de texte entre BT et ET
-    for (let i = 0; i < uint8Array.length - 2; i++) {
-      // Rechercher "BT" (Begin Text)
-      if (uint8Array[i] === 0x42 && uint8Array[i+1] === 0x54 && 
-          (i === 0 || uint8Array[i-1] === 0x0A || uint8Array[i-1] === 0x0D || uint8Array[i-1] === 0x20)) {
-        
-        let j = i + 2;
-        let textSection = [];
-        
-        // Lire jusqu'à "ET" (End Text)
-        while (j < uint8Array.length - 1 && j - i < 10000) {
-          if (uint8Array[j] === 0x45 && uint8Array[j+1] === 0x54 &&
-              (j + 2 >= uint8Array.length || uint8Array[j+2] === 0x0A || uint8Array[j+2] === 0x0D || uint8Array[j+2] === 0x20)) {
-            // Fin de la section texte
-            if (textSection.length > 10) {
-              try {
-                let text = decoder.decode(new Uint8Array(textSection));
-                // Extraire le texte entre parenthèses dans cette section
-                const matches = text.match(/\(([^)]+)\)/g);
-                if (matches) {
-                  matches.forEach(match => {
-                    const cleaned = match
-                      .substring(1, match.length - 1)
-                      .replace(/\\(\d{3})/g, (m, oct) => String.fromCharCode(parseInt(oct, 8)))
-                      .replace(/\\/g, '')
-                      .trim();
-                    
-                    if (cleaned.length > 2) {
-                      extractedText += cleaned + ' ';
-                    }
-                  });
-                }
-              } catch (e) {
-                // Ignorer
-              }
-            }
-            break;
-          }
-          textSection.push(uint8Array[j]);
-          j++;
-        }
-      }
-    }
-    
-    // Organiser le texte extrait
-    if (foundData && extractedText.length > 0) {
-      console.log('✅ Données extraites du PDF');
-      
-      // Essayer de reconstruire une structure
-      const lines = extractedText.split(/\s+/).filter(s => s.length > 0);
-      let reconstructed = '';
-      
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        // Détecter les dates et les mettre sur de nouvelles lignes
-        if (/\d{2}\/\d{2}\/\d{4}/.test(line)) {
-          reconstructed += '\n' + line;
-        } else {
-          reconstructed += ' ' + line;
-        }
-      }
-      
-      return reconstructed;
-    }
-    
-    console.log('⚠️ Extraction limitée du PDF');
     return extractedText;
-  }
-
-  /**
-   * Template de démonstration pour tester l'application
-   */
-  static getDemoTemplate() {
-    return `
-BULLETIN DE COMMANDE UOP : 
-Agent : GILLON THOMAS
-N° CP : 8409385L
-Edition le 11/04/2025 , 15:07
-Commande allant du 21/04/2025 au 30/04/2025
-
-21/04/2025 CCU004 Lun
-METRO 05:35 06:00 du CCU602
-N1100010CO72 06:00 14:00
-RS 14:00 14:10
-METRO 14:10 14:35
-
-22/04/2025 CRC001 Mar
-N1100010CO72 06:00 14:00 du CRC601
-
-23/04/2025 CCU004 Mer
-METRO 05:35 06:00 du CCU602
-N1100010CO72 06:00 14:00
-RS 14:00 14:10
-METRO 14:10 14:35
-
-24/04/2025 NU Jeu
-04:05 09:00 NU
-
-24/04/2025 CCU003 Jeu
-METRO 21:35 22:00 NU du CCU601
-N1100010CO72 22:00 06:00
-RS 06:00 06:10
-METRO 06:10 06:35
-
-25/04/2025 CCU003 Ven
-METRO 21:35 22:00 du CCU601
-N1100010CO72 22:00 06:00
-RS 06:00 06:10
-METRO 06:10 06:35
-
-27/04/2025 RP Dim
-
-28/04/2025 RP Lun
-
-29/04/2025 INACTIN Mar
-N82F00100000 08:00 15:45 TRACTION 
-
-30/04/2025 DISPO Mer
-N82Z00100000 08:00 15:45
-`;
-  }
-
-  /**
-   * Valider les données parsées
-   */
-  static validateParsedData(parsedData) {
-    const validation = {
-      errors: [],
-      warnings: [],
-      isValid: true
-    };
-
-    // Indiquer la méthode d'extraction
-    if (parsedData.extractionMethod) {
-      if (parsedData.extractionMethod.includes('démonstration')) {
-        validation.warnings.push('📝 Mode démonstration - Données de test');
-      }
-    }
-
-    // Vérifier métadonnées
-    if (!parsedData.metadata?.agent) {
-      validation.warnings.push('Nom agent manquant');
-    }
-    if (!parsedData.metadata?.numeroCP) {
-      validation.warnings.push('Numéro CP manquant');
-    }
-
-    // Vérifier entrées
-    if (!parsedData.entries?.length) {
-      validation.errors.push('Aucune entrée de planning trouvée');
-      validation.isValid = false;
-    } else {
-      let validCount = 0;
-      
-      parsedData.entries.forEach((entry, i) => {
-        if (!entry.date) {
-          validation.errors.push(`Ligne ${i+1}: Date manquante`);
-        } else if (entry.isValid) {
-          validCount++;
-        }
-        if (!entry.serviceCode) {
-          validation.warnings.push(`Ligne ${i+1}: Code service manquant`);
-        }
-      });
-      
-      validation.warnings.unshift(`📊 ${validCount}/${parsedData.entries.length} entrées valides`);
-      
-      if (validCount === 0) {
-        validation.errors.push('Aucune entrée valide trouvée');
-        validation.isValid = false;
-      }
-    }
-
-    return validation;
   }
 
   /**
@@ -402,14 +251,13 @@ N82Z00100000 08:00 15:45
 
       // Extraire les entrées jour par jour
       const lines = normalizedText.split('\n');
-      let currentDate = null;
       let currentEntry = null;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
         
-        // Détecter une date (formats: JJ/MM/AAAA)
+        // Détecter une date
         const dateMatch = line.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
         
         if (dateMatch) {
@@ -435,7 +283,7 @@ N82Z00100000 08:00 15:45
             errorMessage: null
           };
           
-          // Chercher le code de service sur la même ligne ou les suivantes
+          // Chercher le code de service
           for (let j = 0; j <= 2 && i + j < lines.length; j++) {
             const checkLine = lines[i + j];
             const serviceCode = this.extractServiceCode(checkLine);
@@ -466,15 +314,6 @@ N82Z00100000 08:00 15:45
         result.entries.push(currentEntry);
       }
 
-      // Valider les entrées
-      result.entries = result.entries.map(entry => this.validateEntry(entry));
-
-      // Si aucune entrée, extraction permissive
-      if (result.entries.length === 0) {
-        console.log('🔄 Extraction permissive...');
-        result.entries = this.extractPermissive(rawText);
-      }
-
     } catch (error) {
       result.errors.push(`Erreur parsing: ${error.message}`);
     }
@@ -483,56 +322,45 @@ N82Z00100000 08:00 15:45
   }
 
   /**
-   * Extraction permissive pour PDF mal formatés
+   * Template de démonstration
    */
-  static extractPermissive(rawText) {
-    const entries = [];
-    const text = rawText.replace(/\s+/g, ' ');
-    
-    // Rechercher toutes les dates
-    const dateRegex = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/g;
-    let dateMatch;
-    
-    while ((dateMatch = dateRegex.exec(text)) !== null) {
-      const entry = {
-        date: `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`,
-        dateDisplay: `${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`,
-        dayOfWeek: null,
-        serviceCode: 'INCONNU',
-        serviceLabel: 'À vérifier',
-        horaires: [],
-        isValid: false,
-        hasError: false,
-        errorMessage: 'Extraction automatique - À vérifier'
-      };
-      
-      // Chercher un code de service proche
-      const contextStart = Math.max(0, dateMatch.index - 50);
-      const contextEnd = Math.min(text.length, dateMatch.index + 100);
-      const context = text.substring(contextStart, contextEnd);
-      
-      const serviceCode = this.extractServiceCode(context);
-      if (serviceCode) {
-        entry.serviceCode = serviceCode;
-        entry.serviceLabel = this.VALID_SERVICE_CODES[serviceCode] || serviceCode;
-        entry.isValid = true;
-        entry.errorMessage = null;
-      }
-      
-      // Chercher des horaires
-      const horaireMatches = context.match(/(\d{1,2}:\d{2})/g);
-      if (horaireMatches && horaireMatches.length >= 2) {
-        entry.horaires.push({
-          debut: horaireMatches[0],
-          fin: horaireMatches[1],
-          code: null
-        });
-      }
-      
-      entries.push(entry);
-    }
-    
-    return entries;
+  static getDemoResult() {
+    return {
+      metadata: {
+        agent: 'GILLON THOMAS',
+        numeroCP: '8409385L',
+        dateEdition: '11/04/2025',
+        periodeDebut: '21/04/2025',
+        periodeFin: '30/04/2025'
+      },
+      entries: [
+        {
+          date: '2025-04-21',
+          dateDisplay: '21/04/2025',
+          dayOfWeek: 'Lun',
+          serviceCode: 'CCU004',
+          serviceLabel: 'Régulateur Table PARC Denfert',
+          horaires: [
+            { type: 'METRO', debut: '05:35', fin: '06:00' },
+            { type: 'SERVICE', debut: '06:00', fin: '14:00', code: 'N1100010CO72' }
+          ],
+          isValid: true
+        },
+        {
+          date: '2025-04-22',
+          dateDisplay: '22/04/2025',
+          dayOfWeek: 'Mar',
+          serviceCode: 'CRC001',
+          serviceLabel: 'Coordonnateur Régional Circulation',
+          horaires: [
+            { type: 'SERVICE', debut: '06:00', fin: '14:00', code: 'N1100010CO72' }
+          ],
+          isValid: true
+        }
+      ],
+      extractionMethod: 'Template démonstration',
+      errors: []
+    };
   }
 
   /**
@@ -587,19 +415,19 @@ N82Z00100000 08:00 15:45
     
     const upperLine = line.toUpperCase();
     
-    // Codes avec numéros (priorité)
-    const codesWithNumbers = ['CCU001', 'CCU002', 'CCU003', 'CCU004', 'CRC001', 'CRC002', 'REO001', 'REO002'];
-    for (const code of codesWithNumbers) {
-      if (upperLine.includes(code)) {
-        return code;
-      }
-    }
+    // Tous les codes possibles (ordre de priorité)
+    const allCodes = [
+      'CCU001', 'CCU002', 'CCU003', 'CCU004', 'CCU005',
+      'CRC001', 'CRC002',
+      'ACR001', 'ACR002', 'ACR003',
+      'CENT001', 'CENT002', 'CENT003',
+      'REO001', 'REO002',
+      'HAB-QF',
+      'ACR', 'RP', 'NU', 'DISPO', 'INACTIN', 'CA', 'CONGE', 'RTT', 'RQ', 'C'
+    ];
     
-    // Codes simples
-    const simpleCodes = ['ACR', 'RP', 'NU', 'DISPO', 'INACTIN', 'CA', 'RTT', 'RQ'];
-    for (const code of simpleCodes) {
-      const regex = new RegExp(`\\b${code}\\b`);
-      if (regex.test(upperLine)) {
+    for (const code of allCodes) {
+      if (upperLine.includes(code)) {
         return code;
       }
     }
@@ -608,7 +436,7 @@ N82Z00100000 08:00 15:45
     if (upperLine.includes('REPOS') && upperLine.includes('PÉRIODIQUE')) return 'RP';
     if (upperLine.includes('NON UTILISÉ')) return 'NU';
     if (upperLine.includes('DISPONIBLE')) return 'DISPO';
-    if (upperLine.includes('INACTIF') || upperLine.includes('FORMATION')) return 'INACTIN';
+    if (upperLine.includes('FORMATION') || upperLine.includes('PERFECTIONNEMENT')) return 'HAB-QF';
     if (upperLine.includes('CONGÉ')) return 'CA';
     
     return null;
@@ -629,28 +457,11 @@ N82Z00100000 08:00 15:45
       }
     }
     
-    // Jours complets
-    const joursComplets = {
-      'LUNDI': 'Lun',
-      'MARDI': 'Mar',
-      'MERCREDI': 'Mer',
-      'JEUDI': 'Jeu',
-      'VENDREDI': 'Ven',
-      'SAMEDI': 'Sam',
-      'DIMANCHE': 'Dim'
-    };
-    
-    for (const [complet, court] of Object.entries(joursComplets)) {
-      if (upperLine.includes(complet)) {
-        return court;
-      }
-    }
-    
     return null;
   }
 
   /**
-   * Extrait le code horaire (N1100010CO72, etc.)
+   * Extrait le code horaire
    */
   static extractTimeCode(line) {
     const codeMatch = line.match(/[A-Z]\d{10}[A-Z]{2}\d{2}/);
@@ -678,6 +489,62 @@ N82Z00100000 08:00 15:45
     }
 
     return entry;
+  }
+
+  /**
+   * Valider les données parsées
+   */
+  static validateParsedData(parsedData) {
+    const validation = {
+      errors: [],
+      warnings: [],
+      isValid: true
+    };
+
+    // Indiquer la méthode d'extraction
+    if (parsedData.extractionMethod) {
+      if (parsedData.extractionMethod.includes('démonstration')) {
+        validation.warnings.push('📝 Mode démonstration - Données de test');
+      } else if (parsedData.extractionMethod.includes('Mistral')) {
+        validation.warnings.push('✅ Extraction haute précision avec Mistral AI');
+      }
+    }
+
+    // Vérifier métadonnées
+    if (!parsedData.metadata?.agent) {
+      validation.warnings.push('Nom agent manquant');
+    }
+    if (!parsedData.metadata?.numeroCP) {
+      validation.warnings.push('Numéro CP manquant');
+    }
+
+    // Vérifier entrées
+    if (!parsedData.entries?.length) {
+      validation.errors.push('Aucune entrée de planning trouvée');
+      validation.isValid = false;
+    } else {
+      let validCount = 0;
+      
+      parsedData.entries.forEach((entry, i) => {
+        if (!entry.date) {
+          validation.errors.push(`Ligne ${i+1}: Date manquante`);
+        } else if (entry.isValid) {
+          validCount++;
+        }
+        if (!entry.serviceCode) {
+          validation.warnings.push(`Ligne ${i+1}: Code service manquant`);
+        }
+      });
+      
+      validation.warnings.unshift(`📊 ${validCount}/${parsedData.entries.length} entrées valides`);
+      
+      if (validCount === 0) {
+        validation.errors.push('Aucune entrée valide trouvée');
+        validation.isValid = false;
+      }
+    }
+
+    return validation;
   }
 
   /**
