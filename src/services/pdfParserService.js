@@ -1,8 +1,6 @@
-// Service de parsing des bulletins de commande SNCF - Version hybride avec Mistral OCR
-import MistralOCRService from './mistralOCRService';
-
+// Service de parsing des bulletins de commande SNCF - Version optimisée extraction locale
 class PDFParserService {
-  // Codes de service valides SNCF (étendu avec les nouveaux codes)
+  // Codes de service valides SNCF (liste complète)
   static VALID_SERVICE_CODES = {
     // Codes CCU (Centre de Commande Unique)
     CCU001: 'CRC/CCU DENFERT',
@@ -46,65 +44,15 @@ class PDFParserService {
   static FILTER_ELEMENTS = ['METRO', 'RS', 'du', 'au', 'TRACTION'];
 
   /**
-   * Parse un PDF avec extraction hybride Mistral + Locale
+   * Parse un PDF avec extraction locale optimisée
    * @param {File} file - Fichier PDF à parser
-   * @param {string} apiKey - API Key Mistral (optionnelle, utilise celle par défaut si non fournie)
+   * @param {string} apiKey - Paramètre gardé pour compatibilité mais non utilisé
    * @returns {Object} Données parsées et structurées
    */
   static async parsePDF(file, apiKey = null) {
     try {
-      console.log('📄 Début extraction PDF hybride...');
+      console.log('📄 Début extraction PDF...');
       
-      // 1. Essayer d'abord avec Mistral OCR (le plus précis)
-      try {
-        console.log('🚀 Tentative avec Mistral AI OCR...');
-        const mistralResult = await MistralOCRService.extractWithMistral(file);
-        
-        if (mistralResult && mistralResult.entries && mistralResult.entries.length > 0) {
-          console.log('✅ Extraction Mistral réussie:', mistralResult.entries.length, 'entrées');
-          
-          // Enrichir avec les codes de service valides
-          mistralResult.entries = mistralResult.entries.map(entry => {
-            if (!this.VALID_SERVICE_CODES[entry.serviceCode]) {
-              entry.hasWarning = true;
-              entry.warningMessage = `Code service ${entry.serviceCode} non reconnu`;
-            }
-            return entry;
-          });
-          
-          mistralResult.extractionMethod = 'Mistral AI OCR (94.89% précision)';
-          return mistralResult;
-        }
-      } catch (mistralError) {
-        console.warn('⚠️ Erreur Mistral OCR:', mistralError.message);
-      }
-      
-      // 2. Fallback sur extraction locale JavaScript
-      console.log('📑 Fallback sur extraction locale...');
-      const localResult = await this.extractLocally(file);
-      
-      if (localResult && localResult.entries && localResult.entries.length > 0) {
-        console.log('✅ Extraction locale réussie:', localResult.entries.length, 'entrées');
-        localResult.extractionMethod = 'Extraction locale PDF.js';
-        return localResult;
-      }
-      
-      // 3. Si tout échoue, retourner un template de démonstration
-      console.log('📝 Mode démonstration activé');
-      return this.getDemoResult();
-      
-    } catch (error) {
-      console.error('❌ Erreur extraction PDF:', error);
-      // Retourner un template de démonstration en cas d'erreur
-      return this.getDemoResult();
-    }
-  }
-
-  /**
-   * Extraction locale avec PDF.js
-   */
-  static async extractLocally(file) {
-    try {
       // 1. Lire le fichier comme ArrayBuffer
       const arrayBuffer = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -134,26 +82,31 @@ class PDFParserService {
         const pdf = await loadingTask.promise;
         console.log(`📑 PDF chargé: ${pdf.numPages} pages`);
 
-        // Extraire le texte de toutes les pages
+        // Extraire le texte de toutes les pages avec amélioration de la reconstruction
         for (let i = 1; i <= pdf.numPages; i++) {
           try {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
             
-            // Reconstruire le texte avec les positions
+            // Reconstruire le texte avec positionnement intelligent
             let pageText = '';
             let lastY = null;
+            let lastX = null;
             
             textContent.items.forEach(item => {
               // Nouvelle ligne si changement significatif de Y
-              if (lastY !== null && Math.abs(item.transform[5] - lastY) > 2) {
+              if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
                 pageText += '\n';
-              } else if (pageText.length > 0 && !pageText.endsWith(' ')) {
+                lastX = null;
+              } 
+              // Espace si décalage horizontal significatif
+              else if (lastX !== null && item.transform[4] - lastX > 10) {
                 pageText += ' ';
               }
               
               pageText += item.str;
               lastY = item.transform[5];
+              lastX = item.transform[4] + (item.width || 0);
             });
             
             extractedText += pageText + '\n\n';
@@ -168,54 +121,76 @@ class PDFParserService {
         extractedText = this.extractTextFromBinary(arrayBuffer);
       }
 
-      // 3. Parser le texte extrait
-      if (extractedText && extractedText.trim().length > 50) {
-        return this.parseBulletin(extractedText);
+      // 3. Si pas assez de texte extrait, utiliser l'extraction binaire
+      if (!extractedText || extractedText.trim().length < 50) {
+        console.log('🔍 Extraction alternative...');
+        extractedText = this.extractTextFromBinary(arrayBuffer);
       }
+
+      // 4. Si toujours pas de texte, utiliser le template de démonstration
+      if (!extractedText || extractedText.trim().length < 50) {
+        console.log('📝 Mode démonstration activé');
+        extractedText = this.getDemoTemplate();
+      }
+
+      console.log('✅ Texte extrait:', extractedText.substring(0, 200) + '...');
       
-      return null;
+      // 5. Parser le texte extrait avec méthode améliorée
+      const result = this.parseBulletinEnhanced(extractedText);
+      
+      // Ajouter un flag pour indiquer la méthode utilisée
+      result.extractionMethod = extractedText.includes('BULLETIN DE COMMANDE UOP') ? 
+        'Extraction locale réussie' : 'Template démonstration';
+      
+      return result;
       
     } catch (error) {
-      console.error('❌ Erreur extraction locale:', error);
-      return null;
+      console.error('❌ Erreur extraction PDF:', error);
+      // Retourner un template de démonstration en cas d'erreur
+      const demoResult = this.parseBulletinEnhanced(this.getDemoTemplate());
+      demoResult.extractionMethod = 'Template démonstration (erreur)';
+      return demoResult;
     }
   }
 
   /**
-   * Extraction de texte depuis le binaire du PDF
+   * Extraction de texte depuis le binaire du PDF (améliorée)
    */
   static extractTextFromBinary(arrayBuffer) {
     const uint8Array = new Uint8Array(arrayBuffer);
     const decoder = new TextDecoder('utf-8', { fatal: false });
     let extractedText = '';
+    let foundData = false;
     
     console.log('🔧 Extraction binaire du PDF...');
     
-    // Rechercher les patterns de texte entre parenthèses
+    // Stratégie 1: Rechercher les patterns de texte entre parenthèses
     for (let i = 0; i < uint8Array.length - 1; i++) {
+      // Rechercher les parenthèses ouvrantes
       if (uint8Array[i] === 0x28) { // '(' en ASCII
         let j = i + 1;
         let textBytes = [];
         
+        // Lire jusqu'à la parenthèse fermante
         while (j < uint8Array.length && j - i < 1000) {
           if (uint8Array[j] === 0x29) { // ')' en ASCII
+            // On a trouvé une chaîne complète
             if (textBytes.length > 0) {
               try {
                 let text = decoder.decode(new Uint8Array(textBytes));
+                // Nettoyer le texte
                 text = text
                   .replace(/\\(\d{3})/g, (match, oct) => String.fromCharCode(parseInt(oct, 8)))
                   .replace(/\\n/g, '\n')
+                  .replace(/\\r/g, '\r')
+                  .replace(/\\t/g, '\t')
+                  .replace(/\\/g, '')
                   .trim();
                 
+                // Garder seulement le texte pertinent
                 if (text.length > 2 && text.length < 500) {
-                  const upperText = text.toUpperCase();
-                  if (upperText.includes('AGENT') || 
-                      upperText.includes('CCU') || 
-                      upperText.includes('CRC') ||
-                      upperText.includes('BULLETIN') ||
-                      /\d{2}\/\d{2}\/\d{4}/.test(text)) {
-                    extractedText += text + ' ';
-                  }
+                  extractedText += text + ' ';
+                  foundData = true;
                 }
               } catch (e) {
                 // Ignorer les erreurs de décodage
@@ -229,13 +204,20 @@ class PDFParserService {
       }
     }
     
+    // Organiser le texte extrait
+    if (foundData && extractedText.length > 0) {
+      console.log('✅ Données extraites du PDF');
+      return extractedText;
+    }
+    
+    console.log('⚠️ Extraction limitée du PDF');
     return extractedText;
   }
 
   /**
-   * Parse le texte brut d'un bulletin SNCF
+   * Parse le texte brut d'un bulletin SNCF (méthode améliorée)
    */
-  static parseBulletin(rawText) {
+  static parseBulletinEnhanced(rawText) {
     const result = {
       metadata: this.extractMetadata(rawText),
       entries: [],
@@ -249,15 +231,16 @@ class PDFParserService {
         .replace(/\r/g, '\n')
         .replace(/\t/g, ' ');
 
-      // Extraire les entrées jour par jour
+      // Extraire les entrées jour par jour avec méthode améliorée
       const lines = normalizedText.split('\n');
+      let currentDate = null;
       let currentEntry = null;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
         
-        // Détecter une date
+        // Détecter une date (formats: JJ/MM/AAAA)
         const dateMatch = line.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
         
         if (dateMatch) {
@@ -274,7 +257,7 @@ class PDFParserService {
           currentEntry = {
             date: `${annee}-${mois}-${jour}`,
             dateDisplay: `${jour}/${mois}/${annee}`,
-            dayOfWeek: this.extractDayOfWeek(line) || this.extractDayOfWeek(lines[i+1] || ''),
+            dayOfWeek: null,
             serviceCode: null,
             serviceLabel: null,
             horaires: [],
@@ -283,28 +266,53 @@ class PDFParserService {
             errorMessage: null
           };
           
-          // Chercher le code de service
-          for (let j = 0; j <= 2 && i + j < lines.length; j++) {
-            const checkLine = lines[i + j];
-            const serviceCode = this.extractServiceCode(checkLine);
-            if (serviceCode) {
-              currentEntry.serviceCode = serviceCode;
-              currentEntry.serviceLabel = this.VALID_SERVICE_CODES[serviceCode] || serviceCode;
-              currentEntry.isValid = true;
-              break;
-            }
+          // Extraction améliorée du jour de la semaine et du code service
+          // Regarder sur la même ligne et les lignes suivantes
+          const contextLines = [line];
+          for (let k = 1; k <= 3 && i + k < lines.length; k++) {
+            contextLines.push(lines[i + k]);
+          }
+          
+          const contextText = contextLines.join(' ');
+          
+          // Chercher le jour de la semaine
+          currentEntry.dayOfWeek = this.extractDayOfWeek(contextText);
+          
+          // Chercher le code de service avec priorité
+          currentEntry.serviceCode = this.extractServiceCodeEnhanced(contextText);
+          if (currentEntry.serviceCode) {
+            currentEntry.serviceLabel = this.VALID_SERVICE_CODES[currentEntry.serviceCode] || currentEntry.serviceCode;
+            currentEntry.isValid = true;
           }
         }
 
-        // Extraire les horaires
+        // Extraire les horaires avec pattern amélioré
         if (currentEntry) {
-          const horaireMatch = line.match(/(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/);
-          if (horaireMatch) {
-            currentEntry.horaires.push({
-              debut: horaireMatch[1],
-              fin: horaireMatch[2],
-              code: this.extractTimeCode(line)
-            });
+          // Pattern pour horaires avec ou sans espaces
+          const horairePatterns = [
+            /(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/,  // avec tiret
+            /(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/,          // avec espace
+            /(\d{2}h\d{2})\s*[-–]\s*(\d{2}h\d{2})/        // format avec h
+          ];
+          
+          for (const pattern of horairePatterns) {
+            const horaireMatch = line.match(pattern);
+            if (horaireMatch) {
+              let debut = horaireMatch[1];
+              let fin = horaireMatch[2];
+              
+              // Convertir format 00h00 en 00:00
+              debut = debut.replace('h', ':');
+              fin = fin.replace('h', ':');
+              
+              currentEntry.horaires.push({
+                debut: debut,
+                fin: fin,
+                code: this.extractTimeCode(line),
+                type: this.extractHoraireType(line)
+              });
+              break;
+            }
           }
         }
       }
@@ -312,6 +320,15 @@ class PDFParserService {
       // Ajouter la dernière entrée
       if (currentEntry && currentEntry.serviceCode) {
         result.entries.push(currentEntry);
+      }
+
+      // Valider les entrées
+      result.entries = result.entries.map(entry => this.validateEntry(entry));
+
+      // Si aucune entrée, extraction permissive
+      if (result.entries.length === 0) {
+        console.log('🔄 Extraction permissive...');
+        result.entries = this.extractPermissive(rawText);
       }
 
     } catch (error) {
@@ -322,45 +339,113 @@ class PDFParserService {
   }
 
   /**
-   * Template de démonstration
+   * Extraction améliorée du code de service
    */
-  static getDemoResult() {
-    return {
-      metadata: {
-        agent: 'GILLON THOMAS',
-        numeroCP: '8409385L',
-        dateEdition: '11/04/2025',
-        periodeDebut: '21/04/2025',
-        periodeFin: '30/04/2025'
-      },
-      entries: [
-        {
-          date: '2025-04-21',
-          dateDisplay: '21/04/2025',
-          dayOfWeek: 'Lun',
-          serviceCode: 'CCU004',
-          serviceLabel: 'Régulateur Table PARC Denfert',
-          horaires: [
-            { type: 'METRO', debut: '05:35', fin: '06:00' },
-            { type: 'SERVICE', debut: '06:00', fin: '14:00', code: 'N1100010CO72' }
-          ],
-          isValid: true
-        },
-        {
-          date: '2025-04-22',
-          dateDisplay: '22/04/2025',
-          dayOfWeek: 'Mar',
-          serviceCode: 'CRC001',
-          serviceLabel: 'Coordonnateur Régional Circulation',
-          horaires: [
-            { type: 'SERVICE', debut: '06:00', fin: '14:00', code: 'N1100010CO72' }
-          ],
-          isValid: true
-        }
-      ],
-      extractionMethod: 'Template démonstration',
-      errors: []
-    };
+  static extractServiceCodeEnhanced(text) {
+    if (!text) return null;
+    
+    const upperText = text.toUpperCase();
+    
+    // Liste complète des codes avec priorité
+    const allCodes = [
+      // Codes avec numéros (priorité haute)
+      'CCU001', 'CCU002', 'CCU003', 'CCU004', 'CCU005',
+      'CRC001', 'CRC002',
+      'ACR001', 'ACR002', 'ACR003',
+      'CENT001', 'CENT002', 'CENT003',
+      'REO001', 'REO002',
+      // Codes spéciaux
+      'HAB-QF', 'HAB QF',
+      // Codes simples
+      'RP', 'NU', 'DISPO', 'INACTIN', 'CA', 'CONGE', 'RTT', 'RQ', 'C'
+    ];
+    
+    // Recherche directe des codes
+    for (const code of allCodes) {
+      const normalizedCode = code.replace('-', ' ');
+      if (upperText.includes(code) || upperText.includes(normalizedCode)) {
+        return code.replace(' ', '-');  // Normaliser avec tiret
+      }
+    }
+    
+    // Recherche par patterns
+    const patterns = [
+      { pattern: /REPOS\s+P[EÉ]RIODIQUE/i, code: 'RP' },
+      { pattern: /NON\s+UTILIS[EÉ]/i, code: 'NU' },
+      { pattern: /DISPONIBLE/i, code: 'DISPO' },
+      { pattern: /INACTI[FV]/i, code: 'INACTIN' },
+      { pattern: /FORMATION/i, code: 'HAB-QF' },
+      { pattern: /PERFECTIONNEMENT/i, code: 'HAB-QF' },
+      { pattern: /CONG[EÉ]/i, code: 'CA' },
+      { pattern: /\bC\b.*CONG[EÉ]/i, code: 'CA' },
+      { pattern: /AIDE\s+COORDONNATEUR/i, code: 'ACR002' },
+      { pattern: /CENTRE\s+SOUFFLEUR/i, code: 'CENT003' }
+    ];
+    
+    for (const { pattern, code } of patterns) {
+      if (pattern.test(upperText)) {
+        return code;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Extraction permissive pour PDF mal formatés
+   */
+  static extractPermissive(rawText) {
+    const entries = [];
+    const text = rawText.replace(/\s+/g, ' ');
+    
+    // Rechercher toutes les dates
+    const dateRegex = /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/g;
+    let dateMatch;
+    
+    while ((dateMatch = dateRegex.exec(text)) !== null) {
+      const entry = {
+        date: `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`,
+        dateDisplay: `${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`,
+        dayOfWeek: null,
+        serviceCode: 'INCONNU',
+        serviceLabel: 'À vérifier',
+        horaires: [],
+        isValid: false,
+        hasError: false,
+        errorMessage: 'Extraction automatique - À vérifier'
+      };
+      
+      // Chercher un code de service proche
+      const contextStart = Math.max(0, dateMatch.index - 50);
+      const contextEnd = Math.min(text.length, dateMatch.index + 150);
+      const context = text.substring(contextStart, contextEnd);
+      
+      const serviceCode = this.extractServiceCodeEnhanced(context);
+      if (serviceCode) {
+        entry.serviceCode = serviceCode;
+        entry.serviceLabel = this.VALID_SERVICE_CODES[serviceCode] || serviceCode;
+        entry.isValid = true;
+        entry.errorMessage = null;
+      }
+      
+      // Chercher des horaires
+      const horaireMatches = context.match(/(\d{1,2}:\d{2})/g);
+      if (horaireMatches && horaireMatches.length >= 2) {
+        entry.horaires.push({
+          debut: horaireMatches[0],
+          fin: horaireMatches[1],
+          code: null,
+          type: 'SERVICE'
+        });
+      }
+      
+      // Chercher le jour de la semaine
+      entry.dayOfWeek = this.extractDayOfWeek(context);
+      
+      entries.push(entry);
+    }
+    
+    return entries;
   }
 
   /**
@@ -374,13 +459,23 @@ class PDFParserService {
       dateEdition: null
     };
 
-    // Extraire nom agent
-    const agentMatch = rawText.match(/Agent\s*:?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)/i);
-    if (agentMatch) {
-      metadata.agent = agentMatch[1]
-        .replace(/COGC\s+PN/gi, '')
-        .trim()
-        .toUpperCase();
+    // Extraire nom agent (patterns améliorés)
+    const agentPatterns = [
+      /Agent\s*:?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)/i,
+      /COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)/i,
+      /^([A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+\s+[A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+)\s+N[°o]?\s*CP/im
+    ];
+    
+    for (const pattern of agentPatterns) {
+      const match = rawText.match(pattern);
+      if (match) {
+        metadata.agent = match[1]
+          .replace(/COGC\s+PN/gi, '')
+          .replace(/Agent\s*:?/gi, '')
+          .trim()
+          .toUpperCase();
+        break;
+      }
     }
 
     // Extraire numéro CP
@@ -408,52 +503,26 @@ class PDFParserService {
   }
 
   /**
-   * Extrait le code de service d'une ligne
-   */
-  static extractServiceCode(line) {
-    if (!line) return null;
-    
-    const upperLine = line.toUpperCase();
-    
-    // Tous les codes possibles (ordre de priorité)
-    const allCodes = [
-      'CCU001', 'CCU002', 'CCU003', 'CCU004', 'CCU005',
-      'CRC001', 'CRC002',
-      'ACR001', 'ACR002', 'ACR003',
-      'CENT001', 'CENT002', 'CENT003',
-      'REO001', 'REO002',
-      'HAB-QF',
-      'ACR', 'RP', 'NU', 'DISPO', 'INACTIN', 'CA', 'CONGE', 'RTT', 'RQ', 'C'
-    ];
-    
-    for (const code of allCodes) {
-      if (upperLine.includes(code)) {
-        return code;
-      }
-    }
-    
-    // Cas spéciaux
-    if (upperLine.includes('REPOS') && upperLine.includes('PÉRIODIQUE')) return 'RP';
-    if (upperLine.includes('NON UTILISÉ')) return 'NU';
-    if (upperLine.includes('DISPONIBLE')) return 'DISPO';
-    if (upperLine.includes('FORMATION') || upperLine.includes('PERFECTIONNEMENT')) return 'HAB-QF';
-    if (upperLine.includes('CONGÉ')) return 'CA';
-    
-    return null;
-  }
-
-  /**
    * Extrait le jour de la semaine
    */
-  static extractDayOfWeek(line) {
-    if (!line) return null;
+  static extractDayOfWeek(text) {
+    if (!text) return null;
     
-    const jours = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-    const upperLine = line.toUpperCase();
+    const jours = {
+      'LUN': 'Lun', 'LUNDI': 'Lun',
+      'MAR': 'Mar', 'MARDI': 'Mar',
+      'MER': 'Mer', 'MERCREDI': 'Mer',
+      'JEU': 'Jeu', 'JEUDI': 'Jeu',
+      'VEN': 'Ven', 'VENDREDI': 'Ven',
+      'SAM': 'Sam', 'SAMEDI': 'Sam',
+      'DIM': 'Dim', 'DIMANCHE': 'Dim'
+    };
     
-    for (const jour of jours) {
-      if (upperLine.includes(jour.toUpperCase())) {
-        return jour;
+    const upperText = text.toUpperCase();
+    
+    for (const [key, value] of Object.entries(jours)) {
+      if (upperText.includes(key)) {
+        return value;
       }
     }
     
@@ -461,7 +530,18 @@ class PDFParserService {
   }
 
   /**
-   * Extrait le code horaire
+   * Extrait le type d'horaire
+   */
+  static extractHoraireType(line) {
+    const upperLine = line.toUpperCase();
+    if (upperLine.includes('METRO')) return 'METRO';
+    if (upperLine.includes('RS')) return 'RS';
+    if (/N\d{10}[A-Z]{2}\d{2}/.test(upperLine)) return 'SERVICE';
+    return 'SERVICE';
+  }
+
+  /**
+   * Extrait le code horaire (N1100010CO72, etc.)
    */
   static extractTimeCode(line) {
     const codeMatch = line.match(/[A-Z]\d{10}[A-Z]{2}\d{2}/);
@@ -492,6 +572,59 @@ class PDFParserService {
   }
 
   /**
+   * Template de démonstration
+   */
+  static getDemoTemplate() {
+    return `
+BULLETIN DE COMMANDE UOP : 
+Agent : GILLON THOMAS
+N° CP : 8409385L
+Edition le 11/04/2025 , 15:07
+Commande allant du 21/04/2025 au 30/04/2025
+
+21/04/2025 CCU004 Lun
+METRO 05:35 06:00 du CCU602
+N1100010CO72 06:00 14:00
+RS 14:00 14:10
+METRO 14:10 14:35
+
+22/04/2025 CRC001 Mar
+N1100010CO72 06:00 14:00 du CRC601
+
+23/04/2025 CCU004 Mer
+METRO 05:35 06:00 du CCU602
+N1100010CO72 06:00 14:00
+RS 14:00 14:10
+METRO 14:10 14:35
+
+24/04/2025 NU Jeu
+04:05 09:00 NU
+
+24/04/2025 CCU003 Jeu
+METRO 21:35 22:00 NU du CCU601
+N1100010CO72 22:00 06:00
+RS 06:00 06:10
+METRO 06:10 06:35
+
+25/04/2025 CCU003 Ven
+METRO 21:35 22:00 du CCU601
+N1100010CO72 22:00 06:00
+RS 06:00 06:10
+METRO 06:10 06:35
+
+27/04/2025 RP Dim
+
+28/04/2025 RP Lun
+
+29/04/2025 INACTIN Mar
+N82F00100000 08:00 15:45 TRACTION 
+
+30/04/2025 DISPO Mer
+N82Z00100000 08:00 15:45
+`;
+  }
+
+  /**
    * Valider les données parsées
    */
   static validateParsedData(parsedData) {
@@ -505,8 +638,8 @@ class PDFParserService {
     if (parsedData.extractionMethod) {
       if (parsedData.extractionMethod.includes('démonstration')) {
         validation.warnings.push('📝 Mode démonstration - Données de test');
-      } else if (parsedData.extractionMethod.includes('Mistral')) {
-        validation.warnings.push('✅ Extraction haute précision avec Mistral AI');
+      } else {
+        validation.warnings.push('✅ Extraction locale réussie');
       }
     }
 
@@ -567,7 +700,7 @@ class PDFParserService {
    * Parse le texte OCR (gardé pour compatibilité)
    */
   static parseMistralOCR(ocrText) {
-    return this.parseBulletin(ocrText);
+    return this.parseBulletinEnhanced(ocrText);
   }
 }
 
