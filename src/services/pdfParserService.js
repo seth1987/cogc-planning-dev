@@ -1,4 +1,4 @@
-// Service de parsing des bulletins de commande SNCF - Version optimisée extraction locale
+// Service de parsing des bulletins de commande SNCF - Version avec debug complet
 class PDFParserService {
   // Codes de service valides SNCF (liste complète)
   static VALID_SERVICE_CODES = {
@@ -40,9 +40,6 @@ class PDFParserService {
     C: 'Congé Annuel'  // Version abrégée
   };
 
-  // Éléments à filtrer (ne sont pas des codes de service)
-  static FILTER_ELEMENTS = ['METRO', 'RS', 'du', 'au', 'TRACTION'];
-
   /**
    * Parse un PDF avec extraction locale optimisée
    * @param {File} file - Fichier PDF à parser
@@ -52,6 +49,7 @@ class PDFParserService {
   static async parsePDF(file, apiKey = null) {
     try {
       console.log('📄 Début extraction PDF...');
+      console.log('📄 Fichier:', file.name, 'Taille:', file.size, 'bytes');
       
       // 1. Lire le fichier comme ArrayBuffer
       const arrayBuffer = await new Promise((resolve, reject) => {
@@ -116,6 +114,7 @@ class PDFParserService {
         }
         
         console.log('✅ Extraction PDF.js réussie');
+        console.log('📝 Texte extrait (200 premiers caractères):', extractedText.substring(0, 200));
       } catch (pdfError) {
         console.log('⚠️ PDF.js non disponible, extraction binaire...');
         extractedText = this.extractTextFromBinary(arrayBuffer);
@@ -127,102 +126,63 @@ class PDFParserService {
         extractedText = this.extractTextFromBinary(arrayBuffer);
       }
 
-      // 4. Si toujours pas de texte, utiliser le template de démonstration
-      if (!extractedText || extractedText.trim().length < 50) {
-        console.log('📝 Mode démonstration activé');
-        extractedText = this.getDemoTemplate();
-      }
-
-      console.log('✅ Texte extrait:', extractedText.substring(0, 200) + '...');
-      
-      // 5. Parser le texte extrait avec méthode améliorée
+      // 4. Parser le texte extrait avec méthode améliorée
+      console.log('🔄 Parsing du texte extrait...');
       const result = this.parseBulletinEnhanced(extractedText);
       
       // Ajouter un flag pour indiquer la méthode utilisée
       result.extractionMethod = extractedText.includes('BULLETIN DE COMMANDE UOP') ? 
-        'Extraction locale réussie' : 'Template démonstration';
+        'Extraction locale réussie' : 'Extraction partielle';
+      
+      // LOG DÉTAILLÉ DU RÉSULTAT
+      console.log('📊 RÉSULTAT EXTRACTION COMPLÈTE:');
+      console.log('   - Méthode:', result.extractionMethod);
+      console.log('   - Métadonnées:', result.metadata);
+      console.log('   - Nombre d\'entrées:', result.entries ? result.entries.length : 0);
+      if (result.entries && result.entries.length > 0) {
+        console.log('   - Première entrée:', result.entries[0]);
+        console.log('   - Toutes les entrées:');
+        result.entries.forEach((entry, i) => {
+          console.log(`     ${i+1}. ${entry.dateDisplay} - ${entry.serviceCode} (${entry.serviceLabel})`);
+        });
+      }
+      console.log('   - Erreurs:', result.errors);
       
       return result;
       
     } catch (error) {
       console.error('❌ Erreur extraction PDF:', error);
-      // Retourner un template de démonstration en cas d'erreur
-      const demoResult = this.parseBulletinEnhanced(this.getDemoTemplate());
-      demoResult.extractionMethod = 'Template démonstration (erreur)';
-      return demoResult;
+      console.error('Stack trace:', error.stack);
+      
+      // Retourner un objet avec structure minimale
+      return {
+        metadata: {
+          agent: null,
+          numeroCP: null,
+          periode: null,
+          dateEdition: null
+        },
+        entries: [],
+        errors: [`Erreur extraction: ${error.message}`],
+        extractionMethod: 'Erreur'
+      };
     }
-  }
-
-  /**
-   * Extraction de texte depuis le binaire du PDF (améliorée)
-   */
-  static extractTextFromBinary(arrayBuffer) {
-    const uint8Array = new Uint8Array(arrayBuffer);
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    let extractedText = '';
-    let foundData = false;
-    
-    console.log('🔧 Extraction binaire du PDF...');
-    
-    // Stratégie 1: Rechercher les patterns de texte entre parenthèses
-    for (let i = 0; i < uint8Array.length - 1; i++) {
-      // Rechercher les parenthèses ouvrantes
-      if (uint8Array[i] === 0x28) { // '(' en ASCII
-        let j = i + 1;
-        let textBytes = [];
-        
-        // Lire jusqu'à la parenthèse fermante
-        while (j < uint8Array.length && j - i < 1000) {
-          if (uint8Array[j] === 0x29) { // ')' en ASCII
-            // On a trouvé une chaîne complète
-            if (textBytes.length > 0) {
-              try {
-                let text = decoder.decode(new Uint8Array(textBytes));
-                // Nettoyer le texte
-                text = text
-                  .replace(/\\(\d{3})/g, (match, oct) => String.fromCharCode(parseInt(oct, 8)))
-                  .replace(/\\n/g, '\n')
-                  .replace(/\\r/g, '\r')
-                  .replace(/\\t/g, '\t')
-                  .replace(/\\/g, '')
-                  .trim();
-                
-                // Garder seulement le texte pertinent
-                if (text.length > 2 && text.length < 500) {
-                  extractedText += text + ' ';
-                  foundData = true;
-                }
-              } catch (e) {
-                // Ignorer les erreurs de décodage
-              }
-            }
-            break;
-          }
-          textBytes.push(uint8Array[j]);
-          j++;
-        }
-      }
-    }
-    
-    // Organiser le texte extrait
-    if (foundData && extractedText.length > 0) {
-      console.log('✅ Données extraites du PDF');
-      return extractedText;
-    }
-    
-    console.log('⚠️ Extraction limitée du PDF');
-    return extractedText;
   }
 
   /**
    * Parse le texte brut d'un bulletin SNCF (méthode améliorée)
    */
   static parseBulletinEnhanced(rawText) {
+    console.log('🔍 Début parsing bulletin...');
+    console.log('   Longueur texte:', rawText.length);
+    
     const result = {
       metadata: this.extractMetadata(rawText),
       entries: [],
       errors: []
     };
+
+    console.log('📝 Métadonnées extraites:', result.metadata);
 
     try {
       // Normaliser le texte
@@ -233,8 +193,10 @@ class PDFParserService {
 
       // Extraire les entrées jour par jour avec méthode améliorée
       const lines = normalizedText.split('\n');
-      let currentDate = null;
+      console.log(`📄 Nombre de lignes à analyser: ${lines.length}`);
+      
       let currentEntry = null;
+      let entriesFound = 0;
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -244,45 +206,55 @@ class PDFParserService {
         const dateMatch = line.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
         
         if (dateMatch) {
-          // Sauvegarder l'entrée précédente
-          if (currentEntry && currentEntry.serviceCode) {
-            result.entries.push(currentEntry);
-          }
+          // Vérifier que ce n'est pas la date d'édition
+          if (!line.includes('Edition le')) {
+            // Sauvegarder l'entrée précédente
+            if (currentEntry && currentEntry.serviceCode) {
+              result.entries.push(currentEntry);
+              entriesFound++;
+              console.log(`   ✅ Entrée ${entriesFound} ajoutée:`, currentEntry.dateDisplay, currentEntry.serviceCode);
+            }
 
-          // Créer nouvelle entrée
-          const jour = dateMatch[1].padStart(2, '0');
-          const mois = dateMatch[2].padStart(2, '0');
-          const annee = dateMatch[3];
-          
-          currentEntry = {
-            date: `${annee}-${mois}-${jour}`,
-            dateDisplay: `${jour}/${mois}/${annee}`,
-            dayOfWeek: null,
-            serviceCode: null,
-            serviceLabel: null,
-            horaires: [],
-            isValid: false,
-            hasError: false,
-            errorMessage: null
-          };
-          
-          // Extraction améliorée du jour de la semaine et du code service
-          // Regarder sur la même ligne et les lignes suivantes
-          const contextLines = [line];
-          for (let k = 1; k <= 3 && i + k < lines.length; k++) {
-            contextLines.push(lines[i + k]);
-          }
-          
-          const contextText = contextLines.join(' ');
-          
-          // Chercher le jour de la semaine
-          currentEntry.dayOfWeek = this.extractDayOfWeek(contextText);
-          
-          // Chercher le code de service avec priorité
-          currentEntry.serviceCode = this.extractServiceCodeEnhanced(contextText);
-          if (currentEntry.serviceCode) {
-            currentEntry.serviceLabel = this.VALID_SERVICE_CODES[currentEntry.serviceCode] || currentEntry.serviceCode;
-            currentEntry.isValid = true;
+            // Créer nouvelle entrée
+            const jour = dateMatch[1].padStart(2, '0');
+            const mois = dateMatch[2].padStart(2, '0');
+            const annee = dateMatch[3];
+            
+            currentEntry = {
+              date: `${annee}-${mois}-${jour}`,
+              dateDisplay: `${jour}/${mois}/${annee}`,
+              dayOfWeek: null,
+              serviceCode: null,
+              serviceLabel: null,
+              horaires: [],
+              isValid: false,
+              hasError: false,
+              errorMessage: null
+            };
+            
+            console.log(`   📅 Date trouvée: ${currentEntry.dateDisplay}`);
+            
+            // Extraction améliorée du jour de la semaine et du code service
+            // Regarder sur la même ligne et les lignes suivantes
+            const contextLines = [line];
+            for (let k = 1; k <= 3 && i + k < lines.length; k++) {
+              contextLines.push(lines[i + k]);
+            }
+            
+            const contextText = contextLines.join(' ');
+            
+            // Chercher le jour de la semaine
+            currentEntry.dayOfWeek = this.extractDayOfWeek(contextText);
+            
+            // Chercher le code de service avec priorité
+            currentEntry.serviceCode = this.extractServiceCodeEnhanced(contextText);
+            if (currentEntry.serviceCode) {
+              currentEntry.serviceLabel = this.VALID_SERVICE_CODES[currentEntry.serviceCode] || currentEntry.serviceCode;
+              currentEntry.isValid = true;
+              console.log(`      Code service trouvé: ${currentEntry.serviceCode}`);
+            } else {
+              console.log(`      ⚠️ Aucun code service trouvé dans le contexte`);
+            }
           }
         }
 
@@ -311,6 +283,8 @@ class PDFParserService {
                 code: this.extractTimeCode(line),
                 type: this.extractHoraireType(line)
               });
+              
+              console.log(`      Horaire trouvé: ${debut} - ${fin}`);
               break;
             }
           }
@@ -320,18 +294,24 @@ class PDFParserService {
       // Ajouter la dernière entrée
       if (currentEntry && currentEntry.serviceCode) {
         result.entries.push(currentEntry);
+        entriesFound++;
+        console.log(`   ✅ Dernière entrée ajoutée:`, currentEntry.dateDisplay, currentEntry.serviceCode);
       }
+
+      console.log(`📊 Total entrées trouvées: ${result.entries.length}`);
 
       // Valider les entrées
       result.entries = result.entries.map(entry => this.validateEntry(entry));
 
       // Si aucune entrée, extraction permissive
       if (result.entries.length === 0) {
-        console.log('🔄 Extraction permissive...');
+        console.log('🔄 Aucune entrée trouvée, tentative extraction permissive...');
         result.entries = this.extractPermissive(rawText);
+        console.log(`   Extraction permissive: ${result.entries.length} entrées trouvées`);
       }
 
     } catch (error) {
+      console.error('❌ Erreur parsing:', error);
       result.errors.push(`Erreur parsing: ${error.message}`);
     }
 
@@ -377,7 +357,6 @@ class PDFParserService {
       { pattern: /FORMATION/i, code: 'HAB-QF' },
       { pattern: /PERFECTIONNEMENT/i, code: 'HAB-QF' },
       { pattern: /CONG[EÉ]/i, code: 'CA' },
-      { pattern: /\bC\b.*CONG[EÉ]/i, code: 'CA' },
       { pattern: /AIDE\s+COORDONNATEUR/i, code: 'ACR002' },
       { pattern: /CENTRE\s+SOUFFLEUR/i, code: 'CENT003' }
     ];
@@ -395,6 +374,7 @@ class PDFParserService {
    * Extraction permissive pour PDF mal formatés
    */
   static extractPermissive(rawText) {
+    console.log('🔍 Extraction permissive...');
     const entries = [];
     const text = rawText.replace(/\s+/g, ' ');
     
@@ -403,6 +383,11 @@ class PDFParserService {
     let dateMatch;
     
     while ((dateMatch = dateRegex.exec(text)) !== null) {
+      // Ignorer les dates d'édition
+      if (text.substring(dateMatch.index - 20, dateMatch.index).includes('Edition le')) {
+        continue;
+      }
+      
       const entry = {
         date: `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`,
         dateDisplay: `${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`,
@@ -443,6 +428,7 @@ class PDFParserService {
       entry.dayOfWeek = this.extractDayOfWeek(context);
       
       entries.push(entry);
+      console.log(`   📅 Entrée permissive: ${entry.dateDisplay} - ${entry.serviceCode}`);
     }
     
     return entries;
@@ -461,8 +447,9 @@ class PDFParserService {
 
     // Extraire nom agent (patterns améliorés)
     const agentPatterns = [
-      /Agent\s*:?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)/i,
-      /COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)/i,
+      /Agent\s*:?\s*COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)/i,
+      /Agent\s*:?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)\s+N[°o]?\s*CP/i,
+      /COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)\s+N[°o]?\s*CP/i,
       /^([A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+\s+[A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+)\s+N[°o]?\s*CP/im
     ];
     
@@ -485,7 +472,7 @@ class PDFParserService {
     }
 
     // Extraire période
-    const periodeMatch = rawText.match(/Commande allant du\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
+    const periodeMatch = rawText.match(/Commande\s+allant?\s+du\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
     if (periodeMatch) {
       metadata.periode = {
         debut: periodeMatch[1],
@@ -494,12 +481,56 @@ class PDFParserService {
     }
 
     // Extraire date d'édition
-    const editionMatch = rawText.match(/Edition le\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
+    const editionMatch = rawText.match(/Edition\s+le\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
     if (editionMatch) {
       metadata.dateEdition = editionMatch[1];
     }
 
     return metadata;
+  }
+
+  /**
+   * Extraction de texte depuis le binaire du PDF
+   */
+  static extractTextFromBinary(arrayBuffer) {
+    const uint8Array = new Uint8Array(arrayBuffer);
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    let extractedText = '';
+    
+    console.log('🔧 Extraction binaire du PDF...');
+    
+    // Rechercher les patterns de texte entre parenthèses
+    for (let i = 0; i < uint8Array.length - 1; i++) {
+      if (uint8Array[i] === 0x28) { // '(' en ASCII
+        let j = i + 1;
+        let textBytes = [];
+        
+        while (j < uint8Array.length && j - i < 1000) {
+          if (uint8Array[j] === 0x29) { // ')' en ASCII
+            if (textBytes.length > 0) {
+              try {
+                let text = decoder.decode(new Uint8Array(textBytes));
+                text = text
+                  .replace(/\\(\d{3})/g, (match, oct) => String.fromCharCode(parseInt(oct, 8)))
+                  .replace(/\\n/g, '\n')
+                  .trim();
+                
+                if (text.length > 2 && text.length < 500) {
+                  extractedText += text + ' ';
+                }
+              } catch (e) {
+                // Ignorer les erreurs de décodage
+              }
+            }
+            break;
+          }
+          textBytes.push(uint8Array[j]);
+          j++;
+        }
+      }
+    }
+    
+    return extractedText;
   }
 
   /**
@@ -541,7 +572,7 @@ class PDFParserService {
   }
 
   /**
-   * Extrait le code horaire (N1100010CO72, etc.)
+   * Extrait le code horaire
    */
   static extractTimeCode(line) {
     const codeMatch = line.match(/[A-Z]\d{10}[A-Z]{2}\d{2}/);
@@ -572,62 +603,11 @@ class PDFParserService {
   }
 
   /**
-   * Template de démonstration
-   */
-  static getDemoTemplate() {
-    return `
-BULLETIN DE COMMANDE UOP : 
-Agent : GILLON THOMAS
-N° CP : 8409385L
-Edition le 11/04/2025 , 15:07
-Commande allant du 21/04/2025 au 30/04/2025
-
-21/04/2025 CCU004 Lun
-METRO 05:35 06:00 du CCU602
-N1100010CO72 06:00 14:00
-RS 14:00 14:10
-METRO 14:10 14:35
-
-22/04/2025 CRC001 Mar
-N1100010CO72 06:00 14:00 du CRC601
-
-23/04/2025 CCU004 Mer
-METRO 05:35 06:00 du CCU602
-N1100010CO72 06:00 14:00
-RS 14:00 14:10
-METRO 14:10 14:35
-
-24/04/2025 NU Jeu
-04:05 09:00 NU
-
-24/04/2025 CCU003 Jeu
-METRO 21:35 22:00 NU du CCU601
-N1100010CO72 22:00 06:00
-RS 06:00 06:10
-METRO 06:10 06:35
-
-25/04/2025 CCU003 Ven
-METRO 21:35 22:00 du CCU601
-N1100010CO72 22:00 06:00
-RS 06:00 06:10
-METRO 06:10 06:35
-
-27/04/2025 RP Dim
-
-28/04/2025 RP Lun
-
-29/04/2025 INACTIN Mar
-N82F00100000 08:00 15:45 TRACTION 
-
-30/04/2025 DISPO Mer
-N82Z00100000 08:00 15:45
-`;
-  }
-
-  /**
    * Valider les données parsées
    */
   static validateParsedData(parsedData) {
+    console.log('🔍 Validation des données parsées...');
+    
     const validation = {
       errors: [],
       warnings: [],
@@ -636,19 +616,20 @@ N82Z00100000 08:00 15:45
 
     // Indiquer la méthode d'extraction
     if (parsedData.extractionMethod) {
-      if (parsedData.extractionMethod.includes('démonstration')) {
-        validation.warnings.push('📝 Mode démonstration - Données de test');
-      } else {
-        validation.warnings.push('✅ Extraction locale réussie');
-      }
+      validation.warnings.push(`📋 Méthode: ${parsedData.extractionMethod}`);
     }
 
     // Vérifier métadonnées
     if (!parsedData.metadata?.agent) {
       validation.warnings.push('Nom agent manquant');
+    } else {
+      validation.warnings.push(`✅ Agent: ${parsedData.metadata.agent}`);
     }
+    
     if (!parsedData.metadata?.numeroCP) {
       validation.warnings.push('Numéro CP manquant');
+    } else {
+      validation.warnings.push(`✅ CP: ${parsedData.metadata.numeroCP}`);
     }
 
     // Vérifier entrées
@@ -677,6 +658,7 @@ N82Z00100000 08:00 15:45
       }
     }
 
+    console.log('📋 Résultat validation:', validation);
     return validation;
   }
 
@@ -694,13 +676,6 @@ N82Z00100000 08:00 15:45
         horaires: entry.horaires.map(h => `${h.debut}-${h.fin}`).join(', '),
         statut: entry.serviceCode === 'INCONNU' ? 'à_vérifier' : 'actif'
       }));
-  }
-
-  /**
-   * Parse le texte OCR (gardé pour compatibilité)
-   */
-  static parseMistralOCR(ocrText) {
-    return this.parseBulletinEnhanced(ocrText);
   }
 }
 
