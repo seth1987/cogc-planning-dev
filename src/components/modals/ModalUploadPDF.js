@@ -1,4 +1,4 @@
-// Modal d'upload et d'import de PDF avec Mistral OCR
+// Modal d'upload et d'import de PDF - Extraction locale sans API externe
 import React, { useState, useEffect } from 'react';
 import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info } from 'lucide-react';
 import pdfParserService from '../../services/pdfParserService';
@@ -19,11 +19,6 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({ total: 0, mapped: 0 });
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
-
-  // Clé API Mistral intégrée directement
-  const MISTRAL_API_KEY = 'duQZd7M1SHUuJtUe0KyMLGr5ROhBiLM6';
-  // API toujours configurée car la clé est intégrée
-  const isApiConfigured = true;
 
   // Charger les stats au montage
   useEffect(() => {
@@ -56,10 +51,10 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setError(null);
 
     try {
-      console.log('🤖 Utilisation de Mistral OCR pour l\'extraction...');
+      console.log('📄 Extraction locale du PDF...');
       
-      // Parser le PDF avec Mistral OCR en utilisant la clé API intégrée
-      const parsed = await pdfParserService.parsePDF(uploadedFile, MISTRAL_API_KEY);
+      // Parser le PDF avec extraction locale (PDF.js)
+      const parsed = await pdfParserService.parsePDF(uploadedFile);
       
       // Valider les données
       const validationResult = pdfParserService.validateParsedData(parsed);
@@ -133,7 +128,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                 <FileText size={28} />
                 Upload PDF Planning
               </h2>
-              <p className="text-blue-100 mt-1">Powered by Mistral OCR - Extraction intelligente de documents</p>
+              <p className="text-blue-100 mt-1">Extraction locale avec PDF.js - Aucune API externe requise</p>
             </div>
             <button onClick={handleClose} className="text-white hover:bg-white/20 rounded-lg p-2 transition">
               <X size={24} />
@@ -163,17 +158,35 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           {/* Étape 1: Upload */}
           {currentStep === 1 && (
             <div>
-              {/* Information sur Mistral OCR */}
+              {/* Information sur l'extraction locale */}
+              <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-6">
+                <div className="flex">
+                  <CheckCircle className="text-green-600 mr-2" size={20} />
+                  <div>
+                    <h3 className="font-semibold text-green-900">Extraction 100% locale</h3>
+                    <p className="text-green-800">Vos documents ne quittent jamais votre ordinateur</p>
+                    <ul className="text-sm text-green-700 mt-2 space-y-1">
+                      <li>• Extraction directe avec PDF.js intégré</li>
+                      <li>• Aucune API externe utilisée</li>
+                      <li>• Sécurité et confidentialité garanties</li>
+                      <li>• Mode démo disponible pour les tests</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Information sur le format attendu */}
               <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
                 <div className="flex">
                   <Info className="text-blue-600 mr-2" size={20} />
                   <div>
-                    <h3 className="font-semibold text-blue-900">Nouveau !</h3>
-                    <p className="text-blue-800">Utilisation de Mistral OCR pour une extraction plus précise</p>
-                    <ul className="text-sm text-blue-700 mt-2 space-y-1">
-                      <li>• Reconnaissance avancée des tableaux et mise en page complexe</li>
-                      <li>• Précision de 94.89% sur les documents structurés</li>
-                      <li>• Coût réduit de 87% par rapport à l'ancienne méthode</li>
+                    <h3 className="font-semibold text-blue-900">Format de bulletin SNCF attendu</h3>
+                    <p className="text-blue-800 text-sm">Le système reconnaît automatiquement :</p>
+                    <ul className="text-sm text-blue-700 mt-1">
+                      <li>• Dates au format JJ/MM/AAAA</li>
+                      <li>• Codes service : CCU001-004, CRC001-002, RP, DISPO, NU, etc.</li>
+                      <li>• Horaires au format HH:MM</li>
+                      <li>• Informations agent et numéro CP</li>
                     </ul>
                   </div>
                 </div>
@@ -183,7 +196,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                 file={file}
                 onFileUpload={handleFileUpload}
                 error={error}
-                isApiConfigured={isApiConfigured}
+                isApiConfigured={true} // Toujours true car pas d'API nécessaire
                 stats={stats}
               />
             </div>
@@ -218,7 +231,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
             <div className="bg-white p-6 rounded-lg shadow-lg text-center">
               <Loader className="animate-spin mx-auto mb-4 text-blue-600" size={32} />
               <p className="text-gray-700">
-                {currentStep === 1 && 'Analyse du PDF avec Mistral OCR...'}
+                {currentStep === 1 && 'Analyse du PDF en cours...'}
                 {currentStep === 2 && 'Import en cours...'}
                 {currentStep === 3 && 'Finalisation...'}
               </p>
