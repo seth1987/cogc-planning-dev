@@ -1,69 +1,40 @@
-// Service de parsing des bulletins de commande SNCF - Version corrigée
+// Service de parsing des bulletins de commande SNCF - Version bloc par bloc
 class PDFParserService {
-  // Codes de service valides SNCF (liste complète étendue)
+  // Codes de service valides SNCF (liste complète)
   static VALID_SERVICE_CODES = {
-    // Codes CCU (Centre de Commande Unique)
-    CCU001: 'CRC/CCU DENFERT',
-    CCU002: 'CRC/CCU DENFERT',
-    CCU003: 'CRC/CCU DENFERT',
-    CCU004: 'Régulateur Table PARC Denfert',
-    CCU005: 'Régulateur Table PARC Denfert',
+    // Codes CCU
+    CCU001: 'CRC/CCU DENFERT', CCU002: 'CRC/CCU DENFERT', CCU003: 'CRC/CCU DENFERT',
+    CCU004: 'Régulateur Table PARC Denfert', CCU005: 'Régulateur Table PARC Denfert',
     CCU006: 'Régulateur Table PARC Denfert',
-    
-    // Codes CRC (Coordonnateur Régional Circulation)
-    CRC001: 'Coordonnateur Régional Circulation',
-    CRC002: 'Coordonnateur Régional Circulation',
+    // Codes CRC
+    CRC001: 'Coordonnateur Régional Circulation', CRC002: 'Coordonnateur Régional Circulation',
     CRC003: 'Coordonnateur Régional Circulation',
-    
-    // Codes ACR (Aide Coordonnateur Régional)
-    ACR001: 'Aide Coordonnateur Régional',
-    ACR002: 'Aide Coordonnateur Régional',
-    ACR003: 'Aide Coordonnateur Régional',
-    ACR004: 'Aide Coordonnateur Régional',
-    
+    // Codes ACR
+    ACR001: 'Aide Coordonnateur Régional', ACR002: 'Aide Coordonnateur Régional',
+    ACR003: 'Aide Coordonnateur Régional', ACR004: 'Aide Coordonnateur Régional',
     // Codes Centre Souffleur
-    CENT001: 'Centre Souffleur',
-    CENT002: 'Centre Souffleur',
-    CENT003: 'Centre Souffleur',
-    
-    // Codes REO (Régulateur Est/Ouest) - ÉTENDU
-    REO001: 'Régulateur OUEST',
-    REO002: 'Régulateur OUEST',
-    REO003: 'Régulateur OUEST',
-    REO004: 'Régulateur OUEST',
-    REO005: 'Régulateur OUEST',
-    REO006: 'Régulateur OUEST',
-    REO007: 'Régulateur OUEST',
-    REO008: 'Régulateur OUEST',
-    REO009: 'Régulateur OUEST',
+    CENT001: 'Centre Souffleur', CENT002: 'Centre Souffleur', CENT003: 'Centre Souffleur',
+    // Codes REO (Régulateur OUEST) - Étendu
+    REO001: 'Régulateur OUEST', REO002: 'Régulateur OUEST', REO003: 'Régulateur OUEST',
+    REO004: 'Régulateur OUEST', REO005: 'Régulateur OUEST', REO006: 'Régulateur OUEST',
+    REO007: 'Régulateur OUEST', REO008: 'Régulateur OUEST', REO009: 'Régulateur OUEST',
     REO010: 'Régulateur OUEST',
-    
     // Codes spéciaux
-    RP: 'Repos Périodique',
-    RPP: 'Repos Périodique',
+    RP: 'Repos Périodique', RPP: 'Repos Périodique',
     NU: 'Non Utilisé',
-    DISPO: 'Disponible',
-    D: 'Disponible',
+    DISPO: 'Disponible', D: 'Disponible',
     INACTIN: 'Inactif/Formation',
-    'HAB-QF': 'Formation/Perfectionnement',
-    HAB: 'Formation/Perfectionnement',
-    CA: 'Congé Annuel',
-    CONGE: 'Congé Annuel',
-    C: 'Congé Annuel',
-    RQ: 'Repos Compensateur',
-    RTT: 'RTT',
-    MA: 'Maladie',
-    MAL: 'Maladie',
-    
-    // Codes médicaux/formation
-    VISIMED: 'Visite Médicale',
-    VMT: 'Visite Médicale',
+    'HAB-QF': 'Formation/Perfectionnement', HAB: 'Formation/Perfectionnement',
+    CA: 'Congé Annuel', CONGE: 'Congé Annuel', C: 'Congé Annuel',
+    RQ: 'Repos Compensateur', RTT: 'RTT',
+    MA: 'Maladie', MAL: 'Maladie',
+    VISIMED: 'Visite Médicale', VMT: 'Visite Médicale',
     TRACTION: 'Formation Traction'
   };
 
-  /**
-   * Parse un PDF avec extraction locale optimisée
-   */
+  // Regex pour tous les codes de service (triés par longueur décroissante)
+  static SERVICE_CODE_REGEX = /\b(CCU00[1-6]|CRC00[1-3]|ACR00[1-4]|CENT00[1-3]|REO0(?:0[1-9]|10)|HAB-QF|VISIMED|INACTIN|TRACTION|DISPO|CONGE|RPP|RP|NU|CA|RTT|RQ|MA|MAL|HAB|C|D)\b/i;
+
   static async parsePDF(file, apiKey = null) {
     try {
       console.log('📄 Début extraction PDF...');
@@ -81,7 +52,6 @@ class PDFParserService {
       try {
         const pdfjsLib = window.pdfjsLib || await import('pdfjs-dist');
         pdfjsLib.GlobalWorkerOptions.workerSrc = false;
-        
         console.log('📑 Extraction avec PDF.js...');
         
         const loadingTask = pdfjsLib.getDocument({
@@ -106,8 +76,7 @@ class PDFParserService {
               if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
                 pageText += '\n';
                 lastX = null;
-              } 
-              else if (lastX !== null && item.transform[4] - lastX > 10) {
+              } else if (lastX !== null && item.transform[4] - lastX > 10) {
                 pageText += ' ';
               }
               
@@ -130,12 +99,11 @@ class PDFParserService {
       }
 
       if (!extractedText || extractedText.trim().length < 50) {
-        console.log('🔍 Extraction alternative...');
         extractedText = this.extractTextFromBinary(arrayBuffer);
       }
 
       console.log('🔄 Parsing du texte extrait...');
-      const result = this.parseBulletinEnhanced(extractedText);
+      const result = this.parseBulletinByBlocks(extractedText);
       
       result.extractionMethod = extractedText.includes('BULLETIN DE COMMANDE UOP') ? 
         'Extraction locale réussie' : 'Extraction partielle';
@@ -167,11 +135,11 @@ class PDFParserService {
   }
 
   /**
-   * Parse le texte brut d'un bulletin SNCF - VERSION CORRIGÉE
-   * Évite les doublons et améliore l'association horaires/entrées
+   * Parse le bulletin par BLOCS - chaque bloc = une date
+   * Approche : découper le texte en blocs entre les dates
    */
-  static parseBulletinEnhanced(rawText) {
-    console.log('🔍 Début parsing bulletin...');
+  static parseBulletinByBlocks(rawText) {
+    console.log('🔍 Début parsing bulletin par blocs...');
     console.log('   Longueur texte:', rawText.length);
     
     const result = {
@@ -183,123 +151,101 @@ class PDFParserService {
     console.log('📝 Métadonnées extraites:', result.metadata);
 
     try {
+      // Normaliser le texte
       const normalizedText = rawText
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n')
         .replace(/\t/g, ' ');
 
-      const lines = normalizedText.split('\n');
-      console.log(`📄 Nombre de lignes à analyser: ${lines.length}`);
+      // Trouver toutes les positions des dates (format JJ/MM/AAAA au début de ligne ou après newline)
+      const dateRegex = /(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
+      const datePositions = [];
+      let match;
       
+      while ((match = dateRegex.exec(normalizedText)) !== null) {
+        // Ignorer les dates d'édition et de période
+        const before = normalizedText.substring(Math.max(0, match.index - 30), match.index);
+        if (before.includes('Edition le') || before.includes('Commande') || before.includes('allant')) {
+          continue;
+        }
+        
+        datePositions.push({
+          index: match.index,
+          date: `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`,
+          dateDisplay: `${match[1].padStart(2, '0')}/${match[2].padStart(2, '0')}/${match[3]}`
+        });
+      }
+
+      console.log(`📅 ${datePositions.length} dates trouvées dans le document`);
+
       // Map pour éviter les doublons : clé = "date|serviceCode"
       const entriesMap = new Map();
-      let currentDate = null;
-      let currentDateDisplay = null;
-      let lastProcessedLineIndex = -1;
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+      // Pour chaque date, extraire le bloc de texte jusqu'à la prochaine date
+      for (let i = 0; i < datePositions.length; i++) {
+        const currentDate = datePositions[i];
+        const nextDateIndex = (i + 1 < datePositions.length) 
+          ? datePositions[i + 1].index 
+          : normalizedText.length;
         
-        // Détecter une date (formats: JJ/MM/AAAA)
-        const dateMatch = line.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        // Extraire le bloc de texte pour cette date
+        const blockText = normalizedText.substring(currentDate.index, nextDateIndex);
         
-        if (dateMatch && !line.includes('Edition le') && !line.includes('Commande')) {
-          const jour = dateMatch[1].padStart(2, '0');
-          const mois = dateMatch[2].padStart(2, '0');
-          const annee = dateMatch[3];
+        console.log(`   📅 Bloc ${currentDate.dateDisplay}:`, blockText.substring(0, 100).replace(/\n/g, ' '));
+
+        // Chercher le code de service dans ce bloc
+        const serviceCode = this.extractServiceCodeFromBlock(blockText);
+        
+        if (serviceCode) {
+          const entryKey = `${currentDate.date}|${serviceCode}`;
           
-          currentDate = `${annee}-${mois}-${jour}`;
-          currentDateDisplay = `${jour}/${mois}/${annee}`;
-          
-          console.log(`   📅 Date trouvée: ${currentDateDisplay}`);
-          
-          // Regarder les lignes suivantes pour trouver le code service
-          // MAIS ne pas dépasser la prochaine date
-          const contextLines = [];
-          for (let k = 0; k <= 5 && i + k < lines.length; k++) {
-            const nextLine = lines[i + k].trim();
-            // Stop si on trouve une autre date (sauf la ligne courante)
-            if (k > 0 && /^\d{1,2}\/\d{1,2}\/\d{4}/.test(nextLine)) {
-              break;
-            }
-            contextLines.push(nextLine);
-          }
-          
-          const contextText = contextLines.join(' ');
-          
-          // Chercher le code de service UNIQUEMENT dans ce contexte limité
-          const serviceCode = this.extractServiceCodeStrict(contextText, contextLines);
-          
-          if (serviceCode) {
-            const entryKey = `${currentDate}|${serviceCode}`;
+          if (!entriesMap.has(entryKey)) {
+            const entry = {
+              date: currentDate.date,
+              dateDisplay: currentDate.dateDisplay,
+              dayOfWeek: this.extractDayOfWeek(blockText),
+              serviceCode: serviceCode,
+              serviceLabel: this.VALID_SERVICE_CODES[serviceCode] || serviceCode,
+              horaires: this.extractHorairesFromBlock(blockText),
+              isValid: true,
+              hasError: false,
+              errorMessage: null
+            };
             
-            // Vérifier si cette entrée existe déjà
-            if (!entriesMap.has(entryKey)) {
-              const entry = {
-                date: currentDate,
-                dateDisplay: currentDateDisplay,
-                dayOfWeek: this.extractDayOfWeek(contextText),
-                serviceCode: serviceCode,
-                serviceLabel: this.VALID_SERVICE_CODES[serviceCode] || serviceCode,
-                horaires: [],
-                isValid: true,
-                hasError: false,
-                errorMessage: null
-              };
-              
-              // Extraire les horaires du contexte
-              entry.horaires = this.extractHorairesFromContext(contextLines);
-              
-              entriesMap.set(entryKey, entry);
-              console.log(`      Code service trouvé: ${serviceCode}`);
-              if (entry.horaires.length > 0) {
-                entry.horaires.forEach(h => {
-                  console.log(`      Horaire trouvé: ${h.debut} - ${h.fin}`);
-                });
-              }
-            } else {
-              // Entrée existe déjà, juste ajouter les horaires si nouveaux
-              const existingEntry = entriesMap.get(entryKey);
-              const newHoraires = this.extractHorairesFromContext(contextLines);
-              newHoraires.forEach(h => {
-                const exists = existingEntry.horaires.some(
-                  eh => eh.debut === h.debut && eh.fin === h.fin
-                );
-                if (!exists) {
-                  existingEntry.horaires.push(h);
-                  console.log(`      Horaire ajouté à entrée existante: ${h.debut} - ${h.fin}`);
-                }
-              });
-            }
+            entriesMap.set(entryKey, entry);
+            console.log(`      ✅ Code: ${serviceCode}, Horaires: ${entry.horaires.length}`);
           } else {
-            console.log(`      ⚠️ Aucun code service trouvé dans le contexte`);
+            // Ajouter les horaires à l'entrée existante si nouveaux
+            const existingEntry = entriesMap.get(entryKey);
+            const newHoraires = this.extractHorairesFromBlock(blockText);
+            newHoraires.forEach(h => {
+              const exists = existingEntry.horaires.some(
+                eh => eh.debut === h.debut && eh.fin === h.fin
+              );
+              if (!exists) {
+                existingEntry.horaires.push(h);
+              }
+            });
+            console.log(`      ➕ Horaires ajoutés à ${serviceCode}`);
           }
-          
-          lastProcessedLineIndex = i;
+        } else {
+          console.log(`      ⚠️ Aucun code service trouvé`);
         }
       }
 
-      // Convertir la Map en tableau, trié par date
+      // Convertir la Map en tableau, trié par date puis par heure de début
       result.entries = Array.from(entriesMap.values()).sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date);
-        // Pour une même date, services de nuit en dernier
-        const aIsNight = a.horaires.some(h => parseInt(h.debut.split(':')[0]) >= 20);
-        const bIsNight = b.horaires.some(h => parseInt(h.debut.split(':')[0]) >= 20);
-        return aIsNight - bIsNight;
+        // Pour une même date, trier par heure de début
+        const aStart = a.horaires.length > 0 ? parseInt(a.horaires[0].debut.split(':')[0]) : 0;
+        const bStart = b.horaires.length > 0 ? parseInt(b.horaires[0].debut.split(':')[0]) : 0;
+        return aStart - bStart;
       });
 
-      console.log(`📊 Total entrées trouvées: ${result.entries.length}`);
+      console.log(`📊 Total entrées uniques: ${result.entries.length}`);
 
       // Valider les entrées
       result.entries = result.entries.map(entry => this.validateEntry(entry));
-
-      // Si aucune entrée, extraction permissive
-      if (result.entries.length === 0) {
-        console.log('🔄 Aucune entrée trouvée, tentative extraction permissive...');
-        result.entries = this.extractPermissive(rawText);
-        console.log(`   Extraction permissive: ${result.entries.length} entrées trouvées`);
-      }
 
     } catch (error) {
       console.error('❌ Erreur parsing:', error);
@@ -310,191 +256,134 @@ class PDFParserService {
   }
 
   /**
-   * Extraction STRICTE du code de service - évite la confusion entre dates
+   * Extrait le code de service d'un bloc de texte
+   * Priorité aux codes spécifiques (CCU005, ACR002) sur les codes simples (C, RP)
    */
-  static extractServiceCodeStrict(contextText, contextLines) {
-    if (!contextText) return null;
+  static extractServiceCodeFromBlock(blockText) {
+    if (!blockText) return null;
     
-    const upperText = contextText.toUpperCase();
+    const upperBlock = blockText.toUpperCase();
     
-    // Liste complète des codes avec priorité (codes spécifiques d'abord)
-    const priorityCodes = [
-      // Codes avec numéros complets (priorité haute)
-      'CCU001', 'CCU002', 'CCU003', 'CCU004', 'CCU005', 'CCU006',
-      'CRC001', 'CRC002', 'CRC003',
-      'ACR001', 'ACR002', 'ACR003', 'ACR004',
-      'CENT001', 'CENT002', 'CENT003',
-      'REO001', 'REO002', 'REO003', 'REO004', 'REO005', 
-      'REO006', 'REO007', 'REO008', 'REO009', 'REO010',
-      // Codes spéciaux avec tiret
-      'HAB-QF',
+    // Liste ordonnée par spécificité (codes longs d'abord)
+    const codePatterns = [
+      // Codes avec numéros - TRÈS spécifiques
+      /\b(CCU00[1-6])\b/i,
+      /\b(CRC00[1-3])\b/i,
+      /\b(ACR00[1-4])\b/i,
+      /\b(CENT00[1-3])\b/i,
+      /\b(REO0(?:0[1-9]|10))\b/i,
+      // Codes moyens
+      /\b(HAB-QF)\b/i,
+      /\b(VISIMED)\b/i,
+      /\b(VMT)\b/i,
+      /\b(INACTIN)\b/i,
+      /\b(TRACTION)\b/i,
+      /\b(DISPO)\b/i,
+      /\b(CONGE)\b/i,
+      // Codes courts - vérifier qu'ils ne sont pas dans un contexte de référence
+      /\b(RPP)\b/i,
+      /\b(RTT)\b/i,
+      /\b(MAL)\b/i,
+      /\b(HAB)\b/i,
     ];
     
-    // Codes simples (priorité basse - recherchés seulement si pas de code numéroté)
-    const simpleCodes = [
-      'VISIMED', 'VMT', 'TRACTION',
-      'INACTIN', 'DISPO', 'CONGE',
-      'RPP', 'RP', 'NU', 'CA', 'RTT', 'RQ', 'MA', 'MAL', 'HAB'
-    ];
-    
-    // D'abord chercher les codes prioritaires (avec numéros)
-    for (const code of priorityCodes) {
-      // Chercher le code en tant que mot complet ou suivi d'espace/fin de ligne
-      const regex = new RegExp(`\\b${code}\\b`, 'i');
-      if (regex.test(upperText)) {
-        // Vérifier que ce n'est pas un code d'une ligne "du XXX" (référence)
-        // Le code doit apparaître sur une ligne qui commence par la date OU qui contient le titre du service
-        for (const line of contextLines) {
-          const upperLine = line.toUpperCase();
-          if (upperLine.includes(code)) {
-            // Exclure les lignes qui sont juste des références "du ACR601"
-            if (/^\s*DU\s+[A-Z]{2,4}\d{3}/i.test(line)) {
-              continue;
-            }
-            return code;
-          }
+    // Chercher les codes spécifiques d'abord
+    for (const pattern of codePatterns) {
+      const match = upperBlock.match(pattern);
+      if (match) {
+        const code = match[1].toUpperCase();
+        // Vérifier que ce n'est pas juste une référence "du CCU601"
+        const refPattern = new RegExp(`DU\\s+${code}`, 'i');
+        if (!refPattern.test(blockText)) {
+          return code;
         }
       }
     }
     
-    // Ensuite chercher les codes simples
-    for (const code of simpleCodes) {
-      const regex = new RegExp(`\\b${code}\\b`, 'i');
-      if (regex.test(upperText)) {
-        // Vérifier que c'est bien un code de service et pas juste du texte
-        for (const line of contextLines) {
-          const upperLine = line.toUpperCase();
-          // Le code doit être sur la même ligne que la date OU sur une ligne de titre
-          if (upperLine.includes(code)) {
-            // Pour VISIMED, VMT : accepter sur n'importe quelle ligne
-            if (['VISIMED', 'VMT', 'TRACTION'].includes(code)) {
-              return code;
-            }
-            // Pour RP, NU, etc. : vérifier que c'est sur la ligne de date ou titre
-            if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(line) || 
-                /REPOS|DISPONIBLE|CONG|UTILIS/i.test(line)) {
-              return code;
-            }
-          }
+    // Codes très courts - besoin de plus de contexte
+    // RP : chercher "Repos" ou "RP" isolé
+    if (/\bRP\b/i.test(upperBlock) && !upperBlock.includes('DU RP')) {
+      // Vérifier que c'est bien un repos et pas une référence
+      if (/REPOS|RP\s+(LUN|MAR|MER|JEU|VEN|SAM|DIM)/i.test(blockText)) {
+        return 'RP';
+      }
+      // Si RP est sur la même ligne que la date
+      const lines = blockText.split('\n');
+      for (const line of lines) {
+        if (/^\d{1,2}\/\d{1,2}\/\d{4}.*\bRP\b/i.test(line)) {
+          return 'RP';
         }
       }
     }
     
-    // Recherche par patterns descriptifs
-    const patterns = [
-      { pattern: /REPOS\s+P[EÉ]RIODIQUE/i, code: 'RP' },
-      { pattern: /\bRPP\b/i, code: 'RP' },
-      { pattern: /NON\s+UTILIS[EÉ]/i, code: 'NU' },
-      { pattern: /DISPONIBLE/i, code: 'DISPO' },
-      { pattern: /VISITE\s+M[EÉ]DICALE/i, code: 'VISIMED' },
-      { pattern: /INACTI[FV]/i, code: 'INACTIN' },
-      { pattern: /FORMATION/i, code: 'HAB-QF' },
-      { pattern: /PERFECTIONNEMENT/i, code: 'HAB-QF' },
-      { pattern: /CONG[EÉ]\s+ANNUEL/i, code: 'CA' },
-    ];
+    // NU : Non Utilisé
+    if (/\bNU\b/i.test(upperBlock) && /UTILIS|NU\s+(LUN|MAR|MER|JEU|VEN|SAM|DIM)/i.test(blockText)) {
+      return 'NU';
+    }
     
-    for (const { pattern, code } of patterns) {
-      if (pattern.test(upperText)) {
-        return code;
-      }
+    // CA ou C : Congé
+    if (/\bCA\b/i.test(upperBlock) || (/\bC\b/i.test(upperBlock) && /CONG/i.test(blockText))) {
+      return 'CA';
+    }
+    
+    // RQ : Repos Compensateur
+    if (/\bRQ\b/i.test(upperBlock)) {
+      return 'RQ';
+    }
+    
+    // MA : Maladie
+    if (/\bMA\b/i.test(upperBlock) && /MALAD/i.test(blockText)) {
+      return 'MA';
+    }
+    
+    // D : Disponible (si pas de DISPO trouvé)
+    if (/\bD\b/i.test(upperBlock) && /DISPONIBLE/i.test(blockText)) {
+      return 'DISPO';
     }
     
     return null;
   }
 
   /**
-   * Extrait les horaires d'un contexte de lignes
+   * Extrait les horaires d'un bloc de texte
    */
-  static extractHorairesFromContext(contextLines) {
+  static extractHorairesFromBlock(blockText) {
     const horaires = [];
     const seenHoraires = new Set();
     
-    for (const line of contextLines) {
-      // Pattern pour horaires avec ou sans espaces
-      const patterns = [
-        /((\d{1,2}):(\d{2}))\s+((\d{1,2}):(\d{2}))/g,  // "HH:MM HH:MM"
-        /((\d{1,2}):(\d{2}))\s*[-–]\s*((\d{1,2}):(\d{2}))/g,  // "HH:MM - HH:MM"
-      ];
-      
-      for (const pattern of patterns) {
-        let match;
-        while ((match = pattern.exec(line)) !== null) {
-          const debut = match[1];
-          const fin = match[4];
-          const key = `${debut}-${fin}`;
+    // Pattern pour "HH:MM HH:MM" ou "HH:MM - HH:MM"
+    const patterns = [
+      /(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/g,
+      /(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/g,
+    ];
+    
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(blockText)) !== null) {
+        const debut = match[1];
+        const fin = match[2];
+        const key = `${debut}-${fin}`;
+        
+        if (!seenHoraires.has(key)) {
+          seenHoraires.add(key);
           
-          if (!seenHoraires.has(key)) {
-            seenHoraires.add(key);
-            horaires.push({
-              debut: debut,
-              fin: fin,
-              code: this.extractTimeCode(line),
-              type: this.extractHoraireType(line)
-            });
-          }
+          // Déterminer le type d'horaire
+          const lineContext = blockText.substring(
+            Math.max(0, match.index - 20),
+            Math.min(blockText.length, match.index + 30)
+          );
+          
+          horaires.push({
+            debut: debut,
+            fin: fin,
+            code: this.extractTimeCode(lineContext),
+            type: this.extractHoraireType(lineContext)
+          });
         }
       }
     }
     
     return horaires;
-  }
-
-  /**
-   * Extraction permissive pour PDF mal formatés
-   */
-  static extractPermissive(rawText) {
-    console.log('🔍 Extraction permissive...');
-    const entries = [];
-    const entriesMap = new Map();
-    const text = rawText.replace(/\s+/g, ' ');
-    
-    const dateRegex = /(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})/g;
-    let dateMatch;
-    
-    while ((dateMatch = dateRegex.exec(text)) !== null) {
-      if (text.substring(dateMatch.index - 20, dateMatch.index).includes('Edition le')) {
-        continue;
-      }
-      
-      const date = `${dateMatch[3]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[1].padStart(2, '0')}`;
-      const dateDisplay = `${dateMatch[1]}/${dateMatch[2]}/${dateMatch[3]}`;
-      
-      const contextStart = Math.max(0, dateMatch.index - 50);
-      const contextEnd = Math.min(text.length, dateMatch.index + 150);
-      const context = text.substring(contextStart, contextEnd);
-      
-      const serviceCode = this.extractServiceCodeStrict(context, [context]) || 'INCONNU';
-      const entryKey = `${date}|${serviceCode}`;
-      
-      if (!entriesMap.has(entryKey)) {
-        const entry = {
-          date: date,
-          dateDisplay: dateDisplay,
-          dayOfWeek: this.extractDayOfWeek(context),
-          serviceCode: serviceCode,
-          serviceLabel: this.VALID_SERVICE_CODES[serviceCode] || 'À vérifier',
-          horaires: [],
-          isValid: serviceCode !== 'INCONNU',
-          hasError: serviceCode === 'INCONNU',
-          errorMessage: serviceCode === 'INCONNU' ? 'Extraction automatique - À vérifier' : null
-        };
-        
-        const horaireMatches = context.match(/(\d{1,2}:\d{2})/g);
-        if (horaireMatches && horaireMatches.length >= 2) {
-          entry.horaires.push({
-            debut: horaireMatches[0],
-            fin: horaireMatches[1],
-            code: null,
-            type: 'SERVICE'
-          });
-        }
-        
-        entriesMap.set(entryKey, entry);
-        console.log(`   📅 Entrée permissive: ${dateDisplay} - ${serviceCode}`);
-      }
-    }
-    
-    return Array.from(entriesMap.values());
   }
 
   /**
@@ -510,19 +399,13 @@ class PDFParserService {
 
     const agentPatterns = [
       /Agent\s*:?\s*COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)/i,
-      /Agent\s*:?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)\s+N[°o]?\s*CP/i,
-      /COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)\s+N[°o]?\s*CP/i,
-      /^([A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+\s+[A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+)\s+N[°o]?\s*CP/im
+      /COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+\s+[A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+)/i,
     ];
     
     for (const pattern of agentPatterns) {
       const match = rawText.match(pattern);
       if (match) {
-        metadata.agent = match[1]
-          .replace(/COGC\s+PN/gi, '')
-          .replace(/Agent\s*:?/gi, '')
-          .trim()
-          .toUpperCase();
+        metadata.agent = match[1].trim().split('\n')[0].toUpperCase();
         break;
       }
     }
@@ -534,10 +417,7 @@ class PDFParserService {
 
     const periodeMatch = rawText.match(/Commande\s+allant?\s+du\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
     if (periodeMatch) {
-      metadata.periode = {
-        debut: periodeMatch[1],
-        fin: periodeMatch[2]
-      };
+      metadata.periode = { debut: periodeMatch[1], fin: periodeMatch[2] };
     }
 
     const editionMatch = rawText.match(/Edition\s+le\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
@@ -548,15 +428,10 @@ class PDFParserService {
     return metadata;
   }
 
-  /**
-   * Extraction de texte depuis le binaire du PDF
-   */
   static extractTextFromBinary(arrayBuffer) {
     const uint8Array = new Uint8Array(arrayBuffer);
     const decoder = new TextDecoder('utf-8', { fatal: false });
     let extractedText = '';
-    
-    console.log('🔧 Extraction binaire du PDF...');
     
     for (let i = 0; i < uint8Array.length - 1; i++) {
       if (uint8Array[i] === 0x28) {
@@ -568,17 +443,12 @@ class PDFParserService {
             if (textBytes.length > 0) {
               try {
                 let text = decoder.decode(new Uint8Array(textBytes));
-                text = text
-                  .replace(/\\(\d{3})/g, (match, oct) => String.fromCharCode(parseInt(oct, 8)))
-                  .replace(/\\n/g, '\n')
-                  .trim();
-                
+                text = text.replace(/\\(\d{3})/g, (m, oct) => String.fromCharCode(parseInt(oct, 8)))
+                  .replace(/\\n/g, '\n').trim();
                 if (text.length > 2 && text.length < 500) {
                   extractedText += text + ' ';
                 }
-              } catch (e) {
-                // Ignorer
-              }
+              } catch (e) {}
             }
             break;
           }
@@ -591,55 +461,33 @@ class PDFParserService {
     return extractedText;
   }
 
-  /**
-   * Extrait le jour de la semaine
-   */
   static extractDayOfWeek(text) {
     if (!text) return null;
-    
     const jours = {
-      'LUN': 'Lun', 'LUNDI': 'Lun',
-      'MAR': 'Mar', 'MARDI': 'Mar',
-      'MER': 'Mer', 'MERCREDI': 'Mer',
-      'JEU': 'Jeu', 'JEUDI': 'Jeu',
-      'VEN': 'Ven', 'VENDREDI': 'Ven',
-      'SAM': 'Sam', 'SAMEDI': 'Sam',
+      'LUN': 'Lun', 'LUNDI': 'Lun', 'MAR': 'Mar', 'MARDI': 'Mar',
+      'MER': 'Mer', 'MERCREDI': 'Mer', 'JEU': 'Jeu', 'JEUDI': 'Jeu',
+      'VEN': 'Ven', 'VENDREDI': 'Ven', 'SAM': 'Sam', 'SAMEDI': 'Sam',
       'DIM': 'Dim', 'DIMANCHE': 'Dim'
     };
-    
     const upperText = text.toUpperCase();
-    
     for (const [key, value] of Object.entries(jours)) {
-      if (upperText.includes(key)) {
-        return value;
-      }
+      if (upperText.includes(key)) return value;
     }
-    
     return null;
   }
 
-  /**
-   * Extrait le type d'horaire
-   */
   static extractHoraireType(line) {
     const upperLine = line.toUpperCase();
     if (upperLine.includes('METRO')) return 'METRO';
     if (upperLine.includes('RS')) return 'RS';
-    if (/N\d{10}[A-Z]{2}\d{2}/.test(upperLine)) return 'SERVICE';
     return 'SERVICE';
   }
 
-  /**
-   * Extrait le code horaire
-   */
   static extractTimeCode(line) {
     const codeMatch = line.match(/[A-Z]\d{10}[A-Z]{2}\d{2}/);
     return codeMatch ? codeMatch[0] : null;
   }
 
-  /**
-   * Valide une entrée
-   */
   static validateEntry(entry) {
     if (!entry.serviceCode) {
       entry.hasError = true;
@@ -647,89 +495,50 @@ class PDFParserService {
       entry.isValid = false;
     } else if (!this.VALID_SERVICE_CODES[entry.serviceCode] && entry.serviceCode !== 'INCONNU') {
       entry.hasError = true;
-      entry.errorMessage = `Code de service inconnu: ${entry.serviceCode}`;
+      entry.errorMessage = `Code inconnu: ${entry.serviceCode}`;
       entry.isValid = false;
     }
-
     if (!entry.date) {
       entry.hasError = true;
       entry.errorMessage = 'Date manquante';
       entry.isValid = false;
     }
-
     return entry;
   }
 
-  /**
-   * Valider les données parsées
-   */
   static validateParsedData(parsedData) {
-    console.log('🔍 Validation des données parsées...');
+    const validation = { errors: [], warnings: [], isValid: true };
     
-    const validation = {
-      errors: [],
-      warnings: [],
-      isValid: true
-    };
-
     if (parsedData.extractionMethod) {
       validation.warnings.push(`📋 Méthode: ${parsedData.extractionMethod}`);
     }
-
-    if (!parsedData.metadata?.agent) {
-      validation.warnings.push('Nom agent manquant');
-    } else {
+    if (parsedData.metadata?.agent) {
       validation.warnings.push(`✅ Agent: ${parsedData.metadata.agent}`);
     }
-    
-    if (!parsedData.metadata?.numeroCP) {
-      validation.warnings.push('Numéro CP manquant');
-    } else {
+    if (parsedData.metadata?.numeroCP) {
       validation.warnings.push(`✅ CP: ${parsedData.metadata.numeroCP}`);
     }
-
     if (!parsedData.entries?.length) {
-      validation.errors.push('Aucune entrée de planning trouvée');
+      validation.errors.push('Aucune entrée trouvée');
       validation.isValid = false;
     } else {
-      let validCount = 0;
-      
-      parsedData.entries.forEach((entry, i) => {
-        if (!entry.date) {
-          validation.errors.push(`Ligne ${i+1}: Date manquante`);
-        } else if (entry.isValid) {
-          validCount++;
-        }
-        if (!entry.serviceCode) {
-          validation.warnings.push(`Ligne ${i+1}: Code service manquant`);
-        }
-      });
-      
+      const validCount = parsedData.entries.filter(e => e.isValid).length;
       validation.warnings.unshift(`📊 ${validCount}/${parsedData.entries.length} entrées valides`);
-      
-      if (validCount === 0) {
-        validation.errors.push('Aucune entrée valide trouvée');
-        validation.isValid = false;
-      }
     }
-
-    console.log('📋 Résultat validation:', validation);
+    
     return validation;
   }
 
-  /**
-   * Formate les données pour l'import en base
-   */
   static formatForImport(entries, agentId) {
     return entries
-      .filter(entry => entry.isValid || entry.serviceCode === 'INCONNU')
+      .filter(entry => entry.isValid)
       .map(entry => ({
         agent_id: agentId,
         date: entry.date,
         service_code: entry.serviceCode,
         poste_code: entry.horaires.length > 0 ? entry.horaires[0].code : null,
         horaires: entry.horaires.map(h => `${h.debut}-${h.fin}`).join(', '),
-        statut: entry.serviceCode === 'INCONNU' ? 'à_vérifier' : 'actif'
+        statut: 'actif'
       }));
   }
 }
