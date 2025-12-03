@@ -45,6 +45,45 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   };
 
   /**
+   * Détermine le type de service (Matin/Soir/Nuit) à partir des horaires extraits
+   * @param {Array} horaires - Tableau d'horaires [{debut: "HH:MM", fin: "HH:MM"}, ...]
+   * @returns {string} - Code service: '-' (Matin), 'O' (Soir), 'X' (Nuit)
+   */
+  const determineServiceTypeFromHoraires = (horaires) => {
+    if (!horaires || horaires.length === 0) {
+      return '-'; // Par défaut Matin si pas d'horaires
+    }
+
+    // Prendre le premier horaire significatif (ignorer METRO, RS)
+    let mainHoraire = horaires.find(h => h.type === 'SERVICE') || horaires[0];
+    
+    if (!mainHoraire || !mainHoraire.debut) {
+      return '-';
+    }
+
+    // Extraire l'heure de début
+    const debutStr = mainHoraire.debut;
+    const [heures, minutes] = debutStr.split(':').map(Number);
+    const debutMinutes = heures * 60 + (minutes || 0);
+
+    // Logique de détermination basée sur l'heure de début
+    // Matin: 04:00 - 10:00 (240 - 600 minutes)
+    // Soir: 10:00 - 18:00 (600 - 1080 minutes)
+    // Nuit: 18:00 - 04:00 (1080 - 240 minutes, en passant par minuit)
+
+    if (debutMinutes >= 240 && debutMinutes < 600) {
+      // 04:00 - 10:00 → Matin
+      return '-';
+    } else if (debutMinutes >= 600 && debutMinutes < 1080) {
+      // 10:00 - 18:00 → Soir
+      return 'O';
+    } else {
+      // 18:00 - 04:00 → Nuit
+      return 'X';
+    }
+  };
+
+  /**
    * Transforme les données du pdfParserService vers le format attendu par PDFValidationStep
    * pdfParserService retourne: { metadata: { agent: "NOM PRENOM" }, entries: [...] }
    * PDFValidationStep attend: { agent: { nom, prenom }, planning: [...] }
@@ -75,15 +114,25 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     }
     
     // Transformer entries en planning avec le format attendu
-    const planning = (parsed.entries || []).map(entry => ({
-      date: entry.date,
-      service_code: mapServiceCodeToSimple(entry.serviceCode),
-      poste_code: extractPosteCode(entry.serviceCode),
-      original_code: entry.serviceCode,
-      description: entry.serviceLabel || entry.serviceCode,
-      horaires: entry.horaires || [],
-      isNightService: entry.isNightService || false
-    }));
+    const planning = (parsed.entries || []).map(entry => {
+      // Déterminer le type de service à partir des horaires
+      const serviceType = determineServiceTypeFromHoraires(entry.horaires);
+      
+      // Mapper les codes spéciaux qui ne dépendent pas des horaires
+      const simpleCode = mapServiceCodeToSimple(entry.serviceCode, serviceType);
+      
+      console.log(`   📋 ${entry.dateDisplay} ${entry.serviceCode} → ${simpleCode} (horaires: ${JSON.stringify(entry.horaires?.map(h => h.debut + '-' + h.fin))})`);
+      
+      return {
+        date: entry.date,
+        service_code: simpleCode,
+        poste_code: extractPosteCode(entry.serviceCode),
+        original_code: entry.serviceCode,
+        description: entry.serviceLabel || entry.serviceCode,
+        horaires: entry.horaires || [],
+        isNightService: serviceType === 'X'
+      };
+    });
     
     const transformed = {
       agent: {
@@ -107,13 +156,16 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   /**
    * Mappe un code service complet (CCU001, ACR002, etc.) vers un code simple (-, O, X, RP, etc.)
+   * @param {string} code - Code service SNCF original
+   * @param {string} serviceTypeFromHoraires - Type déterminé par les horaires (-, O, X)
+   * @returns {string} - Code simple pour l'affichage
    */
-  const mapServiceCodeToSimple = (code) => {
+  const mapServiceCodeToSimple = (code, serviceTypeFromHoraires) => {
     if (!code) return 'RP';
     
     const upperCode = code.toUpperCase();
     
-    // Codes de repos et absences
+    // Codes de repos et absences - ne dépendent PAS des horaires
     if (upperCode === 'RP' || upperCode.includes('REPOS')) return 'RP';
     if (upperCode === 'CA' || upperCode === 'C' || upperCode === 'CONGE') return 'C';
     if (upperCode === 'NU') return 'NU';
@@ -123,21 +175,18 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     if (upperCode === 'RTT' || upperCode === 'RQ') return 'RP';
     if (upperCode === 'MAL' || upperCode === 'MA') return 'MA';
     
-    // Codes de service avec horaires - déterminer matin/soir/nuit
-    // Pour l'instant, on garde le code original car on n'a pas les horaires ici
-    // Le code sera affiné lors de l'import si nécessaire
-    
-    // Codes CCU, CRC, ACR, CENT, REO - services opérationnels
+    // Codes de service opérationnels (CCU, CRC, ACR, CENT, REO)
+    // → Utiliser le type déterminé par les horaires
     if (upperCode.startsWith('CCU') || 
         upperCode.startsWith('CRC') || 
         upperCode.startsWith('ACR') || 
         upperCode.startsWith('CENT') || 
         upperCode.startsWith('REO')) {
-      // Garder le code original pour l'instant, sera mappé lors de l'import
-      return upperCode;
+      return serviceTypeFromHoraires || '-';
     }
     
-    return code; // Retourner le code original si pas de mapping
+    // Par défaut, utiliser le type des horaires si disponible
+    return serviceTypeFromHoraires || '-';
   };
 
   /**
@@ -151,7 +200,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     if (upperCode.startsWith('CCU')) return 'CCU';
     if (upperCode.startsWith('CRC')) return 'CRC';
     if (upperCode.startsWith('ACR')) return 'ACR';
-    if (upperCode.startsWith('CENT')) return 'CENT';
+    if (upperCode.startsWith('CENT')) return 'SOUF';
     if (upperCode.startsWith('REO')) return 'REO';
     
     return null;
@@ -215,11 +264,22 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       const validEntries = data.planning.filter(e => e.date && e.service_code);
       validation.warnings.push(`📊 ${validEntries.length}/${data.planning.length} entrées valides`);
       
+      // Compter par type
+      const matin = data.planning.filter(e => e.service_code === '-').length;
+      const soir = data.planning.filter(e => e.service_code === 'O').length;
+      const nuit = data.planning.filter(e => e.service_code === 'X').length;
+      const repos = data.planning.filter(e => ['RP', 'C', 'NU', 'D'].includes(e.service_code)).length;
+      
+      if (matin > 0) validation.warnings.push(`🌅 ${matin} service(s) Matin`);
+      if (soir > 0) validation.warnings.push(`🌇 ${soir} service(s) Soir`);
+      if (nuit > 0) validation.warnings.push(`🌙 ${nuit} service(s) Nuit`);
+      if (repos > 0) validation.warnings.push(`😴 ${repos} jour(s) repos/congé`);
+      
       // Vérifier les doublons de dates
       const dates = data.planning.map(e => e.date);
       const uniqueDates = [...new Set(dates)];
       if (dates.length !== uniqueDates.length) {
-        validation.warnings.push('Plusieurs services sur certaines dates (services de nuit ?)');
+        validation.warnings.push('⚠️ Plusieurs services sur certaines dates (services de nuit ?)');
       }
     }
 
@@ -344,7 +404,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                     <ul className="text-sm text-blue-700 mt-1">
                       <li>• Dates au format JJ/MM/AAAA</li>
                       <li>• Codes service : CCU001-005, CRC001-002, ACR001-003, RP, DISPO, NU, etc.</li>
-                      <li>• Horaires au format HH:MM</li>
+                      <li>• Horaires au format HH:MM → détection auto Matin/Soir/Nuit</li>
                       <li>• Informations agent et numéro CP</li>
                     </ul>
                   </div>
