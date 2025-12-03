@@ -7,7 +7,7 @@
  * 2. Images → Mistral Pixtral OCR → Markdown
  * 3. Markdown → Parser → Données structurées COGC
  * 
- * @version 4.0.0
+ * @version 4.0.1
  * @date 2025-12-03
  * @accuracy 100% (testé sur bulletins réels)
  */
@@ -17,7 +17,7 @@ class BulletinParserService {
   // CONFIGURATION
   // ═══════════════════════════════════════════════════════════════
   
-  static API_KEY = process.env.REACT_APP_MISTRAL_API_KEY || 'duQZd7M1SHUuJtUe0KyMLGr5ROhBiLM6';
+  static API_KEY = process.env.REACT_APP_MISTRAL_API_KEY || '';
   static API_URL = 'https://api.mistral.ai/v1/chat/completions';
   static MODEL = 'pixtral-12b-2409';
   static RENDER_SCALE = 2.0;
@@ -88,6 +88,12 @@ class BulletinParserService {
     console.log('📄 ═══════════════════════════════════════════════');
 
     try {
+      // Vérifier si l'API Mistral est configurée
+      if (!this.isConfigured()) {
+        console.log('⚠️ API Mistral non configurée, utilisation extraction locale...');
+        return await this.localExtraction(file);
+      }
+
       // 1. Convertir le PDF en images
       console.log('🖼️ Étape 1: Conversion PDF → Images...');
       const images = await this.pdfToImages(file);
@@ -610,11 +616,27 @@ Ne modifie pas les données, retourne-les telles quelles.`
         fullText += pageText + '\n\n';
       }
 
-      return this.parseMarkdownOCR(fullText);
+      // Parser le texte extrait
+      const parsed = this.parseMarkdownOCR(fullText);
+      
+      // IMPORTANT: Appliquer le post-traitement pour ajouter dateISO
+      parsed.method = 'local-pdfjs-fallback';
+      const result = this.postProcess(parsed);
+      
+      console.log(`✅ Extraction locale terminée: ${result.entries?.length || 0} entrées`);
+      
+      return result;
 
     } catch (error) {
       console.error('❌ Erreur extraction locale:', error);
-      return { success: false, error: error.message, method: 'local-failed' };
+      return { 
+        success: false, 
+        error: error.message, 
+        method: 'local-failed',
+        metadata: {},
+        entries: [],
+        stats: { total: 0, valid: 0, errors: 1 }
+      };
     }
   }
 
