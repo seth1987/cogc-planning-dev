@@ -1,6 +1,6 @@
 {
   "name": "cogc-planning-dev",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.39.3",
