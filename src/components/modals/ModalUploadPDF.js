@@ -44,6 +44,119 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setValidation({ errors: [], warnings: [] });
   };
 
+  /**
+   * Transforme les données du pdfParserService vers le format attendu par PDFValidationStep
+   * pdfParserService retourne: { metadata: { agent: "NOM PRENOM" }, entries: [...] }
+   * PDFValidationStep attend: { agent: { nom, prenom }, planning: [...] }
+   */
+  const transformParsedDataForValidation = (parsed) => {
+    console.log('🔄 Transformation des données pour validation...');
+    console.log('   Données reçues:', parsed);
+    
+    // Extraire nom et prénom depuis metadata.agent
+    let nom = '';
+    let prenom = '';
+    
+    if (parsed.metadata?.agent) {
+      // Nettoyer la chaîne (enlever \n et caractères parasites)
+      const agentClean = parsed.metadata.agent
+        .replace(/\n/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      // Séparer nom et prénom (format: "NOM PRENOM" ou "NOM PRENOM\nN")
+      const parts = agentClean.split(' ').filter(p => p.length > 1);
+      if (parts.length >= 2) {
+        nom = parts[0];
+        prenom = parts[1];
+      } else if (parts.length === 1) {
+        nom = parts[0];
+      }
+    }
+    
+    // Transformer entries en planning avec le format attendu
+    const planning = (parsed.entries || []).map(entry => ({
+      date: entry.date,
+      service_code: mapServiceCodeToSimple(entry.serviceCode),
+      poste_code: extractPosteCode(entry.serviceCode),
+      original_code: entry.serviceCode,
+      description: entry.serviceLabel || entry.serviceCode,
+      horaires: entry.horaires || [],
+      isNightService: entry.isNightService || false
+    }));
+    
+    const transformed = {
+      agent: {
+        nom: nom,
+        prenom: prenom,
+        numeroCP: parsed.metadata?.numeroCP || ''
+      },
+      planning: planning,
+      periode: parsed.metadata?.periode || null,
+      dateEdition: parsed.metadata?.dateEdition || null,
+      parsing_mode: parsed.extractionMethod || 'local',
+      original_data: parsed // Garder les données originales pour référence
+    };
+    
+    console.log('✅ Données transformées:', transformed);
+    console.log('   Agent:', transformed.agent);
+    console.log('   Planning:', transformed.planning.length, 'entrées');
+    
+    return transformed;
+  };
+
+  /**
+   * Mappe un code service complet (CCU001, ACR002, etc.) vers un code simple (-, O, X, RP, etc.)
+   */
+  const mapServiceCodeToSimple = (code) => {
+    if (!code) return 'RP';
+    
+    const upperCode = code.toUpperCase();
+    
+    // Codes de repos et absences
+    if (upperCode === 'RP' || upperCode.includes('REPOS')) return 'RP';
+    if (upperCode === 'CA' || upperCode === 'C' || upperCode === 'CONGE') return 'C';
+    if (upperCode === 'NU') return 'NU';
+    if (upperCode === 'DISPO' || upperCode === 'D') return 'D';
+    if (upperCode === 'INACTIN' || upperCode === 'I') return 'I';
+    if (upperCode.includes('HAB') || upperCode.includes('FORM')) return 'HAB';
+    if (upperCode === 'RTT' || upperCode === 'RQ') return 'RP';
+    if (upperCode === 'MAL' || upperCode === 'MA') return 'MA';
+    
+    // Codes de service avec horaires - déterminer matin/soir/nuit
+    // Pour l'instant, on garde le code original car on n'a pas les horaires ici
+    // Le code sera affiné lors de l'import si nécessaire
+    
+    // Codes CCU, CRC, ACR, CENT, REO - services opérationnels
+    if (upperCode.startsWith('CCU') || 
+        upperCode.startsWith('CRC') || 
+        upperCode.startsWith('ACR') || 
+        upperCode.startsWith('CENT') || 
+        upperCode.startsWith('REO')) {
+      // Garder le code original pour l'instant, sera mappé lors de l'import
+      return upperCode;
+    }
+    
+    return code; // Retourner le code original si pas de mapping
+  };
+
+  /**
+   * Extrait le code poste depuis un code service complet
+   */
+  const extractPosteCode = (code) => {
+    if (!code) return null;
+    
+    const upperCode = code.toUpperCase();
+    
+    if (upperCode.startsWith('CCU')) return 'CCU';
+    if (upperCode.startsWith('CRC')) return 'CRC';
+    if (upperCode.startsWith('ACR')) return 'ACR';
+    if (upperCode.startsWith('CENT')) return 'CENT';
+    if (upperCode.startsWith('REO')) return 'REO';
+    
+    return null;
+  };
+
   // Gestion de l'upload du fichier
   const handleFileUpload = async (uploadedFile) => {
     setFile(uploadedFile);
@@ -56,12 +169,15 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       // Parser le PDF avec extraction locale (PDF.js)
       const parsed = await pdfParserService.parsePDF(uploadedFile);
       
-      // Valider les données
-      const validationResult = pdfParserService.validateParsedData(parsed);
+      // Transformer les données vers le format attendu par PDFValidationStep
+      const transformedData = transformParsedDataForValidation(parsed);
+      
+      // Valider les données transformées
+      const validationResult = validateTransformedData(transformedData);
       setValidation(validationResult);
       
-      setExtractedData(parsed);
-      setEditedData(JSON.parse(JSON.stringify(parsed))); // Deep copy
+      setExtractedData(transformedData);
+      setEditedData(JSON.parse(JSON.stringify(transformedData))); // Deep copy
       setCurrentStep(2);
       
     } catch (err) {
@@ -70,6 +186,49 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Valide les données transformées
+   */
+  const validateTransformedData = (data) => {
+    const validation = {
+      errors: [],
+      warnings: [],
+      isValid: true
+    };
+
+    // Vérifier l'agent
+    if (!data.agent?.nom) {
+      validation.warnings.push('Nom de l\'agent non détecté - à remplir manuellement');
+    }
+    if (!data.agent?.prenom) {
+      validation.warnings.push('Prénom de l\'agent non détecté - à remplir manuellement');
+    }
+
+    // Vérifier le planning
+    if (!data.planning || data.planning.length === 0) {
+      validation.errors.push('Aucune entrée de planning trouvée');
+      validation.isValid = false;
+    } else {
+      // Compter les entrées valides
+      const validEntries = data.planning.filter(e => e.date && e.service_code);
+      validation.warnings.push(`📊 ${validEntries.length}/${data.planning.length} entrées valides`);
+      
+      // Vérifier les doublons de dates
+      const dates = data.planning.map(e => e.date);
+      const uniqueDates = [...new Set(dates)];
+      if (dates.length !== uniqueDates.length) {
+        validation.warnings.push('Plusieurs services sur certaines dates (services de nuit ?)');
+      }
+    }
+
+    // Info sur la période
+    if (data.periode) {
+      validation.warnings.push(`📅 Période: ${data.periode.debut} → ${data.periode.fin}`);
+    }
+
+    return validation;
   };
 
   // Validation et import
@@ -184,7 +343,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                     <p className="text-blue-800 text-sm">Le système reconnaît automatiquement :</p>
                     <ul className="text-sm text-blue-700 mt-1">
                       <li>• Dates au format JJ/MM/AAAA</li>
-                      <li>• Codes service : CCU001-004, CRC001-002, RP, DISPO, NU, etc.</li>
+                      <li>• Codes service : CCU001-005, CRC001-002, ACR001-003, RP, DISPO, NU, etc.</li>
                       <li>• Horaires au format HH:MM</li>
                       <li>• Informations agent et numéro CP</li>
                     </ul>
