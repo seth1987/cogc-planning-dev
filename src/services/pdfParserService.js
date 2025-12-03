@@ -1,20 +1,22 @@
-// Service de parsing des bulletins de commande SNCF - Version bloc par bloc
+// Service de parsing des bulletins de commande SNCF - Version ligne par ligne robuste
+// Refactorisé pour gérer correctement la structure réelle des PDF SNCF
+
 class PDFParserService {
   // Codes de service valides SNCF (liste complète)
   static VALID_SERVICE_CODES = {
-    // Codes CCU
+    // Codes CCU (Régulateur)
     CCU001: 'CRC/CCU DENFERT', CCU002: 'CRC/CCU DENFERT', CCU003: 'CRC/CCU DENFERT',
     CCU004: 'Régulateur Table PARC Denfert', CCU005: 'Régulateur Table PARC Denfert',
     CCU006: 'Régulateur Table PARC Denfert',
-    // Codes CRC
+    // Codes CRC (Coordonnateur)
     CRC001: 'Coordonnateur Régional Circulation', CRC002: 'Coordonnateur Régional Circulation',
     CRC003: 'Coordonnateur Régional Circulation',
-    // Codes ACR
+    // Codes ACR (Aide Coordonnateur)
     ACR001: 'Aide Coordonnateur Régional', ACR002: 'Aide Coordonnateur Régional',
     ACR003: 'Aide Coordonnateur Régional', ACR004: 'Aide Coordonnateur Régional',
     // Codes Centre Souffleur
     CENT001: 'Centre Souffleur', CENT002: 'Centre Souffleur', CENT003: 'Centre Souffleur',
-    // Codes REO (Régulateur OUEST) - Étendu
+    // Codes REO (Régulateur OUEST)
     REO001: 'Régulateur OUEST', REO002: 'Régulateur OUEST', REO003: 'Régulateur OUEST',
     REO004: 'Régulateur OUEST', REO005: 'Régulateur OUEST', REO006: 'Régulateur OUEST',
     REO007: 'Régulateur OUEST', REO008: 'Régulateur OUEST', REO009: 'Régulateur OUEST',
@@ -25,19 +27,49 @@ class PDFParserService {
     DISPO: 'Disponible', D: 'Disponible',
     INACTIN: 'Inactif/Formation',
     'HAB-QF': 'Formation/Perfectionnement', HAB: 'Formation/Perfectionnement',
-    CA: 'Congé Annuel', CONGE: 'Congé Annuel', C: 'Congé Annuel',
+    CA: 'Congé Annuel', CONGE: 'Congé Annuel', C: 'Congé',
     RQ: 'Repos Compensateur', RTT: 'RTT',
     MA: 'Maladie', MAL: 'Maladie',
     VISIMED: 'Visite Médicale', VMT: 'Visite Médicale',
     TRACTION: 'Formation Traction'
   };
 
-  // Regex pour tous les codes de service (triés par longueur décroissante)
-  static SERVICE_CODE_REGEX = /\b(CCU00[1-6]|CRC00[1-3]|ACR00[1-4]|CENT00[1-3]|REO0(?:0[1-9]|10)|HAB-QF|VISIMED|INACTIN|TRACTION|DISPO|CONGE|RPP|RP|NU|CA|RTT|RQ|MA|MAL|HAB|C|D)\b/i;
+  // Jours de la semaine (pour détecter les lignes avec code service)
+  static JOURS_SEMAINE = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
+
+  // Regex pour détecter une date au format JJ/MM/AAAA
+  static DATE_REGEX = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+  // Regex pour les codes de service (ordonnés par longueur décroissante pour priorité)
+  static CODE_PATTERNS = [
+    /\b(CCU00[1-6])\b/i,
+    /\b(CRC00[1-3])\b/i,
+    /\b(ACR00[1-4])\b/i,
+    /\b(CENT00[1-3])\b/i,
+    /\b(REO0(?:0[1-9]|10))\b/i,
+    /\b(HAB-QF)\b/i,
+    /\b(VISIMED)\b/i,
+    /\b(VMT)\b/i,
+    /\b(INACTIN)\b/i,
+    /\b(TRACTION)\b/i,
+    /\b(DISPO)\b/i,
+    /\b(CONGE)\b/i,
+    /\b(RPP)\b/i,
+    /\b(RTT)\b/i,
+    /\b(MAL)\b/i,
+    /\b(HAB)\b/i,
+    /\b(RQ)\b/i,
+    /\b(NU)\b/i,
+    /\b(RP)\b/i,
+    /\b(CA)\b/i,
+    /\b(MA)\b/i,
+    /\b(C)\b/i,
+    /\b(D)\b/i
+  ];
 
   static async parsePDF(file, apiKey = null) {
     try {
-      console.log('📄 Début extraction PDF...');
+      console.log('📄 === DÉBUT PARSING PDF ===');
       console.log('📄 Fichier:', file.name, 'Taille:', file.size, 'bytes');
       
       const arrayBuffer = await new Promise((resolve, reject) => {
@@ -68,15 +100,18 @@ class PDFParserService {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
             
+            // Reconstruction intelligente du texte avec gestion des lignes
             let pageText = '';
             let lastY = null;
             let lastX = null;
             
             textContent.items.forEach(item => {
+              // Nouvelle ligne si Y change significativement
               if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
                 pageText += '\n';
                 lastX = null;
               } else if (lastX !== null && item.transform[4] - lastX > 10) {
+                // Espace si X avance significativement
                 pageText += ' ';
               }
               
@@ -92,7 +127,6 @@ class PDFParserService {
         }
         
         console.log('✅ Extraction PDF.js réussie');
-        console.log('📝 Texte extrait (200 premiers caractères):', extractedText.substring(0, 200));
       } catch (pdfError) {
         console.log('⚠️ PDF.js non disponible, extraction binaire...');
         extractedText = this.extractTextFromBinary(arrayBuffer);
@@ -102,24 +136,27 @@ class PDFParserService {
         extractedText = this.extractTextFromBinary(arrayBuffer);
       }
 
+      // Afficher le texte brut pour debug
+      console.log('📝 ===== TEXTE BRUT EXTRAIT =====');
+      console.log(extractedText);
+      console.log('📝 ===== FIN TEXTE BRUT =====');
+
       console.log('🔄 Parsing du texte extrait...');
-      const result = this.parseBulletinByBlocks(extractedText);
+      const result = this.parseTextLineByLine(extractedText);
       
       result.extractionMethod = extractedText.includes('BULLETIN DE COMMANDE UOP') ? 
         'Extraction locale réussie' : 'Extraction partielle';
       
-      console.log('📊 RÉSULTAT EXTRACTION COMPLÈTE:');
+      console.log('📊 === RÉSULTAT FINAL ===');
       console.log('   - Méthode:', result.extractionMethod);
-      console.log('   - Métadonnées:', result.metadata);
-      console.log('   - Nombre d\'entrées:', result.entries ? result.entries.length : 0);
+      console.log('   - Agent:', result.metadata?.agent);
+      console.log('   - Nombre d\'entrées:', result.entries?.length || 0);
       if (result.entries && result.entries.length > 0) {
-        console.log('   - Première entrée:', result.entries[0]);
-        console.log('   - Toutes les entrées:');
+        console.log('   - Entrées extraites:');
         result.entries.forEach((entry, i) => {
-          console.log(`     ${i+1}. ${entry.dateDisplay} - ${entry.serviceCode} (${entry.serviceLabel})`);
+          console.log(`     ${i+1}. ${entry.dateDisplay} - ${entry.serviceCode} (${entry.dayOfWeek || '?'}) - ${entry.horaires?.length || 0} horaires`);
         });
       }
-      console.log('   - Erreurs:', result.errors);
       
       return result;
       
@@ -135,12 +172,15 @@ class PDFParserService {
   }
 
   /**
-   * Parse le bulletin par BLOCS - chaque bloc = une date
-   * Approche : découper le texte en blocs entre les dates
+   * NOUVEAU PARSER LIGNE PAR LIGNE
+   * Stratégie :
+   * 1. Découper en lignes
+   * 2. Identifier les lignes de date (JJ/MM/AAAA en début)
+   * 3. Pour chaque date, chercher le code service dans les lignes suivantes
+   * 4. Le code service est souvent sur une ligne avec un jour (LUN, MAR, etc.)
    */
-  static parseBulletinByBlocks(rawText) {
-    console.log('🔍 Début parsing bulletin par blocs...');
-    console.log('   Longueur texte:', rawText.length);
+  static parseTextLineByLine(rawText) {
+    console.log('🔍 === PARSING LIGNE PAR LIGNE ===');
     
     const result = {
       metadata: this.extractMetadata(rawText),
@@ -148,104 +188,102 @@ class PDFParserService {
       errors: []
     };
 
-    console.log('📝 Métadonnées extraites:', result.metadata);
+    console.log('📝 Métadonnées:', result.metadata);
 
     try {
-      // Normaliser le texte
-      const normalizedText = rawText
+      // Normaliser et découper en lignes
+      const lines = rawText
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n')
-        .replace(/\t/g, ' ');
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
 
-      // Trouver toutes les positions des dates (format JJ/MM/AAAA au début de ligne ou après newline)
-      const dateRegex = /(\d{1,2})\/(\d{1,2})\/(\d{4})/g;
-      const datePositions = [];
-      let match;
+      console.log(`📋 ${lines.length} lignes à analyser`);
+
+      // Identifier les index des lignes de date
+      const dateLineIndexes = [];
+      const dateLineData = [];
       
-      while ((match = dateRegex.exec(normalizedText)) !== null) {
-        // Ignorer les dates d'édition et de période
-        const before = normalizedText.substring(Math.max(0, match.index - 30), match.index);
-        if (before.includes('Edition le') || before.includes('Commande') || before.includes('allant')) {
-          continue;
+      for (let i = 0; i < lines.length; i++) {
+        const dateMatch = this.extractDateFromLine(lines[i]);
+        if (dateMatch) {
+          // Vérifier que ce n'est pas une date d'édition ou de période
+          const prevContext = lines.slice(Math.max(0, i-2), i).join(' ').toLowerCase();
+          if (!prevContext.includes('edition') && !prevContext.includes('commande') && !prevContext.includes('allant')) {
+            dateLineIndexes.push(i);
+            dateLineData.push(dateMatch);
+            console.log(`   📅 Ligne ${i}: DATE ${dateMatch.display}`);
+          }
         }
-        
-        datePositions.push({
-          index: match.index,
-          date: `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`,
-          dateDisplay: `${match[1].padStart(2, '0')}/${match[2].padStart(2, '0')}/${match[3]}`
-        });
       }
 
-      console.log(`📅 ${datePositions.length} dates trouvées dans le document`);
+      console.log(`📅 ${dateLineIndexes.length} dates de service identifiées`);
 
-      // Map pour éviter les doublons : clé = "date|serviceCode"
-      const entriesMap = new Map();
+      // Pour chaque date, extraire le bloc jusqu'à la prochaine date
+      const entriesMap = new Map(); // Éviter doublons
 
-      // Pour chaque date, extraire le bloc de texte jusqu'à la prochaine date
-      for (let i = 0; i < datePositions.length; i++) {
-        const currentDate = datePositions[i];
-        const nextDateIndex = (i + 1 < datePositions.length) 
-          ? datePositions[i + 1].index 
-          : normalizedText.length;
-        
-        // Extraire le bloc de texte pour cette date
-        const blockText = normalizedText.substring(currentDate.index, nextDateIndex);
-        
-        console.log(`   📅 Bloc ${currentDate.dateDisplay}:`, blockText.substring(0, 100).replace(/\n/g, ' '));
+      for (let d = 0; d < dateLineIndexes.length; d++) {
+        const startIndex = dateLineIndexes[d];
+        const endIndex = d + 1 < dateLineIndexes.length ? dateLineIndexes[d + 1] : lines.length;
+        const dateInfo = dateLineData[d];
 
-        // Chercher le code de service dans ce bloc
-        const serviceCode = this.extractServiceCodeFromBlock(blockText);
+        // Extraire les lignes du bloc
+        const blockLines = lines.slice(startIndex, endIndex);
+        console.log(`\n   🔲 Bloc ${dateInfo.display} (lignes ${startIndex}-${endIndex-1}):`);
+        blockLines.forEach((l, i) => console.log(`      ${i}: "${l}"`));
+
+        // Chercher le code service dans ce bloc
+        const serviceInfo = this.findServiceCodeInBlock(blockLines);
         
-        if (serviceCode) {
-          const entryKey = `${currentDate.date}|${serviceCode}`;
+        if (serviceInfo.code) {
+          const entryKey = `${dateInfo.iso}|${serviceInfo.code}`;
           
           if (!entriesMap.has(entryKey)) {
+            // Extraire les horaires
+            const horaires = this.extractHorairesFromLines(blockLines);
+            
             const entry = {
-              date: currentDate.date,
-              dateDisplay: currentDate.dateDisplay,
-              dayOfWeek: this.extractDayOfWeek(blockText),
-              serviceCode: serviceCode,
-              serviceLabel: this.VALID_SERVICE_CODES[serviceCode] || serviceCode,
-              horaires: this.extractHorairesFromBlock(blockText),
+              date: dateInfo.iso,
+              dateDisplay: dateInfo.display,
+              dayOfWeek: serviceInfo.dayOfWeek || this.getDayOfWeekFromLines(blockLines),
+              serviceCode: serviceInfo.code,
+              serviceLabel: this.VALID_SERVICE_CODES[serviceInfo.code] || serviceInfo.code,
+              horaires: horaires,
               isValid: true,
               hasError: false,
               errorMessage: null
             };
             
             entriesMap.set(entryKey, entry);
-            console.log(`      ✅ Code: ${serviceCode}, Horaires: ${entry.horaires.length}`);
+            console.log(`      ✅ ENTRÉE: ${serviceInfo.code} (${entry.dayOfWeek}) - ${horaires.length} horaires`);
           } else {
-            // Ajouter les horaires à l'entrée existante si nouveaux
-            const existingEntry = entriesMap.get(entryKey);
-            const newHoraires = this.extractHorairesFromBlock(blockText);
+            // Même date + même code = ajouter horaires si nouveaux
+            const existing = entriesMap.get(entryKey);
+            const newHoraires = this.extractHorairesFromLines(blockLines);
             newHoraires.forEach(h => {
-              const exists = existingEntry.horaires.some(
-                eh => eh.debut === h.debut && eh.fin === h.fin
-              );
-              if (!exists) {
-                existingEntry.horaires.push(h);
-              }
+              const exists = existing.horaires.some(eh => eh.debut === h.debut && eh.fin === h.fin);
+              if (!exists) existing.horaires.push(h);
             });
-            console.log(`      ➕ Horaires ajoutés à ${serviceCode}`);
+            console.log(`      ➕ Horaires ajoutés à entrée existante`);
           }
         } else {
-          console.log(`      ⚠️ Aucun code service trouvé`);
+          console.log(`      ⚠️ Aucun code service trouvé dans ce bloc`);
         }
       }
 
-      // Convertir la Map en tableau, trié par date puis par heure de début
+      // Convertir en tableau trié
       result.entries = Array.from(entriesMap.values()).sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date);
-        // Pour une même date, trier par heure de début
-        const aStart = a.horaires.length > 0 ? parseInt(a.horaires[0].debut.split(':')[0]) : 0;
-        const bStart = b.horaires.length > 0 ? parseInt(b.horaires[0].debut.split(':')[0]) : 0;
-        return aStart - bStart;
+        const aHour = a.horaires.length > 0 ? parseInt(a.horaires[0].debut.split(':')[0]) : 0;
+        const bHour = b.horaires.length > 0 ? parseInt(b.horaires[0].debut.split(':')[0]) : 0;
+        return aHour - bHour;
       });
 
-      console.log(`📊 Total entrées uniques: ${result.entries.length}`);
+      console.log(`\n📊 Total: ${result.entries.length} entrées uniques`);
 
-      // Valider les entrées
-      result.entries = result.entries.map(entry => this.validateEntry(entry));
+      // Valider
+      result.entries = result.entries.map(e => this.validateEntry(e));
 
     } catch (error) {
       console.error('❌ Erreur parsing:', error);
@@ -256,134 +294,166 @@ class PDFParserService {
   }
 
   /**
-   * Extrait le code de service d'un bloc de texte
-   * Priorité aux codes spécifiques (CCU005, ACR002) sur les codes simples (C, RP)
+   * Extrait la date d'une ligne si elle commence par JJ/MM/AAAA
    */
-  static extractServiceCodeFromBlock(blockText) {
-    if (!blockText) return null;
+  static extractDateFromLine(line) {
+    if (!line) return null;
     
-    const upperBlock = blockText.toUpperCase();
-    
-    // Liste ordonnée par spécificité (codes longs d'abord)
-    const codePatterns = [
-      // Codes avec numéros - TRÈS spécifiques
-      /\b(CCU00[1-6])\b/i,
-      /\b(CRC00[1-3])\b/i,
-      /\b(ACR00[1-4])\b/i,
-      /\b(CENT00[1-3])\b/i,
-      /\b(REO0(?:0[1-9]|10))\b/i,
-      // Codes moyens
-      /\b(HAB-QF)\b/i,
-      /\b(VISIMED)\b/i,
-      /\b(VMT)\b/i,
-      /\b(INACTIN)\b/i,
-      /\b(TRACTION)\b/i,
-      /\b(DISPO)\b/i,
-      /\b(CONGE)\b/i,
-      // Codes courts - vérifier qu'ils ne sont pas dans un contexte de référence
-      /\b(RPP)\b/i,
-      /\b(RTT)\b/i,
-      /\b(MAL)\b/i,
-      /\b(HAB)\b/i,
-    ];
-    
-    // Chercher les codes spécifiques d'abord
-    for (const pattern of codePatterns) {
-      const match = upperBlock.match(pattern);
-      if (match) {
-        const code = match[1].toUpperCase();
-        // Vérifier que ce n'est pas juste une référence "du CCU601"
-        const refPattern = new RegExp(`DU\\s+${code}`, 'i');
-        if (!refPattern.test(blockText)) {
-          return code;
-        }
-      }
+    // Chercher une date au début de la ligne ou seule sur la ligne
+    const match = line.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (match) {
+      const day = match[1].padStart(2, '0');
+      const month = match[2].padStart(2, '0');
+      const year = match[3];
+      return {
+        iso: `${year}-${month}-${day}`,
+        display: `${day}/${month}/${year}`,
+        day: parseInt(match[1]),
+        month: parseInt(match[2]),
+        year: parseInt(match[3])
+      };
     }
-    
-    // Codes très courts - besoin de plus de contexte
-    // RP : chercher "Repos" ou "RP" isolé
-    if (/\bRP\b/i.test(upperBlock) && !upperBlock.includes('DU RP')) {
-      // Vérifier que c'est bien un repos et pas une référence
-      if (/REPOS|RP\s+(LUN|MAR|MER|JEU|VEN|SAM|DIM)/i.test(blockText)) {
-        return 'RP';
-      }
-      // Si RP est sur la même ligne que la date
-      const lines = blockText.split('\n');
-      for (const line of lines) {
-        if (/^\d{1,2}\/\d{1,2}\/\d{4}.*\bRP\b/i.test(line)) {
-          return 'RP';
-        }
-      }
-    }
-    
-    // NU : Non Utilisé
-    if (/\bNU\b/i.test(upperBlock) && /UTILIS|NU\s+(LUN|MAR|MER|JEU|VEN|SAM|DIM)/i.test(blockText)) {
-      return 'NU';
-    }
-    
-    // CA ou C : Congé
-    if (/\bCA\b/i.test(upperBlock) || (/\bC\b/i.test(upperBlock) && /CONG/i.test(blockText))) {
-      return 'CA';
-    }
-    
-    // RQ : Repos Compensateur
-    if (/\bRQ\b/i.test(upperBlock)) {
-      return 'RQ';
-    }
-    
-    // MA : Maladie
-    if (/\bMA\b/i.test(upperBlock) && /MALAD/i.test(blockText)) {
-      return 'MA';
-    }
-    
-    // D : Disponible (si pas de DISPO trouvé)
-    if (/\bD\b/i.test(upperBlock) && /DISPONIBLE/i.test(blockText)) {
-      return 'DISPO';
-    }
-    
     return null;
   }
 
   /**
-   * Extrait les horaires d'un bloc de texte
+   * Trouve le code service dans un bloc de lignes
+   * Stratégie : chercher une ligne avec CODE + JOUR (ex: "CCU004 Lun")
+   * ou une ligne contenant un code connu
    */
-  static extractHorairesFromBlock(blockText) {
-    const horaires = [];
-    const seenHoraires = new Set();
-    
-    // Pattern pour "HH:MM HH:MM" ou "HH:MM - HH:MM"
-    const patterns = [
-      /(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/g,
-      /(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/g,
-    ];
-    
-    for (const pattern of patterns) {
-      let match;
-      while ((match = pattern.exec(blockText)) !== null) {
-        const debut = match[1];
-        const fin = match[2];
-        const key = `${debut}-${fin}`;
-        
-        if (!seenHoraires.has(key)) {
-          seenHoraires.add(key);
-          
-          // Déterminer le type d'horaire
-          const lineContext = blockText.substring(
-            Math.max(0, match.index - 20),
-            Math.min(blockText.length, match.index + 30)
-          );
-          
-          horaires.push({
-            debut: debut,
-            fin: fin,
-            code: this.extractTimeCode(lineContext),
-            type: this.extractHoraireType(lineContext)
-          });
+  static findServiceCodeInBlock(lines) {
+    // D'abord, chercher une ligne avec CODE + JOUR DE SEMAINE
+    for (const line of lines) {
+      const upperLine = line.toUpperCase();
+      
+      // Pattern: CODE JOUR (ex: "CCU004 Lun", "RP Mar", "ACR002 Ven")
+      for (const jour of this.JOURS_SEMAINE) {
+        if (upperLine.includes(jour)) {
+          // Il y a un jour sur cette ligne, chercher le code
+          for (const pattern of this.CODE_PATTERNS) {
+            const match = line.match(pattern);
+            if (match) {
+              const code = match[1].toUpperCase();
+              // Vérifier que ce n'est pas une référence "du CCU601"
+              if (!new RegExp(`DU\\s+${code}`, 'i').test(line)) {
+                return { code, dayOfWeek: this.normalizeDayOfWeek(jour) };
+              }
+            }
+          }
         }
       }
     }
+
+    // Sinon, chercher n'importe quel code valide (pas dans une référence)
+    for (const line of lines) {
+      // Ignorer les lignes de métro/RS qui contiennent des références
+      if (/^(METRO|RS)\s/i.test(line)) continue;
+      // Ignorer les lignes avec "du CCU" etc.
+      if (/\bdu\s+(CCU|CRC|ACR)/i.test(line)) continue;
+      
+      for (const pattern of this.CODE_PATTERNS) {
+        const match = line.match(pattern);
+        if (match) {
+          const code = match[1].toUpperCase();
+          // Double vérification : pas une référence
+          if (!new RegExp(`DU\\s+${code}`, 'i').test(line)) {
+            return { code, dayOfWeek: null };
+          }
+        }
+      }
+    }
+
+    // Cas spéciaux pour codes courts (RP, NU, C) qui nécessitent plus de contexte
+    const blockText = lines.join(' ').toUpperCase();
     
+    // RP : Repos périodique
+    if (/\bRP\b/.test(blockText) && /REPOS|PÉRIODIQUE|RP\s+(LUN|MAR|MER|JEU|VEN|SAM|DIM)/.test(blockText)) {
+      return { code: 'RP', dayOfWeek: this.getDayOfWeekFromLines(lines) };
+    }
+    
+    // NU : Non utilisé
+    if (/\bNU\b/.test(blockText) && /UTILIS|NON\s+UTILIS|NU\s+(LUN|MAR|MER|JEU|VEN|SAM|DIM)/.test(blockText)) {
+      return { code: 'NU', dayOfWeek: this.getDayOfWeekFromLines(lines) };
+    }
+    
+    // C/CA : Congé
+    if ((/\bCA\b/.test(blockText) || /\bC\b/.test(blockText)) && /CONG/.test(blockText)) {
+      return { code: 'CA', dayOfWeek: this.getDayOfWeekFromLines(lines) };
+    }
+
+    return { code: null, dayOfWeek: null };
+  }
+
+  /**
+   * Extrait les horaires des lignes d'un bloc
+   */
+  static extractHorairesFromLines(lines) {
+    const horaires = [];
+    const seen = new Set();
+
+    for (const line of lines) {
+      // Pattern HH:MM HH:MM ou HH:MM-HH:MM
+      const patterns = [
+        /(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/g,
+        /(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/g
+      ];
+
+      for (const pattern of patterns) {
+        let match;
+        while ((match = pattern.exec(line)) !== null) {
+          const debut = this.normalizeTime(match[1]);
+          const fin = this.normalizeTime(match[2]);
+          const key = `${debut}-${fin}`;
+
+          if (!seen.has(key)) {
+            seen.add(key);
+            
+            // Déterminer le type
+            let type = 'SERVICE';
+            const lineUpper = line.toUpperCase();
+            if (lineUpper.includes('METRO')) type = 'METRO';
+            else if (lineUpper.includes('RS')) type = 'RS';
+
+            horaires.push({ debut, fin, type });
+          }
+        }
+      }
+    }
+
     return horaires;
+  }
+
+  /**
+   * Normalise une heure au format HH:MM
+   */
+  static normalizeTime(time) {
+    const [h, m] = time.split(':');
+    return `${h.padStart(2, '0')}:${m}`;
+  }
+
+  /**
+   * Trouve le jour de la semaine dans les lignes
+   */
+  static getDayOfWeekFromLines(lines) {
+    for (const line of lines) {
+      for (const jour of this.JOURS_SEMAINE) {
+        if (line.toUpperCase().includes(jour)) {
+          return this.normalizeDayOfWeek(jour);
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Normalise le jour de la semaine
+   */
+  static normalizeDayOfWeek(jour) {
+    const map = {
+      'LUN': 'Lun', 'MAR': 'Mar', 'MER': 'Mer', 
+      'JEU': 'Jeu', 'VEN': 'Ven', 'SAM': 'Sam', 'DIM': 'Dim'
+    };
+    return map[jour.toUpperCase()] || jour;
   }
 
   /**
@@ -397,6 +467,7 @@ class PDFParserService {
       dateEdition: null
     };
 
+    // Agent : plusieurs patterns possibles
     const agentPatterns = [
       /Agent\s*:?\s*COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)/i,
       /COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+\s+[A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+)/i,
@@ -410,24 +481,26 @@ class PDFParserService {
       }
     }
 
+    // Numéro CP
     const cpMatch = rawText.match(/N[°o]?\s*CP\s*:?\s*([A-Z0-9]+)/i);
-    if (cpMatch) {
-      metadata.numeroCP = cpMatch[1];
-    }
+    if (cpMatch) metadata.numeroCP = cpMatch[1];
 
+    // Période
     const periodeMatch = rawText.match(/Commande\s+allant?\s+du\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
     if (periodeMatch) {
       metadata.periode = { debut: periodeMatch[1], fin: periodeMatch[2] };
     }
 
+    // Date d'édition
     const editionMatch = rawText.match(/Edition\s+le\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
-    if (editionMatch) {
-      metadata.dateEdition = editionMatch[1];
-    }
+    if (editionMatch) metadata.dateEdition = editionMatch[1];
 
     return metadata;
   }
 
+  /**
+   * Extraction binaire de secours
+   */
   static extractTextFromBinary(arrayBuffer) {
     const uint8Array = new Uint8Array(arrayBuffer);
     const decoder = new TextDecoder('utf-8', { fatal: false });
@@ -461,33 +534,9 @@ class PDFParserService {
     return extractedText;
   }
 
-  static extractDayOfWeek(text) {
-    if (!text) return null;
-    const jours = {
-      'LUN': 'Lun', 'LUNDI': 'Lun', 'MAR': 'Mar', 'MARDI': 'Mar',
-      'MER': 'Mer', 'MERCREDI': 'Mer', 'JEU': 'Jeu', 'JEUDI': 'Jeu',
-      'VEN': 'Ven', 'VENDREDI': 'Ven', 'SAM': 'Sam', 'SAMEDI': 'Sam',
-      'DIM': 'Dim', 'DIMANCHE': 'Dim'
-    };
-    const upperText = text.toUpperCase();
-    for (const [key, value] of Object.entries(jours)) {
-      if (upperText.includes(key)) return value;
-    }
-    return null;
-  }
-
-  static extractHoraireType(line) {
-    const upperLine = line.toUpperCase();
-    if (upperLine.includes('METRO')) return 'METRO';
-    if (upperLine.includes('RS')) return 'RS';
-    return 'SERVICE';
-  }
-
-  static extractTimeCode(line) {
-    const codeMatch = line.match(/[A-Z]\d{10}[A-Z]{2}\d{2}/);
-    return codeMatch ? codeMatch[0] : null;
-  }
-
+  /**
+   * Validation d'une entrée
+   */
   static validateEntry(entry) {
     if (!entry.serviceCode) {
       entry.hasError = true;
@@ -506,6 +555,9 @@ class PDFParserService {
     return entry;
   }
 
+  /**
+   * Validation globale
+   */
   static validateParsedData(parsedData) {
     const validation = { errors: [], warnings: [], isValid: true };
     
@@ -529,6 +581,9 @@ class PDFParserService {
     return validation;
   }
 
+  /**
+   * Formatage pour import
+   */
   static formatForImport(entries, agentId) {
     return entries
       .filter(entry => entry.isValid)
