@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, StickyNote } from 'lucide-react';
 import { CODE_COLORS } from '../constants/config';
 import planningService from '../services/planningService';
 
@@ -45,7 +45,8 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth);
     
     let cellContent = '';
-    let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[60px] min-h-[45px] ';
+    let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[60px] min-h-[45px] relative ';
+    let hasNote = false;
     
     if (planningData) {
       if (typeof planningData === 'string') {
@@ -58,8 +59,18 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
         const postesSupplementaires = planningData.postesSupplementaires || 
           (planningData.posteSupplementaire ? [planningData.posteSupplementaire] : []);
         
+        // Vérifier si une note existe
+        hasNote = Boolean(planningData.note);
+        
         cellContent = (
           <div className="flex flex-col h-full justify-between">
+            {/* Indicateur de note en haut à droite */}
+            {hasNote && (
+              <div className="absolute top-0 right-0 p-0.5" title="Note existante">
+                <StickyNote className="w-3 h-3 text-amber-500" />
+              </div>
+            )}
+            
             {/* Partie haute : Service et Poste */}
             <div className="flex flex-col">
               <span className="font-medium">{service}</span>
@@ -185,7 +196,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
       {/* Légende mise à jour */}
       <div className="p-4 bg-gray-50 border-t">
         <h4 className="font-semibold text-sm mb-2">Légende des codes</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs">
           <div>
             <p className="font-medium mb-1">Services :</p>
             <div className="space-y-1">
@@ -237,6 +248,17 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
               </div>
               <p className="text-gray-500 text-xs">En bas de cellule, italique</p>
               <p className="text-gray-500 text-xs">Sélection multiple possible</p>
+            </div>
+          </div>
+          <div>
+            <p className="font-medium mb-1">Notes :</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <StickyNote className="w-4 h-4 text-amber-500" />
+                <span>Note/Commentaire</span>
+              </div>
+              <p className="text-gray-500 text-xs">Icône en haut à droite</p>
+              <p className="text-gray-500 text-xs">Cliquer pour voir/modifier</p>
             </div>
           </div>
         </div>
