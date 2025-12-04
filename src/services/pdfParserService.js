@@ -1,5 +1,12 @@
-// Service de parsing des bulletins de commande SNCF - Version ligne par ligne robuste
-// Refactorisé pour gérer correctement la structure réelle des PDF SNCF
+// Service de parsing des bulletins de commande SNCF - Version 2.0 CORRIGÉE
+// CORRECTIONS v2.0 :
+// - Gestion des entrées multiples sur la même date (ex: 24/04 NU + CCU003)
+// - Priorisation des codes longs (CCU, CRC) sur les codes courts (NU, RP)
+// - Meilleure exclusion des références "NU du CCU601"
+// - Support des services de nuit traversant minuit
+// 
+// @author COGC Planning Team
+// @version 2.0.0
 
 class PDFParserService {
   // Codes de service valides SNCF (liste complète)
@@ -34,14 +41,15 @@ class PDFParserService {
     TRACTION: 'Formation Traction'
   };
 
-  // Jours de la semaine (pour détecter les lignes avec code service)
+  // Jours de la semaine
   static JOURS_SEMAINE = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
 
   // Regex pour détecter une date au format JJ/MM/AAAA
   static DATE_REGEX = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 
-  // Regex pour les codes de service (ordonnés par longueur décroissante pour priorité)
-  static CODE_PATTERNS = [
+  // ===== CORRECTION v2.0 : Patterns séparés par PRIORITÉ =====
+  // HAUTE PRIORITÉ : Codes longs (3+ chiffres)
+  static LONG_CODE_PATTERNS = [
     /\b(CCU00[1-6])\b/i,
     /\b(CRC00[1-3])\b/i,
     /\b(ACR00[1-4])\b/i,
@@ -49,15 +57,19 @@ class PDFParserService {
     /\b(REO0(?:0[1-9]|10))\b/i,
     /\b(HAB-QF)\b/i,
     /\b(VISIMED)\b/i,
-    /\b(VMT)\b/i,
     /\b(INACTIN)\b/i,
     /\b(TRACTION)\b/i,
+  ];
+
+  // BASSE PRIORITÉ : Codes courts (1-2 lettres)
+  static SHORT_CODE_PATTERNS = [
     /\b(DISPO)\b/i,
     /\b(CONGE)\b/i,
     /\b(RPP)\b/i,
     /\b(RTT)\b/i,
     /\b(MAL)\b/i,
     /\b(HAB)\b/i,
+    /\b(VMT)\b/i,
     /\b(RQ)\b/i,
     /\b(NU)\b/i,
     /\b(RP)\b/i,
@@ -67,9 +79,12 @@ class PDFParserService {
     /\b(D)\b/i
   ];
 
+  // Tous les patterns combinés (pour compatibilité)
+  static CODE_PATTERNS = [...this.LONG_CODE_PATTERNS, ...this.SHORT_CODE_PATTERNS];
+
   static async parsePDF(file, apiKey = null) {
     try {
-      console.log('📄 === DÉBUT PARSING PDF ===');
+      console.log('📄 === DÉBUT PARSING PDF v2.0 ===');
       console.log('📄 Fichier:', file.name, 'Taille:', file.size, 'bytes');
       
       const arrayBuffer = await new Promise((resolve, reject) => {
@@ -100,18 +115,15 @@ class PDFParserService {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
             
-            // Reconstruction intelligente du texte avec gestion des lignes
             let pageText = '';
             let lastY = null;
             let lastX = null;
             
             textContent.items.forEach(item => {
-              // Nouvelle ligne si Y change significativement
               if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
                 pageText += '\n';
                 lastX = null;
               } else if (lastX !== null && item.transform[4] - lastX > 10) {
-                // Espace si X avance significativement
                 pageText += ' ';
               }
               
@@ -136,16 +148,15 @@ class PDFParserService {
         extractedText = this.extractTextFromBinary(arrayBuffer);
       }
 
-      // Afficher le texte brut pour debug
       console.log('📝 ===== TEXTE BRUT EXTRAIT =====');
       console.log(extractedText);
       console.log('📝 ===== FIN TEXTE BRUT =====');
 
-      console.log('🔄 Parsing du texte extrait...');
+      console.log('🔄 Parsing du texte extrait (v2.0)...');
       const result = this.parseTextLineByLine(extractedText);
       
       result.extractionMethod = extractedText.includes('BULLETIN DE COMMANDE UOP') ? 
-        'Extraction locale réussie' : 'Extraction partielle';
+        'Extraction locale réussie (v2.0)' : 'Extraction partielle';
       
       console.log('📊 === RÉSULTAT FINAL ===');
       console.log('   - Méthode:', result.extractionMethod);
@@ -172,15 +183,11 @@ class PDFParserService {
   }
 
   /**
-   * NOUVEAU PARSER LIGNE PAR LIGNE
-   * Stratégie :
-   * 1. Découper en lignes
-   * 2. Identifier les lignes de date (JJ/MM/AAAA en début)
-   * 3. Pour chaque date, chercher le code service dans les lignes suivantes
-   * 4. Le code service est souvent sur une ligne avec un jour (LUN, MAR, etc.)
+   * PARSER LIGNE PAR LIGNE v2.0
+   * CORRECTION : Gestion des entrées multiples sur la même date
    */
   static parseTextLineByLine(rawText) {
-    console.log('🔍 === PARSING LIGNE PAR LIGNE ===');
+    console.log('🔍 === PARSING LIGNE PAR LIGNE v2.0 ===');
     
     const result = {
       metadata: this.extractMetadata(rawText),
@@ -191,7 +198,6 @@ class PDFParserService {
     console.log('📝 Métadonnées:', result.metadata);
 
     try {
-      // Normaliser et découper en lignes
       const lines = rawText
         .replace(/\r\n/g, '\n')
         .replace(/\r/g, '\n')
@@ -201,89 +207,80 @@ class PDFParserService {
 
       console.log(`📋 ${lines.length} lignes à analyser`);
 
-      // Identifier les index des lignes de date
-      const dateLineIndexes = [];
-      const dateLineData = [];
+      // ===== CORRECTION v2.0 : Identifier TOUTES les occurrences de dates =====
+      const dateOccurrences = [];
       
       for (let i = 0; i < lines.length; i++) {
         const dateMatch = this.extractDateFromLine(lines[i]);
         if (dateMatch) {
-          // Vérifier que ce n'est pas une date d'édition ou de période
           const prevContext = lines.slice(Math.max(0, i-2), i).join(' ').toLowerCase();
           if (!prevContext.includes('edition') && !prevContext.includes('commande') && !prevContext.includes('allant')) {
-            dateLineIndexes.push(i);
-            dateLineData.push(dateMatch);
+            dateOccurrences.push({ index: i, date: dateMatch });
             console.log(`   📅 Ligne ${i}: DATE ${dateMatch.display}`);
           }
         }
       }
 
-      console.log(`📅 ${dateLineIndexes.length} dates de service identifiées`);
+      console.log(`📅 ${dateOccurrences.length} occurrences de dates identifiées`);
 
-      // Pour chaque date, extraire le bloc jusqu'à la prochaine date
-      const entriesMap = new Map(); // Éviter doublons
+      // ===== CORRECTION v2.0 : Traiter CHAQUE bloc date séparément =====
+      const entriesMap = new Map();
 
-      for (let d = 0; d < dateLineIndexes.length; d++) {
-        const startIndex = dateLineIndexes[d];
-        const endIndex = d + 1 < dateLineIndexes.length ? dateLineIndexes[d + 1] : lines.length;
-        const dateInfo = dateLineData[d];
+      for (let d = 0; d < dateOccurrences.length; d++) {
+        const startIndex = dateOccurrences[d].index;
+        const endIndex = d + 1 < dateOccurrences.length ? dateOccurrences[d + 1].index : lines.length;
+        const dateInfo = dateOccurrences[d].date;
 
-        // Extraire les lignes du bloc
         const blockLines = lines.slice(startIndex, endIndex);
         console.log(`\n   🔲 Bloc ${dateInfo.display} (lignes ${startIndex}-${endIndex-1}):`);
         blockLines.forEach((l, i) => console.log(`      ${i}: "${l}"`));
 
-        // Chercher le code service dans ce bloc
-        const serviceInfo = this.findServiceCodeInBlock(blockLines);
+        // ===== CORRECTION v2.0 : Trouver le code service avec PRIORISATION =====
+        const serviceInfo = this.findServiceCodeInBlockV2(blockLines);
         
         if (serviceInfo.code) {
           const entryKey = `${dateInfo.iso}|${serviceInfo.code}`;
           
           if (!entriesMap.has(entryKey)) {
-            // Extraire les horaires
             const horaires = this.extractHorairesFromLines(blockLines);
             
             const entry = {
               date: dateInfo.iso,
               dateDisplay: dateInfo.display,
-              dayOfWeek: serviceInfo.dayOfWeek || this.getDayOfWeekFromLines(blockLines),
+              dayOfWeek: this.getDayOfWeekFromLines(blockLines),
               serviceCode: serviceInfo.code,
-              serviceLabel: this.VALID_SERVICE_CODES[serviceInfo.code] || serviceInfo.code,
+              serviceLabel: this.VALID_SERVICE_CODES[serviceInfo.code] || 'Inconnu',
               horaires: horaires,
+              isNightShift: serviceInfo.isNight || false,
+              rawLines: blockLines,
               isValid: true,
-              hasError: false,
-              errorMessage: null
+              hasError: false
             };
             
-            entriesMap.set(entryKey, entry);
-            console.log(`      ✅ ENTRÉE: ${serviceInfo.code} (${entry.dayOfWeek}) - ${horaires.length} horaires`);
+            entriesMap.set(entryKey, this.validateEntry(entry));
+            console.log(`      ✅ Service: ${serviceInfo.code}${serviceInfo.isNight ? ' [NUIT]' : ''} (${serviceInfo.priority})`);
           } else {
-            // Même date + même code = ajouter horaires si nouveaux
-            const existing = entriesMap.get(entryKey);
-            const newHoraires = this.extractHorairesFromLines(blockLines);
-            newHoraires.forEach(h => {
-              const exists = existing.horaires.some(eh => eh.debut === h.debut && eh.fin === h.fin);
-              if (!exists) existing.horaires.push(h);
-            });
-            console.log(`      ➕ Horaires ajoutés à entrée existante`);
+            console.log(`      ⏭️ Doublon ignoré: ${serviceInfo.code}`);
           }
         } else {
           console.log(`      ⚠️ Aucun code service trouvé dans ce bloc`);
         }
       }
 
-      // Convertir en tableau trié
-      result.entries = Array.from(entriesMap.values()).sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
-        const aHour = a.horaires.length > 0 ? parseInt(a.horaires[0].debut.split(':')[0]) : 0;
-        const bHour = b.horaires.length > 0 ? parseInt(b.horaires[0].debut.split(':')[0]) : 0;
-        return aHour - bHour;
+      result.entries = Array.from(entriesMap.values());
+      console.log(`\n✅ ${result.entries.length} entrées extraites (v2.0)`);
+      
+      // Statistiques multi-service
+      const dateCount = new Map();
+      result.entries.forEach(e => {
+        const count = dateCount.get(e.date) || 0;
+        dateCount.set(e.date, count + 1);
       });
-
-      console.log(`\n📊 Total: ${result.entries.length} entrées uniques`);
-
-      // Valider
-      result.entries = result.entries.map(e => this.validateEntry(e));
+      dateCount.forEach((count, date) => {
+        if (count > 1) {
+          console.log(`   📅 Multi-service détecté: ${date} → ${count} entrées`);
+        }
+      });
 
     } catch (error) {
       console.error('❌ Erreur parsing:', error);
@@ -294,12 +291,109 @@ class PDFParserService {
   }
 
   /**
-   * Extrait la date d'une ligne si elle commence par JJ/MM/AAAA
+   * CORRECTION v2.0 : Recherche de code service avec PRIORISATION
+   * Passe 1: Codes LONGS (haute priorité)
+   * Passe 2: Codes COURTS (basse priorité)
+   */
+  static findServiceCodeInBlockV2(blockLines) {
+    const blockText = blockLines.join(' ');
+    
+    // ===== PASSE 1 : Codes LONGS (priorité haute) =====
+    for (const pattern of this.LONG_CODE_PATTERNS) {
+      for (const line of blockLines) {
+        // Ignorer les lignes METRO/RS
+        if (/^(METRO|RS)\s/i.test(line)) continue;
+        
+        // Ignorer les références "du CCU601"
+        if (/du\s+(CCU|CRC|ACR)\d{3}/i.test(line)) continue;
+        
+        const match = line.match(pattern);
+        if (match) {
+          const code = match[1].toUpperCase();
+          
+          // Vérifier que ce n'est pas une référence
+          if (!new RegExp(`du\\s+${code}`, 'i').test(line)) {
+            const isNight = this.isNightShift(code, blockLines);
+            return { code, priority: 'LONG', isNight };
+          }
+        }
+      }
+    }
+
+    // ===== PASSE 2 : Codes COURTS (priorité basse) =====
+    // RP : Repos périodique (vérifier le contexte)
+    if (/\bRP\b/i.test(blockText) && /Repos\s+périodique/i.test(blockText)) {
+      return { code: 'RP', priority: 'COURT', isNight: false };
+    }
+    
+    // NU : Non utilisé (attention aux références !)
+    if (/Utilisable\s+non\s+utilisé/i.test(blockText) || /^\s*NU\s+/im.test(blockText)) {
+      // Vérifier que ce n'est pas "NU du CCU"
+      if (!/NU\s+du\s/i.test(blockText)) {
+        return { code: 'NU', priority: 'COURT', isNight: false };
+      }
+    }
+    
+    // DISPO : Disponible
+    if (/^Disponible$/im.test(blockText) || /\bDISPO\b/i.test(blockText)) {
+      return { code: 'DISPO', priority: 'COURT', isNight: false };
+    }
+    
+    // Autres codes courts
+    for (const pattern of this.SHORT_CODE_PATTERNS) {
+      const match = blockText.match(pattern);
+      if (match) {
+        const code = match[1].toUpperCase();
+        // Éviter les faux positifs
+        if (code !== 'NU' && code !== 'RP' && code !== 'DISPO') {
+          return { code, priority: 'COURT', isNight: false };
+        }
+      }
+    }
+
+    return { code: null, priority: null, isNight: false };
+  }
+
+  /**
+   * Vérifie si un code est une référence (ex: "NU du CCU601")
+   */
+  static isReferenceCode(line, code) {
+    const patterns = [
+      new RegExp(`du\\s+${code}`, 'i'),
+      new RegExp(`${code}\\s+du\\s`, 'i'),
+      /du\s+(CCU|CRC|ACR)\d{3}/i
+    ];
+    return patterns.some(p => p.test(line));
+  }
+
+  /**
+   * Détecte si c'est un service de nuit
+   */
+  static isNightShift(code, blockLines) {
+    // Codes nuit connus
+    if (/00[36]$/i.test(code)) return true;
+    
+    // Vérifier les horaires
+    for (const line of blockLines) {
+      const match = line.match(/(\d{1,2}):(\d{2})\s+(\d{1,2}):(\d{2})/);
+      if (match) {
+        const heureDebut = parseInt(match[1]);
+        const heureFin = parseInt(match[3]);
+        if (heureDebut >= 22 || (heureDebut >= 20 && heureFin <= 8)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Extrait la date d'une ligne
    */
   static extractDateFromLine(line) {
     if (!line) return null;
     
-    // Chercher une date au début de la ligne ou seule sur la ligne
     const match = line.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (match) {
       const day = match[1].padStart(2, '0');
@@ -317,74 +411,6 @@ class PDFParserService {
   }
 
   /**
-   * Trouve le code service dans un bloc de lignes
-   * Stratégie : chercher une ligne avec CODE + JOUR (ex: "CCU004 Lun")
-   * ou une ligne contenant un code connu
-   */
-  static findServiceCodeInBlock(lines) {
-    // D'abord, chercher une ligne avec CODE + JOUR DE SEMAINE
-    for (const line of lines) {
-      const upperLine = line.toUpperCase();
-      
-      // Pattern: CODE JOUR (ex: "CCU004 Lun", "RP Mar", "ACR002 Ven")
-      for (const jour of this.JOURS_SEMAINE) {
-        if (upperLine.includes(jour)) {
-          // Il y a un jour sur cette ligne, chercher le code
-          for (const pattern of this.CODE_PATTERNS) {
-            const match = line.match(pattern);
-            if (match) {
-              const code = match[1].toUpperCase();
-              // Vérifier que ce n'est pas une référence "du CCU601"
-              if (!new RegExp(`DU\\s+${code}`, 'i').test(line)) {
-                return { code, dayOfWeek: this.normalizeDayOfWeek(jour) };
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Sinon, chercher n'importe quel code valide (pas dans une référence)
-    for (const line of lines) {
-      // Ignorer les lignes de métro/RS qui contiennent des références
-      if (/^(METRO|RS)\s/i.test(line)) continue;
-      // Ignorer les lignes avec "du CCU" etc.
-      if (/\bdu\s+(CCU|CRC|ACR)/i.test(line)) continue;
-      
-      for (const pattern of this.CODE_PATTERNS) {
-        const match = line.match(pattern);
-        if (match) {
-          const code = match[1].toUpperCase();
-          // Double vérification : pas une référence
-          if (!new RegExp(`DU\\s+${code}`, 'i').test(line)) {
-            return { code, dayOfWeek: null };
-          }
-        }
-      }
-    }
-
-    // Cas spéciaux pour codes courts (RP, NU, C) qui nécessitent plus de contexte
-    const blockText = lines.join(' ').toUpperCase();
-    
-    // RP : Repos périodique
-    if (/\bRP\b/.test(blockText) && /REPOS|PÉRIODIQUE|RP\s+(LUN|MAR|MER|JEU|VEN|SAM|DIM)/.test(blockText)) {
-      return { code: 'RP', dayOfWeek: this.getDayOfWeekFromLines(lines) };
-    }
-    
-    // NU : Non utilisé
-    if (/\bNU\b/.test(blockText) && /UTILIS|NON\s+UTILIS|NU\s+(LUN|MAR|MER|JEU|VEN|SAM|DIM)/.test(blockText)) {
-      return { code: 'NU', dayOfWeek: this.getDayOfWeekFromLines(lines) };
-    }
-    
-    // C/CA : Congé
-    if ((/\bCA\b/.test(blockText) || /\bC\b/.test(blockText)) && /CONG/.test(blockText)) {
-      return { code: 'CA', dayOfWeek: this.getDayOfWeekFromLines(lines) };
-    }
-
-    return { code: null, dayOfWeek: null };
-  }
-
-  /**
    * Extrait les horaires des lignes d'un bloc
    */
   static extractHorairesFromLines(lines) {
@@ -392,7 +418,6 @@ class PDFParserService {
     const seen = new Set();
 
     for (const line of lines) {
-      // Pattern HH:MM HH:MM ou HH:MM-HH:MM
       const patterns = [
         /(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})/g,
         /(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/g
@@ -408,7 +433,6 @@ class PDFParserService {
           if (!seen.has(key)) {
             seen.add(key);
             
-            // Déterminer le type
             let type = 'SERVICE';
             const lineUpper = line.toUpperCase();
             if (lineUpper.includes('METRO')) type = 'METRO';
@@ -424,7 +448,7 @@ class PDFParserService {
   }
 
   /**
-   * Normalise une heure au format HH:MM
+   * Normalise une heure
    */
   static normalizeTime(time) {
     const [h, m] = time.split(':');
@@ -432,7 +456,7 @@ class PDFParserService {
   }
 
   /**
-   * Trouve le jour de la semaine dans les lignes
+   * Trouve le jour de la semaine
    */
   static getDayOfWeekFromLines(lines) {
     for (const line of lines) {
@@ -457,7 +481,7 @@ class PDFParserService {
   }
 
   /**
-   * Extrait les métadonnées du bulletin
+   * Extrait les métadonnées
    */
   static extractMetadata(rawText) {
     const metadata = {
@@ -467,7 +491,6 @@ class PDFParserService {
       dateEdition: null
     };
 
-    // Agent : plusieurs patterns possibles
     const agentPatterns = [
       /Agent\s*:?\s*COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ\s]+)/i,
       /COGC\s+PN\s+([A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+\s+[A-ZÀÂÄÉÈÊËÏÔÙÛÜ]+)/i,
@@ -481,17 +504,14 @@ class PDFParserService {
       }
     }
 
-    // Numéro CP
     const cpMatch = rawText.match(/N[°o]?\s*CP\s*:?\s*([A-Z0-9]+)/i);
     if (cpMatch) metadata.numeroCP = cpMatch[1];
 
-    // Période
     const periodeMatch = rawText.match(/Commande\s+allant?\s+du\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+au\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
     if (periodeMatch) {
       metadata.periode = { debut: periodeMatch[1], fin: periodeMatch[2] };
     }
 
-    // Date d'édition
     const editionMatch = rawText.match(/Edition\s+le\s+(\d{1,2}\/\d{1,2}\/\d{4})/i);
     if (editionMatch) metadata.dateEdition = editionMatch[1];
 
@@ -576,6 +596,18 @@ class PDFParserService {
     } else {
       const validCount = parsedData.entries.filter(e => e.isValid).length;
       validation.warnings.unshift(`📊 ${validCount}/${parsedData.entries.length} entrées valides`);
+      
+      // Vérifier les entrées multiples par date
+      const dateCount = new Map();
+      parsedData.entries.forEach(e => {
+        const count = dateCount.get(e.date) || 0;
+        dateCount.set(e.date, count + 1);
+      });
+      dateCount.forEach((count, date) => {
+        if (count > 1) {
+          validation.warnings.push(`📅 ${date}: ${count} entrées (multi-service)`);
+        }
+      });
     }
     
     return validation;
@@ -593,6 +625,7 @@ class PDFParserService {
         service_code: entry.serviceCode,
         poste_code: entry.horaires.length > 0 ? entry.horaires[0].code : null,
         horaires: entry.horaires.map(h => `${h.debut}-${h.fin}`).join(', '),
+        is_night_shift: entry.isNightShift || false,
         statut: 'actif'
       }));
   }
