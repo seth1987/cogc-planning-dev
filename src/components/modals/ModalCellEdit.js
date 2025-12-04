@@ -1,23 +1,35 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Check } from 'lucide-react';
 import { CODE_COLORS, SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES } from '../../constants/config';
 
 const ModalCellEdit = ({ selectedCell, agentsData, onUpdateCell, onClose }) => {
   const [tempService, setTempService] = useState('');
   const [tempPoste, setTempPoste] = useState('');
-  const [tempPosteSupplementaire, setTempPosteSupplementaire] = useState('');
+  // Tableau pour stocker plusieurs postes supplémentaires
+  const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
 
   if (!selectedCell) return null;
+
+  // Toggle un poste supplémentaire (ajout/retrait du tableau)
+  const togglePosteSupplementaire = (code) => {
+    setTempPostesSupplementaires(prev => {
+      if (prev.includes(code)) {
+        return prev.filter(p => p !== code);
+      } else {
+        return [...prev, code];
+      }
+    });
+  };
 
   const handleSave = () => {
     let planningData;
     
-    // Construire les données de planning avec service, poste et poste supplémentaire
-    if (tempPoste || tempPosteSupplementaire) {
+    // Construire les données de planning avec service, poste et postes supplémentaires
+    if (tempPoste || tempPostesSupplementaires.length > 0) {
       planningData = { 
         service: tempService,
         ...(tempPoste && { poste: tempPoste }),
-        ...(tempPosteSupplementaire && { posteSupplementaire: tempPosteSupplementaire })
+        ...(tempPostesSupplementaires.length > 0 && { postesSupplementaires: tempPostesSupplementaires })
       };
     } else {
       planningData = tempService;
@@ -96,28 +108,41 @@ const ModalCellEdit = ({ selectedCell, agentsData, onUpdateCell, onClose }) => {
         {/* Section Postes figés / Postes supplémentaires (pour TOUS les agents) */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Postes figés / Postes supplémentaires
+            Postes figés / Postes supplémentaires 
+            <span className="text-xs text-gray-500 ml-2">(sélection multiple possible)</span>
           </label>
           <div className="grid grid-cols-3 gap-2">
-            {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => (
-              <button
-                key={code}
-                onClick={() => setTempPosteSupplementaire(tempPosteSupplementaire === code ? '' : code)}
-                className={`p-2 rounded text-center text-xs transition-all ${
-                  tempPosteSupplementaire === code 
-                    ? 'ring-2 ring-purple-500 bg-purple-100 text-purple-800'
-                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                }`}
-              >
-                <div className="font-semibold italic">{code}</div>
-                <div className="text-xs mt-1 not-italic">{desc.replace('Poste ', '').replace(' supplémentaire', '')}</div>
-              </button>
-            ))}
+            {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => {
+              const isSelected = tempPostesSupplementaires.includes(code);
+              return (
+                <button
+                  key={code}
+                  onClick={() => togglePosteSupplementaire(code)}
+                  className={`p-2 rounded text-center text-xs transition-all relative ${
+                    isSelected 
+                      ? 'ring-2 ring-purple-500 bg-purple-100 text-purple-800'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  {isSelected && (
+                    <Check className="w-3 h-3 absolute top-1 right-1 text-purple-600" />
+                  )}
+                  <div className="font-semibold italic">{code}</div>
+                  <div className="text-xs mt-1 not-italic">{desc.replace('Poste ', '').replace(' supplémentaire', '')}</div>
+                </button>
+              );
+            })}
           </div>
-          {tempPosteSupplementaire && (
-            <p className="text-xs text-purple-600 mt-2 italic">
-              Le poste {tempPosteSupplementaire} sera affiché en italique dans la cellule
-            </p>
+          {tempPostesSupplementaires.length > 0 && (
+            <div className="mt-2 p-2 bg-purple-50 rounded">
+              <p className="text-xs text-purple-700">
+                <span className="font-medium">Sélectionnés :</span>{' '}
+                <span className="italic">{tempPostesSupplementaires.join(', ')}</span>
+              </p>
+              <p className="text-xs text-purple-600 mt-1">
+                → Affichés en italique en bas de la cellule
+              </p>
+            </div>
           )}
         </div>
 
