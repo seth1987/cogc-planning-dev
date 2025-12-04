@@ -3,8 +3,12 @@
  * Service de lecture de PDF SNCF utilisant l'API Mistral OCR
  * Optimisé pour les bulletins de commande COGC Paris Nord
  * 
- * @version 2.0.1
+ * @version 2.1.0
  * @date 2025-12-04
+ * @changelog 
+ *   - 2.1.0: Ajout de TOUS les 69 codes SNCF depuis la BDD
+ *   - 2.1.0: Amélioration détection par descriptions et horaires
+ *   - 2.1.0: Fallback intelligent basé sur les horaires
  */
 
 class MistralPDFReaderService {
@@ -16,97 +20,191 @@ class MistralPDFReaderService {
   
   // Endpoints API Mistral
   static ENDPOINTS = {
-    OCR: 'https://api.mistral.ai/v1/ocr',           // Nouvelle API OCR dédiée
-    CHAT: 'https://api.mistral.ai/v1/chat/completions'  // Fallback Vision
+    OCR: 'https://api.mistral.ai/v1/ocr',
+    CHAT: 'https://api.mistral.ai/v1/chat/completions'
   };
   
   // Modèles disponibles
   static MODELS = {
-    OCR: 'mistral-ocr-latest',      // Modèle OCR dédié (recommandé)
-    VISION: 'pixtral-12b-2409'      // Modèle Vision (fallback)
+    OCR: 'mistral-ocr-latest',
+    VISION: 'pixtral-12b-2409'
   };
 
   // ═══════════════════════════════════════════════════════════════
-  // CODES SERVICES SNCF VALIDES
+  // MAPPING COMPLET DES 69 CODES SNCF (depuis BDD Supabase)
   // ═══════════════════════════════════════════════════════════════
   
-  static VALID_SERVICE_CODES = new Set([
-    // Centre Commande Unique (CCU)
-    'CCU001', 'CCU002', 'CCU003', 'CCU004', 'CCU005',
-    // Coordonnateur Régional Circulation (CRC)
-    'CRC001', 'CRC002',
-    // Aide Coordonnateur Régional (ACR)
-    'ACR001', 'ACR002', 'ACR003',
-    // Référent Équipe Opérationnelle (REO)
-    'REO001', 'REO002',
-    // Centre Souffleur (CENT)
-    'CENT001', 'CENT002', 'CENT003',
-    // Codes spéciaux
-    'RP', 'NU', 'DISPO', 'INACTIN', 'HAB-QF', 
-    'CA', 'CONGE', 'RTT', 'RQ', 'FORM', 'MAL'
-  ]);
-
-  // Labels descriptifs des services
-  static SERVICE_LABELS = {
-    'CCU001': 'CRC/CCU DENFERT',
-    'CCU002': 'CRC/CCU DENFERT',
-    'CCU003': 'CRC/CCU DENFERT',
-    'CCU004': 'Régulateur Table PARC Denfert',
-    'CCU005': 'Régulateur Table PARC Denfert',
-    'CRC001': 'Coordonnateur Régional Circulation',
-    'CRC002': 'Coordonnateur Régional Circulation',
-    'ACR001': 'Aide Coordonnateur Régional',
-    'ACR002': 'Aide Coordonnateur Régional',
-    'ACR003': 'Aide Coordonnateur Régional',
-    'REO001': 'Référent Équipe Opérationnelle',
-    'REO002': 'Référent Équipe Opérationnelle',
-    'CENT001': 'Centre Souffleur',
-    'CENT002': 'Centre Souffleur',
-    'CENT003': 'Centre Souffleur',
-    'RP': 'Repos Périodique',
-    'NU': 'Non Utilisé',
-    'DISPO': 'Disponible',
-    'INACTIN': 'Inactif/Formation',
-    'HAB-QF': 'Formation/Perfectionnement',
-    'CA': 'Congé Annuel',
-    'CONGE': 'Congé Annuel',
-    'RTT': 'Réduction Temps Travail',
-    'RQ': 'Repos Qualifié',
-    'FORM': 'Formation',
-    'MAL': 'Maladie'
+  static CODES_MAPPING = {
+    // Services de base
+    '-': { poste: null, service: '-', desc: 'Service matin (06h-14h)' },
+    'O': { poste: null, service: 'O', desc: 'Service soir (14h-22h)' },
+    'X': { poste: null, service: 'X', desc: 'Service nuit (22h-06h)' },
+    
+    // ACR - Aide Coordonnateur Régional
+    'ACR001': { poste: 'ACR', service: '-', desc: 'Aide Coordonnateur matin' },
+    'ACR002': { poste: 'ACR', service: 'O', desc: 'Aide Coordonnateur Régional - soirée' },
+    'ACR003': { poste: 'ACR', service: 'X', desc: 'Aide Coordonnateur Régional - nuit' },
+    
+    // CAC - Cadre Appui Circulation
+    'CAC001': { poste: 'CAC', service: '-', desc: 'Cadre Appui Circulation matin' },
+    'CAC002': { poste: 'CAC', service: 'O', desc: 'Cadre Appui Circulation soir' },
+    'CAC003': { poste: 'CAC', service: 'X', desc: 'Cadre Appui Circulation nuit' },
+    
+    // CCU - Centre Commande Unique
+    'CCU001': { poste: 'CCU', service: '-', desc: 'CCU Denfert matin' },
+    'CCU002': { poste: 'CCU', service: 'O', desc: 'CCU Denfert soir' },
+    'CCU003': { poste: 'CCU', service: 'X', desc: 'CCU Denfert nuit' },
+    'CCU004': { poste: 'RE', service: '-', desc: 'Régulateur Parc matin' },
+    'CCU005': { poste: 'RE', service: 'O', desc: 'Régulateur Table PARC Denfert' },
+    'CCU006': { poste: 'RE', service: 'X', desc: 'Régulateur Parc nuit' },
+    
+    // CENT - Centre Souffleur / Régulateur Centre
+    'CENT001': { poste: 'RC', service: '-', desc: 'Centre Souffleur' },
+    'CENT002': { poste: 'RC', service: 'O', desc: 'Régulateur Centre soirée' },
+    'CENT003': { poste: 'RC', service: 'X', desc: 'Régulateur Centre nuit' },
+    
+    // CRC - Coordonnateur Régional Circulation
+    'CRC001': { poste: 'CRC', service: '-', desc: 'Coordonnateur matin' },
+    'CRC002': { poste: 'CRC', service: 'O', desc: 'Coordonnateur soir' },
+    'CRC003': { poste: 'CRC', service: 'X', desc: 'Coordonnateur nuit' },
+    
+    // RC - Régulateur Centre
+    'RC001': { poste: 'RC', service: '-', desc: 'Régulateur Centre matin' },
+    'RC002': { poste: 'RC', service: 'O', desc: 'Régulateur Centre soir' },
+    'RC003': { poste: 'RC', service: 'X', desc: 'Régulateur Centre nuit' },
+    
+    // RE - Régulateur Est
+    'RE001': { poste: 'RE', service: '-', desc: 'Régulateur Est matin' },
+    'RE002': { poste: 'RE', service: 'O', desc: 'Régulateur Est soir' },
+    'RE003': { poste: 'RE', service: 'X', desc: 'Régulateur Est nuit' },
+    
+    // REO - Régulateur Est/Ouest
+    'REO001': { poste: 'RE', service: '-', desc: 'Régulateur Est/Ouest - Matin' },
+    'REO002': { poste: 'RE', service: 'O', desc: 'Régulateur Est/Ouest - Soir' },
+    'REO003': { poste: 'RE', service: 'X', desc: 'Régulateur Est/Ouest - Nuit' },
+    'REO004': { poste: 'RE', service: '-', desc: 'Régulateur Est/Ouest - Matin spécial' },
+    'REO005': { poste: 'RE', service: 'O', desc: 'Régulateur Est/Ouest - Soir spécial' },
+    'REO006': { poste: 'RE', service: 'O', desc: 'Régulateur Est/Ouest - Soir tardif' },
+    'REO007': { poste: 'RO', service: '-', desc: 'Régulateur Ouest matin' },
+    'REO008': { poste: 'RO', service: 'O', desc: 'Régulateur OUEST' },
+    
+    // RO - Régulateur Ouest
+    'RO001': { poste: 'RO', service: '-', desc: 'Régulateur Ouest matin' },
+    'RO002': { poste: 'RO', service: 'O', desc: 'Régulateur Ouest soir' },
+    'RO003': { poste: 'RO', service: 'X', desc: 'Régulateur Ouest nuit' },
+    
+    // SOUF - Souffleur
+    'SOUF001': { poste: 'S/S', service: '-', desc: 'Souffleur matin' },
+    'SOUF002': { poste: 'S/S', service: 'O', desc: 'Souffleur soir' },
+    'SOUF003': { poste: 'SOUF', service: 'X', desc: 'Souffleur - Nuit (22h-06h)' },
+    
+    // Absences et congés
+    'C': { poste: null, service: 'C', desc: 'Congé annuel' },
+    'CA': { poste: null, service: 'CA', desc: 'Congés annuels' },
+    'CONGE': { poste: null, service: 'C', desc: 'Congé' },
+    'RTT': { poste: null, service: 'RU', desc: 'RTT' },
+    'RU': { poste: null, service: 'RU', desc: 'RTT - Récupération temps de travail' },
+    'VT': { poste: null, service: 'VT', desc: 'Congé temps partiel' },
+    
+    // Repos
+    'RP': { poste: null, service: 'RP', desc: 'Repos périodique' },
+    'RPP': { poste: null, service: 'RP', desc: 'Repos Périodique' },
+    'RQ': { poste: null, service: 'RQ', desc: 'Repos qualifié' },
+    
+    // Disponibilité
+    'D': { poste: null, service: 'D', desc: 'Disponible' },
+    'DISPO': { poste: null, service: 'D', desc: 'Disponible' },
+    'DN': { poste: null, service: 'DN', desc: 'Disponible Paris Nord' },
+    'DR': { poste: null, service: 'DR', desc: 'Disponible Denfert-Rochereau' },
+    
+    // Non utilisé / Non commandé
+    'NU': { poste: null, service: 'NU', desc: 'Non Utilisé' },
+    'NP': { poste: null, service: 'NP', desc: 'Non commandé au COGC' },
+    
+    // Inaction / Formation
+    'I': { poste: null, service: 'I', desc: 'Inaction' },
+    'INACT': { poste: null, service: 'I', desc: 'Inaction' },
+    'INACTIN': { poste: null, service: 'I', desc: 'Inaction' },
+    'FO': { poste: null, service: 'FO', desc: 'Formation' },
+    'FORM': { poste: null, service: 'FO', desc: 'Formation' },
+    'HAB': { poste: null, service: 'HAB', desc: 'Habilitation' },
+    'HAB-QF': { poste: null, service: 'HAB', desc: 'Formation (temporaire)' },
+    
+    // Médical
+    'MA': { poste: null, service: 'MA', desc: 'Maladie' },
+    'MAL': { poste: null, service: 'MA', desc: 'Maladie' },
+    'VM': { poste: null, service: 'VM', desc: 'Visite médicale' },
+    'VMT': { poste: null, service: 'I', desc: 'Visite médicale' },
+    'VISIMED': { poste: null, service: 'VM', desc: 'Visite Médicale' },
+    
+    // Autres
+    'EAC': { poste: null, service: 'EAC', desc: 'Service extérieur aide CCU/RE' },
+    'EIA': { poste: null, service: 'EIA', desc: 'Entretien individuel annuel' },
+    'F': { poste: null, service: 'F', desc: 'Jour férié' },
+    'JF': { poste: null, service: 'JF', desc: 'Jour férié' },
+    'PCD': { poste: null, service: 'PCD', desc: 'Poste Circulation Dionysien' },
+    'VL': { poste: null, service: 'VL', desc: 'Visite ligne' }
   };
 
+  // Set des codes valides pour validation rapide
+  static VALID_SERVICE_CODES = new Set(Object.keys(this.CODES_MAPPING));
+
+  // Patterns de description pour détecter le code
+  static DESCRIPTION_PATTERNS = [
+    { pattern: /Aide\s+Coordonnateur.*matin/i, code: 'ACR001' },
+    { pattern: /Aide\s+Coordonnateur.*soir/i, code: 'ACR002' },
+    { pattern: /Aide\s+Coordonnateur.*nuit/i, code: 'ACR003' },
+    { pattern: /Aide\s+Coordonnateur/i, code: 'ACR' },
+    { pattern: /Cadre\s+Appui.*matin/i, code: 'CAC001' },
+    { pattern: /Cadre\s+Appui.*soir/i, code: 'CAC002' },
+    { pattern: /Cadre\s+Appui.*nuit/i, code: 'CAC003' },
+    { pattern: /CRC\/CCU\s+DENFERT/i, code: 'CCU' },
+    { pattern: /Régulateur\s+Table\s+PARC/i, code: 'CCU004' },
+    { pattern: /Régulateur\s+Parc/i, code: 'CCU004' },
+    { pattern: /Coordonnateur\s+Régional.*matin/i, code: 'CRC001' },
+    { pattern: /Coordonnateur\s+Régional.*soir/i, code: 'CRC002' },
+    { pattern: /Coordonnateur\s+Régional.*nuit/i, code: 'CRC003' },
+    { pattern: /Coordonnateur\s+Régional/i, code: 'CRC001' },
+    { pattern: /Centre\s+Souffleur/i, code: 'CENT001' },
+    { pattern: /Régulateur\s+Centre/i, code: 'RC' },
+    { pattern: /Régulateur\s+Est.*Ouest/i, code: 'REO' },
+    { pattern: /Régulateur\s+Est/i, code: 'RE' },
+    { pattern: /Régulateur\s+Ouest/i, code: 'RO' },
+    { pattern: /Souffleur/i, code: 'SOUF' },
+    { pattern: /Repos\s+périodique/i, code: 'RP' },
+    { pattern: /Non\s+Utilisé|Utilisable\s+non\s+utilisé/i, code: 'NU' },
+    { pattern: /Disponible/i, code: 'DISPO' },
+    { pattern: /Inactif|INACTIN/i, code: 'INACTIN' },
+    { pattern: /Formation|TRACTION/i, code: 'INACTIN' },
+    { pattern: /Maladie/i, code: 'MA' },
+    { pattern: /Visite\s+médicale/i, code: 'VM' },
+    { pattern: /Congé/i, code: 'CA' },
+    { pattern: /Habilitation/i, code: 'HAB' },
+    { pattern: /Entretien\s+individuel/i, code: 'EIA' }
+  ];
+
   // Éléments à ignorer (non-services)
-  static IGNORE_PATTERNS = ['METRO', 'RS', 'TRACTION', 'du CCU', 'du CRC'];
+  static IGNORE_PATTERNS = ['METRO', 'RS', 'TRACTION', 'du CCU', 'du CRC', 'N1100010CO72', 'N82'];
 
   // ═══════════════════════════════════════════════════════════════
   // MÉTHODE PRINCIPALE - LECTURE PDF
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Lit et extrait les données d'un fichier PDF SNCF
-   * @param {File} file - Fichier PDF à analyser
-   * @returns {Promise<Object>} Données structurées extraites
-   */
   static async readPDF(file) {
     const startTime = Date.now();
     console.log('📄 MistralPDFReader: Début lecture PDF', file.name);
 
     try {
-      // 1. Convertir le fichier en base64
       const base64Data = await this.fileToBase64(file);
       console.log('✅ Conversion base64 réussie:', Math.round(base64Data.length / 1024), 'KB');
 
-      // 2. Essayer d'abord l'API OCR dédiée
       let result = await this.processWithOCR(base64Data);
       
-      // 3. Si échec, fallback sur Vision
       if (!result.success) {
         console.log('⚠️ OCR échoué, tentative avec Vision Pixtral...');
         result = await this.processWithVision(base64Data);
       }
 
-      // 4. Calculer les statistiques
       const processingTime = Date.now() - startTime;
       result.stats = {
         ...result.stats,
@@ -131,14 +229,9 @@ class MistralPDFReaderService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // API OCR DÉDIÉE (RECOMMANDÉE)
+  // API OCR DÉDIÉE
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Traite le PDF avec la nouvelle API OCR Mistral
-   * @param {string} base64Data - PDF encodé en base64
-   * @returns {Promise<Object>} Résultat de l'extraction
-   */
   static async processWithOCR(base64Data) {
     console.log('🔍 Traitement avec API OCR (mistral-ocr-latest)...');
 
@@ -155,7 +248,7 @@ class MistralPDFReaderService {
             type: 'document_url',
             document_url: `data:application/pdf;base64,${base64Data}`
           },
-          include_image_base64: false  // Pas besoin des images pour les bulletins texte
+          include_image_base64: false
         })
       });
 
@@ -168,7 +261,6 @@ class MistralPDFReaderService {
       const ocrResult = await response.json();
       console.log('✅ Réponse OCR reçue:', ocrResult.pages?.length, 'page(s)');
 
-      // Extraire le markdown de toutes les pages
       let fullMarkdown = '';
       if (ocrResult.pages) {
         for (const page of ocrResult.pages) {
@@ -178,7 +270,6 @@ class MistralPDFReaderService {
         }
       }
 
-      // Parser le markdown pour extraire les données SNCF
       return this.parseMarkdownToSNCF(fullMarkdown, 'mistral-ocr-latest');
 
     } catch (error) {
@@ -188,14 +279,9 @@ class MistralPDFReaderService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // FALLBACK VISION (PIXTRAL)
+  // FALLBACK VISION
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Traite le PDF avec l'API Vision comme fallback
-   * @param {string} base64Data - PDF encodé en base64
-   * @returns {Promise<Object>} Résultat de l'extraction
-   */
   static async processWithVision(base64Data) {
     console.log('🔍 Traitement avec Vision Pixtral (fallback)...');
 
@@ -239,7 +325,6 @@ class MistralPDFReaderService {
         return { success: false, error: 'Réponse Vision vide' };
       }
 
-      // Parser directement le JSON retourné
       return this.parseVisionResponse(content);
 
     } catch (error) {
@@ -249,15 +334,9 @@ class MistralPDFReaderService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // PARSING DU MARKDOWN OCR
+  // PARSING DU MARKDOWN OCR - AMÉLIORÉ
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Parse le markdown OCR pour extraire les données SNCF structurées
-   * @param {string} markdown - Texte markdown retourné par l'OCR
-   * @param {string} method - Méthode utilisée
-   * @returns {Object} Données structurées
-   */
   static parseMarkdownToSNCF(markdown, method) {
     console.log('📊 Parsing du markdown...');
 
@@ -270,16 +349,21 @@ class MistralPDFReaderService {
     };
 
     try {
-      // 1. Extraire les métadonnées agent
       result.metadata = this.extractAgentMetadata(markdown);
-
-      // 2. Extraire les entrées de planning
       result.entries = this.extractPlanningEntries(markdown);
 
-      // 3. Calculer les stats
       result.stats.total = result.entries.length;
       result.stats.valid = result.entries.filter(e => e.isValid).length;
       result.stats.errors = result.entries.filter(e => e.hasError).length;
+
+      // Log des codes non reconnus pour debug
+      const unknownCodes = result.entries.filter(e => e.serviceCode === 'INCONNU');
+      if (unknownCodes.length > 0) {
+        console.warn('⚠️ Codes non reconnus:', unknownCodes.map(e => ({
+          date: e.dateDisplay,
+          rawText: e.rawText?.substring(0, 100)
+        })));
+      }
 
       console.log('✅ Parsing terminé:', result.stats);
       return result;
@@ -292,9 +376,6 @@ class MistralPDFReaderService {
     }
   }
 
-  /**
-   * Extrait les métadonnées de l'agent depuis le texte
-   */
   static extractAgentMetadata(text) {
     const metadata = {
       agent: null,
@@ -304,16 +385,20 @@ class MistralPDFReaderService {
       periodeFin: null
     };
 
-    // Nom de l'agent
+    // Nom de l'agent - patterns améliorés
     const agentPatterns = [
-      /Agent\s*:?\s*\n?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ][A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ\s]+)/i,
-      /COGC\s+PN\s*\n?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ][A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ\s]+)/i
+      /Agent\s*:?\s*\n?\s*COGC\s+PN\s*\n?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ][A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ\-\s]+)/i,
+      /COGC\s+PN\s*\n?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ][A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ\-\s]+)/i,
+      /Agent\s*:?\s*\n?\s*([A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ][A-ZÀÂÄÉÈÊËÏÔÙÛÜÇ\-\s]+)/i
     ];
     
     for (const pattern of agentPatterns) {
       const match = text.match(pattern);
       if (match) {
-        metadata.agent = match[1].trim();
+        // Nettoyer le nom (enlever les N° CP qui suivent parfois)
+        let agent = match[1].trim();
+        agent = agent.replace(/N°.*$/i, '').trim();
+        metadata.agent = agent;
         break;
       }
     }
@@ -341,53 +426,57 @@ class MistralPDFReaderService {
     return metadata;
   }
 
-  /**
-   * Extrait toutes les entrées de planning depuis le texte
-   */
   static extractPlanningEntries(text) {
     const entries = [];
-    
-    // Pattern pour détecter une ligne de date avec service
-    // Format: JJ/MM/AAAA ... CODE_SERVICE Jour
-    const datePattern = /(\d{2})\/(\d{2})\/(\d{4})/g;
     const lines = text.split('\n');
     
     let currentEntry = null;
-    let currentDate = null;
+    let contextLines = []; // Garder les lignes de contexte pour mieux analyser
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
 
-      // Chercher une date
+      // Ignorer les lignes de transport/logistique
+      if (this.shouldIgnoreLine(line)) continue;
+
       const dateMatch = line.match(/(\d{2})\/(\d{2})\/(\d{4})/);
       
       if (dateMatch) {
-        // Sauvegarder l'entrée précédente si elle existe
+        // Sauvegarder l'entrée précédente
         if (currentEntry) {
+          currentEntry = this.finalizeEntry(currentEntry, contextLines);
           entries.push(currentEntry);
         }
 
         const day = dateMatch[1];
         const month = dateMatch[2];
         const year = dateMatch[3];
-        currentDate = `${year}-${month}-${day}`;
+        const currentDate = `${year}-${month}-${day}`;
         const dateDisplay = `${day}/${month}/${year}`;
 
-        // Chercher le jour de la semaine
         const dayMatch = line.match(/(Lun|Mar|Mer|Jeu|Ven|Sam|Dim)/i);
         const dayOfWeek = dayMatch ? dayMatch[1] : null;
 
-        // Chercher le code service sur cette ligne ou la suivante
+        // Chercher le code service
         let serviceCode = this.findServiceCode(line);
-        if (!serviceCode && i + 1 < lines.length) {
-          serviceCode = this.findServiceCode(lines[i + 1]);
+        
+        // Si pas trouvé, chercher dans les lignes suivantes
+        if (!serviceCode) {
+          for (let j = 1; j <= 3 && i + j < lines.length; j++) {
+            const nextLine = lines[i + j].trim();
+            if (nextLine.match(/(\d{2})\/(\d{2})\/(\d{4})/)) break; // Nouvelle date
+            serviceCode = this.findServiceCode(nextLine);
+            if (serviceCode) break;
+          }
         }
 
-        // Chercher les horaires
+        // Chercher par description si toujours pas trouvé
+        if (!serviceCode) {
+          serviceCode = this.findCodeByDescription(line);
+        }
+
         const horaires = this.extractHoraires(line);
-        
-        // Vérifier si c'est un service de nuit
         const isNightService = this.isNightService(horaires);
 
         currentEntry = {
@@ -395,7 +484,7 @@ class MistralPDFReaderService {
           dateDisplay: dateDisplay,
           dayOfWeek: dayOfWeek,
           serviceCode: serviceCode || 'INCONNU',
-          serviceLabel: this.SERVICE_LABELS[serviceCode] || serviceCode || 'À vérifier',
+          serviceLabel: this.getServiceLabel(serviceCode),
           horaires: horaires,
           isNightService: isNightService,
           isValid: serviceCode ? this.VALID_SERVICE_CODES.has(serviceCode) : false,
@@ -403,15 +492,21 @@ class MistralPDFReaderService {
           rawText: line
         };
 
+        contextLines = [line];
+
       } else if (currentEntry) {
-        // Ligne de continuation - chercher des infos supplémentaires
-        
+        // Ligne de continuation
+        contextLines.push(line);
+
         // Chercher un code service si pas encore trouvé
         if (currentEntry.serviceCode === 'INCONNU') {
-          const serviceCode = this.findServiceCode(line);
+          let serviceCode = this.findServiceCode(line);
+          if (!serviceCode) {
+            serviceCode = this.findCodeByDescription(line);
+          }
           if (serviceCode) {
             currentEntry.serviceCode = serviceCode;
-            currentEntry.serviceLabel = this.SERVICE_LABELS[serviceCode] || serviceCode;
+            currentEntry.serviceLabel = this.getServiceLabel(serviceCode);
             currentEntry.isValid = this.VALID_SERVICE_CODES.has(serviceCode);
             currentEntry.hasError = false;
           }
@@ -424,42 +519,105 @@ class MistralPDFReaderService {
           currentEntry.isNightService = this.isNightService(currentEntry.horaires);
         }
 
-        // Ajouter le texte brut
         currentEntry.rawText += ' ' + line;
       }
     }
 
     // Ne pas oublier la dernière entrée
     if (currentEntry) {
+      currentEntry = this.finalizeEntry(currentEntry, contextLines);
       entries.push(currentEntry);
     }
 
-    // Post-traitement : nettoyer les entrées
     return entries.map(entry => this.cleanEntry(entry));
   }
 
   /**
-   * Cherche un code service dans une ligne de texte
+   * Vérifie si une ligne doit être ignorée
+   */
+  static shouldIgnoreLine(line) {
+    return this.IGNORE_PATTERNS.some(p => line.includes(p)) && 
+           !line.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  }
+
+  /**
+   * Finalise une entrée avec les données de contexte
+   */
+  static finalizeEntry(entry, contextLines) {
+    // Si toujours INCONNU, essayer de deviner par les horaires
+    if (entry.serviceCode === 'INCONNU' && entry.horaires.length > 0) {
+      const guessedCode = this.guessCodeByHoraires(entry.horaires);
+      if (guessedCode) {
+        entry.serviceCode = guessedCode;
+        entry.serviceLabel = this.getServiceLabel(guessedCode);
+        entry.isValid = true;
+        entry.hasError = false;
+        entry.guessedByHoraires = true;
+        console.log(`🔮 Code deviné par horaires: ${entry.dateDisplay} → ${guessedCode}`);
+      }
+    }
+
+    // Chercher dans tout le contexte
+    if (entry.serviceCode === 'INCONNU') {
+      const fullContext = contextLines.join(' ');
+      const contextCode = this.findCodeByDescription(fullContext);
+      if (contextCode) {
+        entry.serviceCode = contextCode;
+        entry.serviceLabel = this.getServiceLabel(contextCode);
+        entry.isValid = this.VALID_SERVICE_CODES.has(contextCode);
+        entry.hasError = false;
+      }
+    }
+
+    return entry;
+  }
+
+  /**
+   * Cherche un code service dans une ligne de texte - AMÉLIORÉ
    */
   static findServiceCode(line) {
-    // Pattern pour les codes services structurés
+    // Pattern pour les codes services structurés - ordre par spécificité
     const codePatterns = [
-      /\b(CCU00[1-5])\b/i,
-      /\b(CRC00[1-2])\b/i,
+      // Codes composés spécifiques d'abord
+      /\b(CCU00[1-6])\b/i,
+      /\b(CRC00[1-3])\b/i,
       /\b(ACR00[1-3])\b/i,
-      /\b(REO00[1-2])\b/i,
+      /\b(CAC00[1-3])\b/i,
       /\b(CENT00[1-3])\b/i,
-      /\b(RP)\b(?!\s*:)/,
-      /\b(NU)\b(?!\s*:)/,
-      /\b(DISPO)\b/i,
-      /\b(INACTIN)\b/i,
+      /\b(RC00[1-3])\b/i,
+      /\b(RE00[1-3])\b/i,
+      /\b(REO00[1-8])\b/i,
+      /\b(RO00[1-3])\b/i,
+      /\b(SOUF00[1-3])\b/i,
+      // Codes simples
       /\b(HAB-QF)\b/i,
-      /\b(CA)\b(?=\s|$)/,
+      /\b(INACTIN)\b/i,
+      /\b(VISIMED)\b/i,
+      /\b(DISPO)\b/i,
       /\b(CONGE)\b/i,
-      /\b(RTT)\b/,
-      /\b(RQ)\b/,
+      /\b(INACT)\b/i,
       /\b(FORM)\b/i,
-      /\b(MAL)\b/i
+      /\b(RPP)\b/i,
+      /\b(VMT)\b/i,
+      /\b(HAB)\b/i,
+      /\b(MAL)\b/i,
+      /\b(EAC)\b/i,
+      /\b(EIA)\b/i,
+      /\b(PCD)\b/i,
+      // Codes très courts - attention aux faux positifs
+      /\b(RP)\b(?!\s*[:/])/,
+      /\b(NU)\b(?!\s*[:/])/,
+      /\b(CA)\b(?=\s|$)/,
+      /\b(MA)\b(?=\s|$)/,
+      /\b(VM)\b(?=\s|$)/,
+      /\b(VL)\b(?=\s|$)/,
+      /\b(VT)\b(?=\s|$)/,
+      /\b(FO)\b(?=\s|$)/,
+      /\b(RU)\b(?=\s|$)/,
+      /\b(DN)\b(?=\s|$)/,
+      /\b(DR)\b(?=\s|$)/,
+      /\b(NP)\b(?=\s|$)/,
+      /\b(JF)\b(?=\s|$)/
     ];
 
     for (const pattern of codePatterns) {
@@ -469,13 +627,56 @@ class MistralPDFReaderService {
       }
     }
 
-    // Vérifier les descriptions de service
-    if (/Repos\s+périodique/i.test(line)) return 'RP';
-    if (/Non\s+Utilisé|Utilisable\s+non\s+utilisé/i.test(line)) return 'NU';
-    if (/Disponible/i.test(line)) return 'DISPO';
-    if (/Inactif|Formation/i.test(line) && !/HAB/i.test(line)) return 'INACTIN';
+    return null;
+  }
+
+  /**
+   * Trouve un code par description textuelle
+   */
+  static findCodeByDescription(text) {
+    for (const { pattern, code } of this.DESCRIPTION_PATTERNS) {
+      if (pattern.test(text)) {
+        return code;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Devine le code service basé sur les horaires
+   */
+  static guessCodeByHoraires(horaires) {
+    if (!horaires || horaires.length === 0) return null;
+
+    const firstHoraire = horaires[0];
+    const debut = parseInt(firstHoraire.debut?.split(':')[0] || 0);
+    const fin = parseInt(firstHoraire.fin?.split(':')[0] || 0);
+
+    // Service de nuit (22h-06h)
+    if (debut >= 20 || (debut >= 18 && fin <= 8)) {
+      return 'X'; // Service nuit générique
+    }
+    
+    // Service du soir (14h-22h)
+    if (debut >= 12 && debut < 20) {
+      return 'O'; // Service soir générique
+    }
+    
+    // Service du matin (06h-14h)
+    if (debut >= 4 && debut < 12) {
+      return '-'; // Service matin générique
+    }
 
     return null;
+  }
+
+  /**
+   * Récupère le label d'un code service
+   */
+  static getServiceLabel(code) {
+    if (!code) return 'À vérifier';
+    const mapping = this.CODES_MAPPING[code.toUpperCase()];
+    return mapping?.desc || code;
   }
 
   /**
@@ -487,7 +688,6 @@ class MistralPDFReaderService {
     let match;
 
     while ((match = timePattern.exec(line)) !== null) {
-      // Vérifier que ce n'est pas un horaire METRO ou RS (à ignorer)
       const context = line.substring(Math.max(0, match.index - 20), match.index);
       const isIgnored = this.IGNORE_PATTERNS.some(p => context.includes(p));
 
@@ -512,7 +712,6 @@ class MistralPDFReaderService {
       const debut = parseInt(h.debut.split(':')[0]);
       const fin = parseInt(h.fin.split(':')[0]);
       
-      // Service de nuit si début après 20h ou fin avant 8h avec début après-midi
       if (debut >= 20 || (debut > 12 && fin < 8)) {
         return true;
       }
@@ -525,15 +724,15 @@ class MistralPDFReaderService {
    * Nettoie et valide une entrée
    */
   static cleanEntry(entry) {
-    // Supprimer le texte brut pour alléger
-    delete entry.rawText;
+    // Conserver rawText pour debug mais limiter la taille
+    if (entry.rawText && entry.rawText.length > 200) {
+      entry.rawText = entry.rawText.substring(0, 200) + '...';
+    }
 
-    // S'assurer que le code est en majuscules
     if (entry.serviceCode) {
       entry.serviceCode = entry.serviceCode.toUpperCase();
     }
 
-    // Mettre à jour la validation
     entry.isValid = this.VALID_SERVICE_CODES.has(entry.serviceCode);
 
     return entry;
@@ -543,12 +742,8 @@ class MistralPDFReaderService {
   // PARSING RÉPONSE VISION (JSON)
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Parse la réponse JSON de l'API Vision
-   */
   static parseVisionResponse(jsonString) {
     try {
-      // Nettoyer le JSON si nécessaire
       let cleanJson = jsonString
         .replace(/```json\n?/g, '')
         .replace(/```\n?/g, '')
@@ -564,7 +759,6 @@ class MistralPDFReaderService {
         stats: { total: 0, valid: 0, errors: 0 }
       };
 
-      // Traiter les entrées
       if (data.entries && Array.isArray(data.entries)) {
         result.entries = data.entries.map(entry => {
           const serviceCode = entry.serviceCode?.toUpperCase();
@@ -573,7 +767,7 @@ class MistralPDFReaderService {
             dateDisplay: entry.date,
             dayOfWeek: entry.dayOfWeek,
             serviceCode: serviceCode || 'INCONNU',
-            serviceLabel: this.SERVICE_LABELS[serviceCode] || entry.serviceLabel || serviceCode,
+            serviceLabel: this.getServiceLabel(serviceCode),
             horaires: entry.horaires || [],
             isNightService: this.isNightService(entry.horaires),
             isValid: this.VALID_SERVICE_CODES.has(serviceCode),
@@ -605,9 +799,6 @@ class MistralPDFReaderService {
   // UTILITAIRES
   // ═══════════════════════════════════════════════════════════════
 
-  /**
-   * Convertit un fichier en base64
-   */
   static async fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -620,9 +811,6 @@ class MistralPDFReaderService {
     });
   }
 
-  /**
-   * Convertit une date FR (JJ/MM/AAAA) en ISO (AAAA-MM-JJ)
-   */
   static convertDateToISO(dateStr) {
     if (!dateStr) return null;
     const parts = dateStr.split('/');
@@ -630,9 +818,6 @@ class MistralPDFReaderService {
     return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
   }
 
-  /**
-   * Crée le prompt optimisé pour l'extraction via Vision
-   */
   static createExtractionPrompt() {
     return `Tu es un expert en extraction de données pour les bulletins de commande SNCF.
 
@@ -641,17 +826,27 @@ INSTRUCTIONS CRITIQUES :
 2. Retourne UNIQUEMENT un JSON valide, sans texte autour
 3. Ignore les lignes METRO et RS (ce ne sont pas des services)
 
-CODES DE SERVICE VALIDES :
-- CCU001-005 : Centre Commande Unique Denfert
-- CRC001-002 : Coordonnateur Régional Circulation
+CODES DE SERVICE VALIDES (69 codes) :
 - ACR001-003 : Aide Coordonnateur Régional
-- REO001-002 : Référent Équipe Opérationnelle
+- CAC001-003 : Cadre Appui Circulation
+- CCU001-006 : Centre Commande Unique / Régulateur Parc
 - CENT001-003 : Centre Souffleur
-- RP : Repos Périodique
+- CRC001-003 : Coordonnateur Régional
+- RC001-003 : Régulateur Centre
+- RE001-003 : Régulateur Est
+- REO001-008 : Régulateur Est/Ouest
+- RO001-003 : Régulateur Ouest
+- SOUF001-003 : Souffleur
+- RP, RPP : Repos Périodique
 - NU : Non Utilisé
-- DISPO : Disponible
-- INACTIN : Inactif/Formation
-- CA/CONGE : Congé Annuel
+- DISPO, D, DN, DR : Disponible
+- INACTIN, I, INACT : Inaction
+- CA, C, CONGE : Congé
+- MA, MAL : Maladie
+- HAB, HAB-QF : Habilitation
+- VM, VMT, VISIMED : Visite Médicale
+- FO, FORM : Formation
+- EAC, EIA, NP, PCD, VL, VT, RU, JF, F
 
 FORMAT JSON ATTENDU :
 {
@@ -667,24 +862,14 @@ FORMAT JSON ATTENDU :
       "dayOfWeek": "Lun",
       "serviceCode": "CCU003",
       "serviceLabel": "Description",
-      "horaires": [
-        {"debut": "HH:MM", "fin": "HH:MM"}
-      ]
+      "horaires": [{"debut": "HH:MM", "fin": "HH:MM"}]
     }
   ]
 }`;
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // MÉTHODE DE TEST
-  // ═══════════════════════════════════════════════════════════════
-
-  /**
-   * Teste le service avec un fichier
-   * @param {File} file - Fichier PDF à tester
-   */
   static async testExtraction(file) {
-    console.log('🧪 Test d\'extraction Mistral PDF Reader');
+    console.log('🧪 Test d\'extraction Mistral PDF Reader v2.1.0');
     console.log('═'.repeat(50));
     
     const result = await this.readPDF(file);
@@ -697,7 +882,8 @@ FORMAT JSON ATTENDU :
     console.log('\n📅 ENTRÉES:');
     
     result.entries.forEach((entry, i) => {
-      console.log(`  ${i + 1}. ${entry.dateDisplay} (${entry.dayOfWeek}) - ${entry.serviceCode} ${entry.isValid ? '✅' : '❌'}`);
+      const status = entry.isValid ? '✅' : (entry.guessedByHoraires ? '🔮' : '❌');
+      console.log(`  ${i + 1}. ${entry.dateDisplay} (${entry.dayOfWeek}) - ${entry.serviceCode} ${status}`);
     });
     
     console.log('\n📈 STATS:', result.stats);
