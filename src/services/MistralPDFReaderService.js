@@ -3,15 +3,15 @@
  * Service de lecture de PDF SNCF utilisant l'API Mistral OCR
  * Optimisé pour les bulletins de commande COGC Paris Nord
  * 
- * @version 2.2.0
+ * @version 2.3.0
  * @date 2025-12-04
  * @changelog 
- *   - 2.2.0: FIX - Élimination des doublons INCONNU par date
+ *   - 2.3.0: FIX CRITIQUE - Distinction codes explicites vs devinés
+ *   - 2.3.0: Déduplication améliorée avec priorité aux codes explicites
+ *   - 2.3.0: Correction du bug des multiples INCONNU par date
+ *   - 2.2.0: Élimination des doublons INCONNU par date
  *   - 2.2.0: Fusion intelligente des entrées de même date
- *   - 2.2.0: Amélioration guessCodeByHoraires avec postes
  *   - 2.1.0: Ajout de TOUS les 69 codes SNCF depuis la BDD
- *   - 2.1.0: Amélioration détection par descriptions et horaires
- *   - 2.1.0: Fallback intelligent basé sur les horaires
  */
 
 class MistralPDFReaderService {
@@ -152,6 +152,25 @@ class MistralPDFReaderService {
   // Set des codes valides pour validation rapide
   static VALID_SERVICE_CODES = new Set(Object.keys(this.CODES_MAPPING));
 
+  // Codes qui sont des codes "spécifiques" (pas des codes génériques comme -, O, X)
+  static SPECIFIC_CODES = new Set([
+    'ACR001', 'ACR002', 'ACR003',
+    'CAC001', 'CAC002', 'CAC003',
+    'CCU001', 'CCU002', 'CCU003', 'CCU004', 'CCU005', 'CCU006',
+    'CENT001', 'CENT002', 'CENT003',
+    'CRC001', 'CRC002', 'CRC003',
+    'RC001', 'RC002', 'RC003',
+    'RE001', 'RE002', 'RE003',
+    'REO001', 'REO002', 'REO003', 'REO004', 'REO005', 'REO006', 'REO007', 'REO008',
+    'RO001', 'RO002', 'RO003',
+    'SOUF001', 'SOUF002', 'SOUF003',
+    'RP', 'RPP', 'RQ', 'C', 'CA', 'CONGE', 'RTT', 'RU', 'VT',
+    'D', 'DISPO', 'DN', 'DR', 'NU', 'NP',
+    'I', 'INACT', 'INACTIN', 'FO', 'FORM', 'HAB', 'HAB-QF',
+    'MA', 'MAL', 'VM', 'VMT', 'VISIMED',
+    'EAC', 'EIA', 'F', 'JF', 'PCD', 'VL'
+  ]);
+
   // Patterns de description pour détecter le code
   static DESCRIPTION_PATTERNS = [
     { pattern: /Aide\s+Coordonnateur.*matin/i, code: 'ACR001' },
@@ -195,7 +214,7 @@ class MistralPDFReaderService {
 
   static async readPDF(file) {
     const startTime = Date.now();
-    console.log('📄 MistralPDFReader: Début lecture PDF', file.name);
+    console.log('📄 MistralPDFReader v2.3: Début lecture PDF', file.name);
 
     try {
       const base64Data = await this.fileToBase64(file);
@@ -337,11 +356,11 @@ class MistralPDFReaderService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // PARSING DU MARKDOWN OCR - AMÉLIORÉ v2.2
+  // PARSING DU MARKDOWN OCR - v2.3 avec déduplication améliorée
   // ═══════════════════════════════════════════════════════════════
 
   static parseMarkdownToSNCF(markdown, method) {
-    console.log('📊 Parsing du markdown...');
+    console.log('📊 Parsing du markdown v2.3...');
 
     const result = {
       success: true,
@@ -357,8 +376,8 @@ class MistralPDFReaderService {
       // Extraire les entrées brutes
       let rawEntries = this.extractPlanningEntries(markdown);
       
-      // *** NOUVEAU v2.2 : Dédupliquer et fusionner par date ***
-      result.entries = this.deduplicateAndMergeEntries(rawEntries);
+      // *** v2.3 : Déduplication améliorée avec priorité aux codes explicites ***
+      result.entries = this.deduplicateAndMergeEntriesV2(rawEntries);
 
       result.stats.total = result.entries.length;
       result.stats.valid = result.entries.filter(e => e.isValid).length;
@@ -385,13 +404,15 @@ class MistralPDFReaderService {
   }
 
   /**
-   * *** NOUVEAU v2.2 ***
-   * Déduplique et fusionne les entrées par date
-   * - Élimine les entrées INCONNU quand une entrée valide existe pour la même date
-   * - Fusionne les horaires des entrées de même date+service
+   * *** v2.3 - Déduplication AMÉLIORÉE ***
+   * Priorité: 
+   * 1. Entrées avec code SPÉCIFIQUE explicitement trouvé (ACR002, CCU003, etc.)
+   * 2. Entrées avec code trouvé par description (RP, DISPO, etc.)
+   * 3. Entrées avec code deviné par horaires (-, O, X)
+   * 4. Entrées INCONNU (en dernier recours)
    */
-  static deduplicateAndMergeEntries(entries) {
-    console.log(`🔄 Déduplication de ${entries.length} entrées...`);
+  static deduplicateAndMergeEntriesV2(entries) {
+    console.log(`🔄 Déduplication v2.3 de ${entries.length} entrées...`);
     
     // Grouper par date
     const byDate = new Map();
@@ -407,80 +428,70 @@ class MistralPDFReaderService {
     const result = [];
     
     for (const [date, dateEntries] of byDate) {
-      // Séparer les entrées valides et INCONNU
-      const validEntries = dateEntries.filter(e => e.serviceCode !== 'INCONNU' && e.isValid);
-      const unknownEntries = dateEntries.filter(e => e.serviceCode === 'INCONNU' || !e.isValid);
+      // Classer les entrées par priorité
+      const explicitSpecific = []; // Code spécifique trouvé explicitement (ACR002, CCU003...)
+      const explicitGeneric = [];  // Code trouvé par description (RP, DISPO...)
+      const guessedByHoraires = []; // Code deviné (-, O, X)
+      const unknown = [];          // INCONNU
       
-      if (validEntries.length > 0) {
-        // Il y a des entrées valides - les garder et ignorer les INCONNU
-        console.log(`   📅 ${date}: ${validEntries.length} valide(s), ${unknownEntries.length} INCONNU ignoré(s)`);
-        
-        // Fusionner par code service si plusieurs avec le même code
-        const byServiceCode = new Map();
-        for (const entry of validEntries) {
-          const key = entry.serviceCode;
-          if (byServiceCode.has(key)) {
-            // Fusionner les horaires
-            const existing = byServiceCode.get(key);
-            if (entry.horaires && entry.horaires.length > 0) {
-              existing.horaires = [...(existing.horaires || []), ...entry.horaires];
-            }
-            // Garder le meilleur rawText
-            if (entry.rawText && entry.rawText.length > (existing.rawText?.length || 0)) {
-              existing.rawText = entry.rawText;
-            }
-          } else {
-            byServiceCode.set(key, { ...entry });
-          }
-        }
-        
-        result.push(...byServiceCode.values());
-        
-      } else if (unknownEntries.length > 0) {
-        // Que des INCONNU - essayer de deviner avec les horaires fusionnés
-        console.log(`   📅 ${date}: ${unknownEntries.length} INCONNU - tentative de récupération`);
-        
-        // Fusionner tous les horaires
-        const allHoraires = [];
-        const allRawText = [];
-        let bestDayOfWeek = null;
-        
-        for (const entry of unknownEntries) {
-          if (entry.horaires) allHoraires.push(...entry.horaires);
-          if (entry.rawText) allRawText.push(entry.rawText);
-          if (entry.dayOfWeek) bestDayOfWeek = entry.dayOfWeek;
-        }
-        
-        // Tenter de deviner le code avec tous les horaires
-        let guessedCode = this.guessCodeByHoraires(allHoraires);
-        
-        // Tenter aussi par description dans le texte fusionné
-        if (!guessedCode) {
-          const fullText = allRawText.join(' ');
-          guessedCode = this.findCodeByDescription(fullText);
-        }
-        
-        if (guessedCode) {
-          console.log(`      🔮 Code deviné: ${guessedCode}`);
-          result.push({
-            date: date,
-            dateDisplay: unknownEntries[0].dateDisplay,
-            dayOfWeek: bestDayOfWeek,
-            serviceCode: guessedCode,
-            serviceLabel: this.getServiceLabel(guessedCode),
-            horaires: allHoraires,
-            isNightService: this.isNightService(allHoraires),
-            isValid: this.VALID_SERVICE_CODES.has(guessedCode),
-            hasError: false,
-            rawText: allRawText.join(' | '),
-            guessedByHoraires: true
-          });
+      for (const entry of dateEntries) {
+        if (entry.serviceCode === 'INCONNU') {
+          unknown.push(entry);
+        } else if (entry.codeFoundExplicitly && this.SPECIFIC_CODES.has(entry.serviceCode)) {
+          // Code spécifique trouvé dans le texte
+          explicitSpecific.push(entry);
+        } else if (entry.codeFoundExplicitly) {
+          // Code trouvé mais générique
+          explicitGeneric.push(entry);
+        } else if (entry.guessedByHoraires || ['-', 'O', 'X'].includes(entry.serviceCode)) {
+          // Code deviné par les horaires
+          guessedByHoraires.push(entry);
         } else {
-          // Garder une seule entrée INCONNU (la première)
-          console.log(`      ❌ Impossible de deviner - gardé 1 entrée INCONNU`);
-          result.push(unknownEntries[0]);
+          // Autres cas - traiter comme explicite générique
+          explicitGeneric.push(entry);
         }
       }
+      
+      // Choisir les meilleures entrées
+      let selectedEntries = [];
+      
+      if (explicitSpecific.length > 0) {
+        // Priorité 1: codes spécifiques explicites
+        selectedEntries = explicitSpecific;
+        console.log(`   📅 ${date}: ${explicitSpecific.length} code(s) spécifique(s) → ${explicitSpecific.map(e => e.serviceCode).join(', ')}`);
+      } else if (explicitGeneric.length > 0) {
+        // Priorité 2: codes génériques explicites
+        selectedEntries = explicitGeneric;
+        console.log(`   📅 ${date}: ${explicitGeneric.length} code(s) générique(s) → ${explicitGeneric.map(e => e.serviceCode).join(', ')}`);
+      } else if (guessedByHoraires.length > 0) {
+        // Priorité 3: codes devinés - n'en garder qu'un seul
+        // Fusionner les horaires et prendre le meilleur
+        const merged = this.mergeGuessedEntries(guessedByHoraires);
+        selectedEntries = [merged];
+        console.log(`   📅 ${date}: code deviné par horaires → ${merged.serviceCode}`);
+      } else if (unknown.length > 0) {
+        // Priorité 4: INCONNU - essayer de récupérer, sinon n'en garder qu'un
+        const recovered = this.tryRecoverUnknownEntries(date, unknown);
+        selectedEntries = [recovered];
+        console.log(`   📅 ${date}: ${unknown.length} INCONNU → ${recovered.serviceCode}`);
+      }
+      
+      // Dédupliquer par code service au sein des entrées sélectionnées
+      const byServiceCode = new Map();
+      for (const entry of selectedEntries) {
+        const key = entry.serviceCode;
+        if (byServiceCode.has(key)) {
+          // Fusionner les horaires
+          const existing = byServiceCode.get(key);
+          if (entry.horaires && entry.horaires.length > 0) {
+            existing.horaires = [...(existing.horaires || []), ...entry.horaires];
+          }
+        } else {
+          byServiceCode.set(key, { ...entry });
+        }
+      }
+      
+      result.push(...byServiceCode.values());
     }
     
     // Trier par date
@@ -488,6 +499,91 @@ class MistralPDFReaderService {
     
     console.log(`✅ Déduplication terminée: ${entries.length} → ${result.length} entrées`);
     return result;
+  }
+
+  /**
+   * Fusionne les entrées devinées par horaires en une seule
+   */
+  static mergeGuessedEntries(entries) {
+    if (entries.length === 1) return entries[0];
+    
+    // Fusionner tous les horaires
+    const allHoraires = [];
+    let bestEntry = entries[0];
+    
+    for (const entry of entries) {
+      if (entry.horaires) {
+        allHoraires.push(...entry.horaires);
+      }
+      // Préférer l'entrée avec le plus d'info
+      if (entry.rawText && entry.rawText.length > (bestEntry.rawText?.length || 0)) {
+        bestEntry = entry;
+      }
+    }
+    
+    // Re-deviner le code avec tous les horaires fusionnés
+    const guessedCode = this.guessCodeByHoraires(allHoraires) || bestEntry.serviceCode;
+    
+    return {
+      ...bestEntry,
+      serviceCode: guessedCode,
+      serviceLabel: this.getServiceLabel(guessedCode),
+      horaires: allHoraires,
+      isNightService: this.isNightService(allHoraires),
+      isValid: this.VALID_SERVICE_CODES.has(guessedCode),
+      hasError: false,
+      guessedByHoraires: true,
+      mergedFrom: entries.length
+    };
+  }
+
+  /**
+   * Tente de récupérer des entrées INCONNU
+   */
+  static tryRecoverUnknownEntries(date, unknownEntries) {
+    // Fusionner tous les horaires et textes
+    const allHoraires = [];
+    const allRawText = [];
+    let bestDayOfWeek = null;
+    let bestDateDisplay = unknownEntries[0]?.dateDisplay;
+    
+    for (const entry of unknownEntries) {
+      if (entry.horaires) allHoraires.push(...entry.horaires);
+      if (entry.rawText) allRawText.push(entry.rawText);
+      if (entry.dayOfWeek) bestDayOfWeek = entry.dayOfWeek;
+    }
+    
+    // Tenter de deviner le code
+    let guessedCode = this.guessCodeByHoraires(allHoraires);
+    
+    // Tenter aussi par description dans le texte fusionné
+    if (!guessedCode) {
+      const fullText = allRawText.join(' ');
+      guessedCode = this.findCodeByDescription(fullText);
+    }
+    
+    if (guessedCode) {
+      return {
+        date: date,
+        dateDisplay: bestDateDisplay,
+        dayOfWeek: bestDayOfWeek,
+        serviceCode: guessedCode,
+        serviceLabel: this.getServiceLabel(guessedCode),
+        horaires: allHoraires,
+        isNightService: this.isNightService(allHoraires),
+        isValid: this.VALID_SERVICE_CODES.has(guessedCode),
+        hasError: false,
+        rawText: allRawText.join(' | '),
+        recoveredFrom: unknownEntries.length,
+        guessedByHoraires: true
+      };
+    }
+    
+    // Impossible de récupérer - garder une seule entrée INCONNU
+    return {
+      ...unknownEntries[0],
+      rawText: allRawText.join(' | ').substring(0, 200)
+    };
   }
 
   static extractAgentMetadata(text) {
@@ -545,7 +641,7 @@ class MistralPDFReaderService {
     const lines = text.split('\n');
     
     let currentEntry = null;
-    let contextLines = []; // Garder les lignes de contexte pour mieux analyser
+    let contextLines = [];
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -574,20 +670,25 @@ class MistralPDFReaderService {
 
         // Chercher le code service
         let serviceCode = this.findServiceCode(line);
+        let codeFoundExplicitly = !!serviceCode;
         
         // Si pas trouvé, chercher dans les lignes suivantes
         if (!serviceCode) {
           for (let j = 1; j <= 3 && i + j < lines.length; j++) {
             const nextLine = lines[i + j].trim();
-            if (nextLine.match(/(\d{2})\/(\d{2})\/(\d{4})/)) break; // Nouvelle date
+            if (nextLine.match(/(\d{2})\/(\d{2})\/(\d{4})/)) break;
             serviceCode = this.findServiceCode(nextLine);
-            if (serviceCode) break;
+            if (serviceCode) {
+              codeFoundExplicitly = true;
+              break;
+            }
           }
         }
 
         // Chercher par description si toujours pas trouvé
         if (!serviceCode) {
           serviceCode = this.findCodeByDescription(line);
+          if (serviceCode) codeFoundExplicitly = true;
         }
 
         const horaires = this.extractHoraires(line);
@@ -603,7 +704,9 @@ class MistralPDFReaderService {
           isNightService: isNightService,
           isValid: serviceCode ? this.VALID_SERVICE_CODES.has(serviceCode) : false,
           hasError: !serviceCode,
-          rawText: line
+          rawText: line,
+          codeFoundExplicitly: codeFoundExplicitly,
+          guessedByHoraires: false
         };
 
         contextLines = [line];
@@ -612,8 +715,8 @@ class MistralPDFReaderService {
         // Ligne de continuation
         contextLines.push(line);
 
-        // Chercher un code service si pas encore trouvé
-        if (currentEntry.serviceCode === 'INCONNU') {
+        // Chercher un code service si pas encore trouvé explicitement
+        if (!currentEntry.codeFoundExplicitly) {
           let serviceCode = this.findServiceCode(line);
           if (!serviceCode) {
             serviceCode = this.findCodeByDescription(line);
@@ -623,6 +726,7 @@ class MistralPDFReaderService {
             currentEntry.serviceLabel = this.getServiceLabel(serviceCode);
             currentEntry.isValid = this.VALID_SERVICE_CODES.has(serviceCode);
             currentEntry.hasError = false;
+            currentEntry.codeFoundExplicitly = true;
           }
         }
 
@@ -658,8 +762,8 @@ class MistralPDFReaderService {
    * Finalise une entrée avec les données de contexte
    */
   static finalizeEntry(entry, contextLines) {
-    // Si toujours INCONNU, essayer de deviner par les horaires
-    if (entry.serviceCode === 'INCONNU' && entry.horaires.length > 0) {
+    // Si pas de code trouvé explicitement, essayer de deviner par les horaires
+    if (!entry.codeFoundExplicitly && entry.horaires.length > 0) {
       const guessedCode = this.guessCodeByHoraires(entry.horaires);
       if (guessedCode) {
         entry.serviceCode = guessedCode;
@@ -671,7 +775,7 @@ class MistralPDFReaderService {
       }
     }
 
-    // Chercher dans tout le contexte
+    // Chercher dans tout le contexte si toujours INCONNU
     if (entry.serviceCode === 'INCONNU') {
       const fullContext = contextLines.join(' ');
       const contextCode = this.findCodeByDescription(fullContext);
@@ -680,6 +784,7 @@ class MistralPDFReaderService {
         entry.serviceLabel = this.getServiceLabel(contextCode);
         entry.isValid = this.VALID_SERVICE_CODES.has(contextCode);
         entry.hasError = false;
+        entry.codeFoundExplicitly = true;
       }
     }
 
@@ -687,7 +792,7 @@ class MistralPDFReaderService {
   }
 
   /**
-   * Cherche un code service dans une ligne de texte - AMÉLIORÉ
+   * Cherche un code service dans une ligne de texte
    */
   static findServiceCode(line) {
     // Pattern pour les codes services structurés - ordre par spécificité
@@ -757,8 +862,7 @@ class MistralPDFReaderService {
   }
 
   /**
-   * Devine le code service basé sur les horaires - AMÉLIORÉ v2.2
-   * Retourne le code complet avec poste si possible
+   * Devine le code service basé sur les horaires
    */
   static guessCodeByHoraires(horaires) {
     if (!horaires || horaires.length === 0) return null;
@@ -769,17 +873,17 @@ class MistralPDFReaderService {
 
     // Service de nuit (22h-06h)
     if (debut >= 20 || (debut >= 18 && fin <= 8)) {
-      return 'X'; // Service nuit générique
+      return 'X';
     }
     
     // Service du soir (14h-22h)
     if (debut >= 12 && debut < 20) {
-      return 'O'; // Service soir générique
+      return 'O';
     }
     
     // Service du matin (06h-14h)
     if (debut >= 4 && debut < 12) {
-      return '-'; // Service matin générique
+      return '-';
     }
 
     return null;
@@ -886,13 +990,15 @@ class MistralPDFReaderService {
             horaires: entry.horaires || [],
             isNightService: this.isNightService(entry.horaires),
             isValid: this.VALID_SERVICE_CODES.has(serviceCode),
-            hasError: !serviceCode
+            hasError: !serviceCode,
+            codeFoundExplicitly: !!serviceCode,
+            guessedByHoraires: false
           };
         });
       }
 
-      // *** NOUVEAU v2.2 : Appliquer la déduplication aussi pour Vision ***
-      result.entries = this.deduplicateAndMergeEntries(result.entries);
+      // *** v2.3 : Appliquer la déduplication améliorée ***
+      result.entries = this.deduplicateAndMergeEntriesV2(result.entries);
 
       result.stats.total = result.entries.length;
       result.stats.valid = result.entries.filter(e => e.isValid).length;
@@ -987,7 +1093,7 @@ FORMAT JSON ATTENDU :
   }
 
   static async testExtraction(file) {
-    console.log('🧪 Test d\'extraction Mistral PDF Reader v2.2.0');
+    console.log('🧪 Test d\'extraction Mistral PDF Reader v2.3.0');
     console.log('═'.repeat(50));
     
     const result = await this.readPDF(file);
@@ -1000,7 +1106,7 @@ FORMAT JSON ATTENDU :
     console.log('\n📅 ENTRÉES:');
     
     result.entries.forEach((entry, i) => {
-      const status = entry.isValid ? '✅' : (entry.guessedByHoraires ? '🔮' : '❌');
+      const status = entry.codeFoundExplicitly ? '✅' : (entry.guessedByHoraires ? '🔮' : '❌');
       console.log(`  ${i + 1}. ${entry.dateDisplay} (${entry.dayOfWeek}) - ${entry.serviceCode} ${status}`);
     });
     
