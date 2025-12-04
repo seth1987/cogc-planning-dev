@@ -1,7 +1,8 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
+// Version 2.0 - Utilise PDFServiceWrapper avec fallback automatique
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info } from 'lucide-react';
-import MistralPDFReaderService from '../../services/MistralPDFReaderService';
+import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info, Zap } from 'lucide-react';
+import PDFServiceWrapper from '../../services/PDFServiceWrapper';
 import mappingService from '../../services/mappingService';
 import planningImportService from '../../services/planningImportService';
 import PDFUploadStep from '../pdf/PDFUploadStep';
@@ -20,6 +21,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({ total: 0, mapped: 0 });
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
+  const [extractionMethod, setExtractionMethod] = useState(null); // Pour afficher quelle méthode a été utilisée
   
   // Mapping des codes depuis la BDD
   const codesMapping = useRef({});
@@ -77,6 +79,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setImportResult(null);
     setError(null);
     setValidation({ errors: [], warnings: [] });
+    setExtractionMethod(null);
   };
 
   /**
@@ -111,7 +114,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   };
 
   /**
-   * Transforme les données du MistralPDFReaderService vers le format attendu par PDFValidationStep
+   * Transforme les données du PDFServiceWrapper vers le format attendu par PDFValidationStep
    */
   const transformParsedDataForValidation = (parsed) => {
     console.log('🔄 Transformation des données pour validation...');
@@ -240,28 +243,40 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setFile(uploadedFile);
     setLoading(true);
     setError(null);
+    setExtractionMethod(null);
 
     try {
       console.log('📁 Fichier sélectionné:', uploadedFile.name);
-      console.log('📄 Extraction du PDF avec Mistral OCR...');
+      console.log('📄 Extraction du PDF avec PDFServiceWrapper (fallback automatique)...');
       
-      // Utiliser MistralPDFReaderService pour lire le PDF
-      const parsed = await MistralPDFReaderService.readPDF(uploadedFile);
+      // Utiliser PDFServiceWrapper qui gère le fallback automatiquement
+      const parsed = await PDFServiceWrapper.readPDF(uploadedFile);
+      
+      // Stocker la méthode utilisée pour l'affichage
+      setExtractionMethod(parsed.method);
       
       // Vérifier si l'extraction a réussi
       if (!parsed.success) {
         throw new Error(parsed.error || 'Erreur lors de l\'extraction du PDF');
       }
       
-      console.log('✅ Extraction réussie:', parsed.stats);
+      console.log('✅ Extraction réussie avec méthode:', parsed.method);
+      console.log('   Stats:', parsed.stats);
       
       // Transformer les données vers le format attendu par PDFValidationStep
       const transformedData = transformParsedDataForValidation(parsed);
       
       // Valider les données transformées
       const validationResult = validateTransformedData(transformedData);
-      setValidation(validationResult);
       
+      // Ajouter info sur la méthode d'extraction
+      if (parsed.method === 'simple-vision') {
+        validationResult.warnings.unshift('⚡ Extraction rapide (SimplePDFService)');
+      } else if (parsed.method === 'legacy-ocr-parsing') {
+        validationResult.warnings.unshift('🔄 Extraction classique (MistralPDFReaderService)');
+      }
+      
+      setValidation(validationResult);
       setExtractedData(transformedData);
       setEditedData(JSON.parse(JSON.stringify(transformedData))); // Deep copy
       setCurrentStep(2);
@@ -384,7 +399,14 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                 <FileText size={28} />
                 Upload PDF Planning
               </h2>
-              <p className="text-blue-100 mt-1">Extraction intelligente avec Mistral OCR - Précision 100%</p>
+              <p className="text-blue-100 mt-1">
+                Extraction intelligente avec fallback automatique
+                {extractionMethod && (
+                  <span className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs">
+                    {extractionMethod === 'simple-vision' ? '⚡ Mode rapide' : '🔄 Mode classique'}
+                  </span>
+                )}
+              </p>
             </div>
             <button onClick={handleClose} className="text-white hover:bg-white/20 rounded-lg p-2 transition">
               <X size={24} />
@@ -414,18 +436,18 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           {/* Étape 1: Upload */}
           {currentStep === 1 && (
             <div>
-              {/* Information sur Mistral OCR */}
+              {/* Information sur le nouveau système */}
               <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-6">
                 <div className="flex">
-                  <CheckCircle className="text-green-600 mr-2" size={20} />
+                  <Zap className="text-green-600 mr-2" size={20} />
                   <div>
-                    <h3 className="font-semibold text-green-900">Extraction intelligente avec Mistral OCR</h3>
-                    <p className="text-green-800">Reconnaissance optique de caractères haute précision</p>
+                    <h3 className="font-semibold text-green-900">Nouveau système d'extraction v2.0</h3>
+                    <p className="text-green-800">Double méthode avec fallback automatique</p>
                     <ul className="text-sm text-green-700 mt-2 space-y-1">
-                      <li>• Précision de 100% sur les bulletins SNCF</li>
+                      <li>• <strong>Mode rapide ⚡</strong> : Mistral Vision direct (150 lignes)</li>
+                      <li>• <strong>Mode classique 🔄</strong> : OCR + parsing (fallback si besoin)</li>
                       <li>• Détection automatique des services de nuit</li>
-                      <li>• Extraction des horaires et codes service</li>
-                      <li>• Traitement en 2-4 secondes par bulletin</li>
+                      <li>• Validation des codes SNCF</li>
                     </ul>
                   </div>
                 </div>
@@ -487,7 +509,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
             <div className="bg-white p-6 rounded-lg shadow-lg text-center">
               <Loader className="animate-spin mx-auto mb-4 text-blue-600" size={32} />
               <p className="text-gray-700">
-                {currentStep === 1 && 'Analyse du PDF avec Mistral OCR...'}
+                {currentStep === 1 && 'Analyse du PDF (mode rapide → fallback si besoin)...'}
                 {currentStep === 2 && 'Import en cours...'}
                 {currentStep === 3 && 'Finalisation...'}
               </p>
