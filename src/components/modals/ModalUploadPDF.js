@@ -7,7 +7,7 @@ import planningImportService from '../../services/planningImportService';
 import PDFUploadStep from '../pdf/PDFUploadStep';
 import PDFValidationStep from '../pdf/PDFValidationStep';
 import PDFImportResult from '../pdf/PDFImportResult';
-import { supabase } from '../../services/supabaseService';
+import { supabase } from '../../lib/supabaseClient';
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   // États
