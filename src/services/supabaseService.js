@@ -150,7 +150,7 @@ class SupabaseService {
   async getPlanningForMonth(startDate, endDate) {
     const { data, error } = await supabase
       .from('planning')
-      .select('*')
+      .select('*, commentaire')
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date');
@@ -162,7 +162,15 @@ class SupabaseService {
     return data || [];
   }
 
-  async savePlanning(agentId, date, serviceCode, posteCode = null) {
+  /**
+   * Sauvegarde une entrée de planning avec support des notes
+   * @param {string} agentId - ID de l'agent
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @param {string} serviceCode - Code du service (-, O, X, RP, etc.)
+   * @param {string|null} posteCode - Code du poste pour les réserves (CRC, CCU, etc.)
+   * @param {string|null} note - Note/commentaire associé à cette cellule
+   */
+  async savePlanning(agentId, date, serviceCode, posteCode = null, note = null) {
     // Chercher si une entrée existe déjà
     const { data: existing } = await supabase
       .from('planning')
@@ -176,7 +184,9 @@ class SupabaseService {
       date: date,
       service_code: serviceCode,
       poste_code: posteCode,
-      statut: 'actif'
+      commentaire: note || null,
+      statut: 'actif',
+      updated_at: new Date().toISOString()
     };
 
     if (existing) {
@@ -205,6 +215,39 @@ class SupabaseService {
       }
       return data;
     }
+  }
+
+  /**
+   * Met à jour uniquement la note d'une cellule de planning
+   * @param {string} agentId - ID de l'agent
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @param {string|null} note - Note/commentaire (null pour supprimer)
+   */
+  async updatePlanningNote(agentId, date, note) {
+    const { data: existing } = await supabase
+      .from('planning')
+      .select('id')
+      .eq('agent_id', agentId)
+      .eq('date', date)
+      .single();
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from('planning')
+        .update({ 
+          commentaire: note || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id)
+        .select();
+      
+      if (error) {
+        console.error('Erreur update note planning:', error);
+        throw error;
+      }
+      return data;
+    }
+    return null;
   }
 
   async deletePlanning(agentId, date) {
