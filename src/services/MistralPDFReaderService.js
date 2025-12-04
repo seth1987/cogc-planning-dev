@@ -3,9 +3,10 @@
  * Service de lecture de PDF SNCF utilisant l'API Mistral OCR
  * Optimisé pour les bulletins de commande COGC Paris Nord
  * 
- * @version 2.3.0
+ * @version 2.4.0
  * @date 2025-12-04
  * @changelog 
+ *   - 2.4.0: AJOUT LOGIQUE DÉCALAGE NUITS - Services 22h-06h enregistrés sur J+1
  *   - 2.3.0: FIX CRITIQUE - Distinction codes explicites vs devinés
  *   - 2.3.0: Déduplication améliorée avec priorité aux codes explicites
  *   - 2.3.0: Correction du bug des multiples INCONNU par date
@@ -32,6 +33,21 @@ class MistralPDFReaderService {
     OCR: 'mistral-ocr-latest',
     VISION: 'pixtral-12b-2409'
   };
+
+  // ═══════════════════════════════════════════════════════════════
+  // CONFIGURATION DÉCALAGE SERVICES DE NUIT
+  // ═══════════════════════════════════════════════════════════════
+  
+  // Seuil horaire pour considérer un service comme "service de nuit à décaler"
+  // Un service commençant à partir de cette heure sera enregistré sur J+1
+  static NIGHT_SHIFT_START_THRESHOLD = 20; // 20h00
+  
+  // Codes qui sont des services de nuit (suffixe 003 ou X)
+  static NIGHT_SERVICE_CODES = new Set([
+    'ACR003', 'CAC003', 'CCU003', 'CCU006', 'CENT003', 
+    'CRC003', 'RC003', 'RE003', 'REO003', 'RO003', 'SOUF003',
+    'X' // Code générique nuit
+  ]);
 
   // ═══════════════════════════════════════════════════════════════
   // MAPPING COMPLET DES 69 CODES SNCF (depuis BDD Supabase)
@@ -214,7 +230,7 @@ class MistralPDFReaderService {
 
   static async readPDF(file) {
     const startTime = Date.now();
-    console.log('📄 MistralPDFReader v2.3: Début lecture PDF', file.name);
+    console.log('📄 MistralPDFReader v2.4: Début lecture PDF', file.name);
 
     try {
       const base64Data = await this.fileToBase64(file);
@@ -356,18 +372,18 @@ class MistralPDFReaderService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // PARSING DU MARKDOWN OCR - v2.3 avec déduplication améliorée
+  // PARSING DU MARKDOWN OCR - v2.4 avec décalage nuits
   // ═══════════════════════════════════════════════════════════════
 
   static parseMarkdownToSNCF(markdown, method) {
-    console.log('📊 Parsing du markdown v2.3...');
+    console.log('📊 Parsing du markdown v2.4 (avec décalage nuits)...');
 
     const result = {
       success: true,
       method: method,
       metadata: {},
       entries: [],
-      stats: { total: 0, valid: 0, errors: 0 }
+      stats: { total: 0, valid: 0, errors: 0, nightShifted: 0 }
     };
 
     try {
@@ -376,8 +392,13 @@ class MistralPDFReaderService {
       // Extraire les entrées brutes
       let rawEntries = this.extractPlanningEntries(markdown);
       
-      // *** v2.3 : Déduplication améliorée avec priorité aux codes explicites ***
-      result.entries = this.deduplicateAndMergeEntriesV2(rawEntries);
+      // v2.3 : Déduplication améliorée avec priorité aux codes explicites
+      let dedupedEntries = this.deduplicateAndMergeEntriesV2(rawEntries);
+      
+      // *** v2.4 : NOUVEAU - Appliquer le décalage des services de nuit ***
+      const { entries: shiftedEntries, nightShiftedCount } = this.applyNightShiftDateOffset(dedupedEntries);
+      result.entries = shiftedEntries;
+      result.stats.nightShifted = nightShiftedCount;
 
       result.stats.total = result.entries.length;
       result.stats.valid = result.entries.filter(e => e.isValid).length;
@@ -402,6 +423,177 @@ class MistralPDFReaderService {
       return result;
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════
+  // *** v2.4 - LOGIQUE DE DÉCALAGE DES SERVICES DE NUIT ***
+  // ═══════════════════════════════════════════════════════════════
+
+  /**
+   * Applique le décalage de date pour les services de nuit
+   * Les services commençant après 20h sont enregistrés sur le jour suivant (J+1)
+   * 
+   * Exemple:
+   * - CCU003 le 24/04/2025 (22:00-06:00) → enregistré le 25/04/2025
+   * - CCU003 le 25/04/2025 (22:00-06:00) → enregistré le 26/04/2025
+   * 
+   * @param {Array} entries - Entrées dédupliquées
+   * @returns {Object} { entries: Array, nightShiftedCount: number }
+   */
+  static applyNightShiftDateOffset(entries) {
+    console.log('🌙 Application du décalage des services de nuit...');
+    
+    let nightShiftedCount = 0;
+    const shiftedEntries = [];
+    
+    for (const entry of entries) {
+      // Vérifier si c'est un service de nuit qui doit être décalé
+      const shouldShift = this.shouldShiftToNextDay(entry);
+      
+      if (shouldShift) {
+        // Calculer la nouvelle date (J+1)
+        const newDate = this.addOneDay(entry.date);
+        const newDateDisplay = this.formatDateDisplay(newDate);
+        const newDayOfWeek = this.getDayOfWeek(newDate);
+        
+        console.log(`   🌙 ${entry.dateDisplay} ${entry.serviceCode} → décalé au ${newDateDisplay} (service de nuit)`);
+        
+        shiftedEntries.push({
+          ...entry,
+          date: newDate,
+          dateDisplay: newDateDisplay,
+          dayOfWeek: newDayOfWeek,
+          dateShiftedFromNight: true,
+          originalDate: entry.date,
+          originalDateDisplay: entry.dateDisplay
+        });
+        
+        nightShiftedCount++;
+      } else {
+        // Conserver l'entrée telle quelle
+        shiftedEntries.push({
+          ...entry,
+          dateShiftedFromNight: false
+        });
+      }
+    }
+    
+    // Trier par nouvelle date
+    shiftedEntries.sort((a, b) => a.date.localeCompare(b.date));
+    
+    // Re-déduplication après décalage (au cas où deux services tombent sur la même date)
+    const finalEntries = this.deduplicateAfterShift(shiftedEntries);
+    
+    console.log(`✅ Décalage nuits terminé: ${nightShiftedCount} service(s) décalé(s)`);
+    
+    return {
+      entries: finalEntries,
+      nightShiftedCount
+    };
+  }
+
+  /**
+   * Détermine si une entrée doit être décalée au jour suivant
+   */
+  static shouldShiftToNextDay(entry) {
+    // Critère 1: Le code est explicitement un service de nuit
+    if (this.NIGHT_SERVICE_CODES.has(entry.serviceCode)) {
+      return true;
+    }
+    
+    // Critère 2: Flag isNightService ET horaires commençant après le seuil
+    if (entry.isNightService && entry.horaires && entry.horaires.length > 0) {
+      const firstHoraire = entry.horaires[0];
+      const debutHeure = parseInt(firstHoraire.debut?.split(':')[0] || 0);
+      
+      if (debutHeure >= this.NIGHT_SHIFT_START_THRESHOLD) {
+        return true;
+      }
+    }
+    
+    // Critère 3: Code se terminant par 003 (convention SNCF pour nuit)
+    if (entry.serviceCode && entry.serviceCode.match(/003$/)) {
+      return true;
+    }
+    
+    // Critère 4: Horaires traversant minuit (début > 20h ET fin < 10h)
+    if (entry.horaires && entry.horaires.length > 0) {
+      for (const h of entry.horaires) {
+        const debut = parseInt(h.debut?.split(':')[0] || 0);
+        const fin = parseInt(h.fin?.split(':')[0] || 24);
+        
+        // Service qui commence tard et finit tôt = traverse minuit
+        if (debut >= this.NIGHT_SHIFT_START_THRESHOLD && fin <= 10) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Ajoute un jour à une date ISO (YYYY-MM-DD)
+   */
+  static addOneDay(dateISO) {
+    const date = new Date(dateISO + 'T12:00:00'); // Midi pour éviter problèmes de timezone
+    date.setDate(date.getDate() + 1);
+    
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    
+    return `${year}-${month}-${day}`;
+  }
+
+  /**
+   * Formate une date ISO en format d'affichage JJ/MM/YYYY
+   */
+  static formatDateDisplay(dateISO) {
+    const parts = dateISO.split('-');
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+
+  /**
+   * Obtient le jour de la semaine pour une date ISO
+   */
+  static getDayOfWeek(dateISO) {
+    const date = new Date(dateISO + 'T12:00:00');
+    const days = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+    return days[date.getDay()];
+  }
+
+  /**
+   * Re-déduplique après le décalage des nuits
+   * Si deux services tombent sur la même date, garder les deux (cas normal)
+   * sauf si c'est le même code service
+   */
+  static deduplicateAfterShift(entries) {
+    const byDateAndCode = new Map();
+    
+    for (const entry of entries) {
+      const key = `${entry.date}_${entry.serviceCode}`;
+      
+      if (!byDateAndCode.has(key)) {
+        byDateAndCode.set(key, entry);
+      } else {
+        // Fusionner si même date ET même code
+        const existing = byDateAndCode.get(key);
+        // Préférer l'entrée non décalée si conflit
+        if (entry.dateShiftedFromNight && !existing.dateShiftedFromNight) {
+          // Garder l'existante
+        } else if (!entry.dateShiftedFromNight && existing.dateShiftedFromNight) {
+          byDateAndCode.set(key, entry);
+        }
+        // Sinon garder la première
+      }
+    }
+    
+    return Array.from(byDateAndCode.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // DÉDUPLICATION v2.3 (conservée)
+  // ═══════════════════════════════════════════════════════════════
 
   /**
    * *** v2.3 - Déduplication AMÉLIORÉE ***
@@ -975,7 +1167,7 @@ class MistralPDFReaderService {
         method: 'pixtral-12b-2409',
         metadata: data.metadata || {},
         entries: [],
-        stats: { total: 0, valid: 0, errors: 0 }
+        stats: { total: 0, valid: 0, errors: 0, nightShifted: 0 }
       };
 
       if (data.entries && Array.isArray(data.entries)) {
@@ -997,8 +1189,13 @@ class MistralPDFReaderService {
         });
       }
 
-      // *** v2.3 : Appliquer la déduplication améliorée ***
-      result.entries = this.deduplicateAndMergeEntriesV2(result.entries);
+      // v2.3 : Appliquer la déduplication améliorée
+      let dedupedEntries = this.deduplicateAndMergeEntriesV2(result.entries);
+      
+      // *** v2.4 : Appliquer le décalage des services de nuit ***
+      const { entries: shiftedEntries, nightShiftedCount } = this.applyNightShiftDateOffset(dedupedEntries);
+      result.entries = shiftedEntries;
+      result.stats.nightShifted = nightShiftedCount;
 
       result.stats.total = result.entries.length;
       result.stats.valid = result.entries.filter(e => e.isValid).length;
@@ -1014,7 +1211,7 @@ class MistralPDFReaderService {
         method: 'pixtral-12b-2409',
         metadata: {},
         entries: [],
-        stats: { total: 0, valid: 0, errors: 1 }
+        stats: { total: 0, valid: 0, errors: 1, nightShifted: 0 }
       };
     }
   }
@@ -1093,8 +1290,8 @@ FORMAT JSON ATTENDU :
   }
 
   static async testExtraction(file) {
-    console.log('🧪 Test d\'extraction Mistral PDF Reader v2.3.0');
-    console.log('═'.repeat(50));
+    console.log('🧪 Test d\'extraction Mistral PDF Reader v2.4.0 (avec décalage nuits)');
+    console.log('═'.repeat(60));
     
     const result = await this.readPDF(file);
     
@@ -1107,11 +1304,12 @@ FORMAT JSON ATTENDU :
     
     result.entries.forEach((entry, i) => {
       const status = entry.codeFoundExplicitly ? '✅' : (entry.guessedByHoraires ? '🔮' : '❌');
-      console.log(`  ${i + 1}. ${entry.dateDisplay} (${entry.dayOfWeek}) - ${entry.serviceCode} ${status}`);
+      const nightShift = entry.dateShiftedFromNight ? ` 🌙(de ${entry.originalDateDisplay})` : '';
+      console.log(`  ${i + 1}. ${entry.dateDisplay} (${entry.dayOfWeek}) - ${entry.serviceCode} ${status}${nightShift}`);
     });
     
     console.log('\n📈 STATS:', result.stats);
-    console.log('═'.repeat(50));
+    console.log('═'.repeat(60));
     
     return result;
   }
