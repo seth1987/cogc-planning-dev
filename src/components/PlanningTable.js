@@ -193,7 +193,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
         </table>
       </div>
       
-      {/* Légende mise à jour - Nouvelles couleurs */}
+      {/* Légende mise à jour - Couleurs corrigées */}
       <div className="p-4 bg-gray-50 border-t">
         <h4 className="font-semibold text-sm mb-2">Légende des codes</h4>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs">
@@ -215,14 +215,14 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Repos :</p>
+            <p className="font-medium mb-1">Repos / Congés :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="inline-block w-4 h-4 bg-green-100 rounded"></span>
                 <span>RP = Repos</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-green-100 rounded"></span>
+                <span className="inline-block w-4 h-4 bg-yellow-400 rounded"></span>
                 <span>C = Congés</span>
               </div>
             </div>
@@ -235,7 +235,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                 <span>D = Disponible</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-yellow-400 rounded"></span>
+                <span className="inline-block w-4 h-4 bg-red-200 rounded"></span>
                 <span>MA = Maladie</span>
               </div>
               <div className="flex items-center gap-2">
