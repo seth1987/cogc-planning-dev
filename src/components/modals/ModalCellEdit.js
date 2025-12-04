@@ -1,15 +1,28 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
-import { CODE_COLORS, SERVICE_CODES, POSTES_CODES } from '../../constants/config';
+import { CODE_COLORS, SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES } from '../../constants/config';
 
 const ModalCellEdit = ({ selectedCell, agentsData, onUpdateCell, onClose }) => {
   const [tempService, setTempService] = useState('');
   const [tempPoste, setTempPoste] = useState('');
+  const [tempPosteSupplementaire, setTempPosteSupplementaire] = useState('');
 
   if (!selectedCell) return null;
 
   const handleSave = () => {
-    const planningData = tempPoste ? { service: tempService, poste: tempPoste } : tempService;
+    let planningData;
+    
+    // Construire les données de planning avec service, poste et poste supplémentaire
+    if (tempPoste || tempPosteSupplementaire) {
+      planningData = { 
+        service: tempService,
+        ...(tempPoste && { poste: tempPoste }),
+        ...(tempPosteSupplementaire && { posteSupplementaire: tempPosteSupplementaire })
+      };
+    } else {
+      planningData = tempService;
+    }
+    
     onUpdateCell(selectedCell.agent, selectedCell.day, planningData);
     onClose();
   };
@@ -26,7 +39,7 @@ const ModalCellEdit = ({ selectedCell, agentsData, onUpdateCell, onClose }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
           <div>
             <h3 className="text-lg font-semibold">{selectedCell.agent}</h3>
@@ -37,6 +50,7 @@ const ModalCellEdit = ({ selectedCell, agentsData, onUpdateCell, onClose }) => {
           </button>
         </div>
         
+        {/* Section Service / Horaire */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">Service / Horaire</label>
           <div className="grid grid-cols-3 gap-2">
@@ -57,6 +71,7 @@ const ModalCellEdit = ({ selectedCell, agentsData, onUpdateCell, onClose }) => {
           </div>
         </div>
 
+        {/* Section Poste (uniquement pour agents réserve) */}
         {isReserveAgent && (
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">Poste (Réserve)</label>
@@ -77,6 +92,34 @@ const ModalCellEdit = ({ selectedCell, agentsData, onUpdateCell, onClose }) => {
             </div>
           </div>
         )}
+
+        {/* Section Postes figés / Postes supplémentaires (pour TOUS les agents) */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Postes figés / Postes supplémentaires
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => (
+              <button
+                key={code}
+                onClick={() => setTempPosteSupplementaire(tempPosteSupplementaire === code ? '' : code)}
+                className={`p-2 rounded text-center text-xs transition-all ${
+                  tempPosteSupplementaire === code 
+                    ? 'ring-2 ring-purple-500 bg-purple-100 text-purple-800'
+                    : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                }`}
+              >
+                <div className="font-semibold italic">{code}</div>
+                <div className="text-xs mt-1 not-italic">{desc.replace('Poste ', '').replace(' supplémentaire', '')}</div>
+              </button>
+            ))}
+          </div>
+          {tempPosteSupplementaire && (
+            <p className="text-xs text-purple-600 mt-2 italic">
+              Le poste {tempPosteSupplementaire} sera affiché en italique dans la cellule
+            </p>
+          )}
+        </div>
 
         <div className="flex justify-between">
           <button 
