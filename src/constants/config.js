@@ -22,38 +22,60 @@ export const JOURS_FERIES_2025 = {
 };
 
 export const CODE_COLORS = {
-  '-': 'bg-blue-100 text-blue-800 font-semibold',
-  'O': 'bg-orange-100 text-orange-800 font-semibold', 
-  'X': 'bg-purple-100 text-purple-800 font-semibold',
+  // === SERVICES (-, O, X) : PAS DE COULEUR ===
+  '-': '',
+  'O': '', 
+  'X': '',
+  
+  // === REPOS ET CONGES ===
   'RP': 'bg-green-100 text-green-700',
   'RU': 'bg-green-100 text-green-700',
   'C': 'bg-green-100 text-green-700',
-  'MA': 'bg-red-100 text-red-700',
+  
+  // === MALADIE : JAUNE/OR ===
+  'MA': 'bg-yellow-400 text-yellow-900 font-semibold',
+  
+  // === INACTIF ===
   'I': 'bg-pink-100 text-pink-700',
-  'D': 'bg-yellow-100 text-yellow-700',
+  
+  // === DISPO : BLEU ===
+  'D': 'bg-blue-200 text-blue-800',
+  'DISPO': 'bg-blue-200 text-blue-800',
+  
+  // === NON UTILISE ===
   'NU': 'bg-gray-100 text-gray-500',
-  'FO': 'bg-indigo-100 text-indigo-700',
-  'VL': 'bg-indigo-100 text-indigo-700', 
-  'VM': 'bg-indigo-100 text-indigo-700',
-  'HAB': 'bg-indigo-100 text-indigo-700',
-  'VT': 'bg-indigo-100 text-indigo-700',
-  'EIA': 'bg-indigo-100 text-indigo-700',
+  
+  // === HAB/FO : ORANGE ===
+  'FO': 'bg-orange-200 text-orange-800',
+  'VL': 'bg-orange-200 text-orange-800', 
+  'VM': 'bg-orange-200 text-orange-800',
+  'HAB': 'bg-orange-200 text-orange-800',
+  'HAB-QF': 'bg-orange-200 text-orange-800',
+  'VT': 'bg-orange-200 text-orange-800',
+  'EIA': 'bg-orange-200 text-orange-800',
+  
+  // === SPECIAL ===
   'TQ': 'bg-pink-500 text-white',
   'figé': 'bg-gray-500 text-white',
-  'CRC': 'bg-rose-100 text-rose-800 font-semibold',
-  'ACR': 'bg-rose-100 text-rose-800 font-semibold',
-  'RC': 'bg-blue-100 text-blue-800 font-semibold',
-  'RO': 'bg-blue-100 text-blue-800 font-semibold',
-  'CCU': 'bg-emerald-100 text-emerald-800 font-semibold',
-  'RE': 'bg-emerald-100 text-emerald-800 font-semibold',
-  'CAC': 'bg-amber-100 text-amber-800 font-semibold',
-  'SOUF': 'bg-cyan-100 text-cyan-800 font-semibold',
+  'INACTIN': 'bg-gray-300 text-gray-700',
+  
+  // === POSTES DE RESERVE : PAS DE COULEUR ===
+  'CRC': '',
+  'ACR': '',
+  'RC': '',
+  'RO': '',
+  'CCU': '',
+  'RE': '',
+  'CAC': '',
+  'SOUF': '',
+  
+  // === VIDE ===
   '': 'bg-gray-50 text-gray-400'
 };
 
 export const ORDRE_GROUPES = [
   'CRC - ROULEMENT CRC COGC',
-  'ACR - ROULEMENT ACR COGC',  // Corrigé de GOGC à COGC
+  'ACR - ROULEMENT ACR COGC',
   'RC - ROULEMENT REGULATEUR CENTRE',
   'RO - ROULEMENT REGULATEUR TABLE OUEST',
   'RESERVE REGULATEUR PN',
@@ -68,7 +90,7 @@ export const ORDRE_GROUPES = [
 export const GROUPES_PAR_STATUT = {
   roulement: [
     'CRC - ROULEMENT CRC COGC',
-    'ACR - ROULEMENT ACR COGC',  // Corrigé de GOGC à COGC
+    'ACR - ROULEMENT ACR COGC',
     'RC - ROULEMENT REGULATEUR CENTRE',
     'RO - ROULEMENT REGULATEUR TABLE OUEST',
     'CCU - ROULEMENT CCU DENFERT',
