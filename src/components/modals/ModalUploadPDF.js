@@ -1,7 +1,7 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
 // Version 2.0 - Utilise PDFServiceWrapper avec fallback automatique
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info, Zap } from 'lucide-react';
+import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info, Zap, AlertTriangle } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
 import mappingService from '../../services/mappingService';
 import planningImportService from '../../services/planningImportService';
@@ -437,9 +437,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           {currentStep === 1 && (
             <div>
               {/* Information sur le nouveau système */}
-              <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-6">
+              <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
                 <div className="flex">
-                  <Zap className="text-green-600 mr-2" size={20} />
+                  <Zap className="text-green-600 mr-2 flex-shrink-0" size={20} />
                   <div>
                     <h3 className="font-semibold text-green-900">Nouveau système d'extraction v2.0</h3>
                     <p className="text-green-800">Double méthode avec fallback automatique</p>
@@ -453,10 +453,27 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                 </div>
               </div>
 
+              {/* ⚠️ AVERTISSEMENT VÉRIFICATION - NOUVEAU BLOC */}
+              <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-4">
+                <div className="flex">
+                  <AlertTriangle className="text-amber-600 mr-2 flex-shrink-0" size={20} />
+                  <div>
+                    <h3 className="font-semibold text-amber-900">⚠️ Vérification recommandée</h3>
+                    <p className="text-amber-800 text-sm mt-1">
+                      Le système détecte automatiquement les services depuis les bulletins PDF, 
+                      mais <strong>il est vivement recommandé de vérifier l'exactitude des données extraites</strong> avant de valider l'import.
+                    </p>
+                    <p className="text-amber-700 text-xs mt-2">
+                      L'étape de validation (étape 2) vous permet de corriger les éventuelles erreurs d'extraction.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Information sur le format attendu */}
               <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
                 <div className="flex">
-                  <Info className="text-blue-600 mr-2" size={20} />
+                  <Info className="text-blue-600 mr-2 flex-shrink-0" size={20} />
                   <div>
                     <h3 className="font-semibold text-blue-900">Format de bulletin SNCF attendu</h3>
                     <p className="text-blue-800 text-sm">Le système reconnaît automatiquement :</p>
