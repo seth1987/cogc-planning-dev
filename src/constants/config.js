@@ -47,8 +47,6 @@ export const CODE_COLORS = {
   'CCU': 'bg-emerald-100 text-emerald-800 font-semibold',
   'RE': 'bg-emerald-100 text-emerald-800 font-semibold',
   'CAC': 'bg-amber-100 text-amber-800 font-semibold',
-  'S/S': 'bg-purple-100 text-purple-800 font-semibold',
-  'CENT': 'bg-teal-100 text-teal-800 font-semibold',
   'SOUF': 'bg-cyan-100 text-cyan-800 font-semibold',
   '': 'bg-gray-50 text-gray-400'
 };
@@ -99,7 +97,8 @@ export const SERVICE_CODES = [
   { code: 'FO', desc: 'Formation' }
 ];
 
-export const POSTES_CODES = ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'S/S', 'CENT', 'SOUF'];
+// Postes pour agents réserve (CENT et S/S supprimés)
+export const POSTES_CODES = ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'SOUF'];
 
 // Postes figés / Postes supplémentaires (disponibles pour réserve ET roulement)
 export const POSTES_SUPPLEMENTAIRES = [
