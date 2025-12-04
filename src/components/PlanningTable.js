@@ -45,7 +45,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth);
     
     let cellContent = '';
-    let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[60px] ';
+    let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[60px] min-h-[45px] ';
     
     if (planningData) {
       if (typeof planningData === 'string') {
@@ -54,16 +54,25 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
       } else if (typeof planningData === 'object') {
         const service = planningData.service || '';
         const poste = planningData.poste || '';
-        const posteSupplementaire = planningData.posteSupplementaire || '';
+        // Support pour tableau de postes supplémentaires OU ancien format avec un seul
+        const postesSupplementaires = planningData.postesSupplementaires || 
+          (planningData.posteSupplementaire ? [planningData.posteSupplementaire] : []);
         
         cellContent = (
-          <div className="flex flex-col relative">
-            <span>{service}</span>
-            {poste && <span className="text-xs font-bold">{poste}</span>}
-            {posteSupplementaire && (
-              <span className="text-xs italic text-purple-700 opacity-80 absolute bottom-0 right-0 text-[10px]">
-                {posteSupplementaire}
-              </span>
+          <div className="flex flex-col h-full justify-between">
+            {/* Partie haute : Service et Poste */}
+            <div className="flex flex-col">
+              <span className="font-medium">{service}</span>
+              {poste && <span className="text-xs font-bold">{poste}</span>}
+            </div>
+            
+            {/* Partie basse : Postes supplémentaires en italique */}
+            {postesSupplementaires.length > 0 && (
+              <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
+                <span className="text-[9px] italic text-purple-700 font-medium">
+                  {postesSupplementaires.join(' ')}
+                </span>
+              </div>
             )}
           </div>
         );
@@ -224,10 +233,10 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
             <p className="font-medium mb-1">Postes supplémentaires :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-purple-100 rounded italic text-[8px] flex items-center justify-center text-purple-700">+</span>
-                <span className="italic">+ACR, +RO, +RE...</span>
+                <span className="inline-block px-1 border-t border-dashed border-gray-400 text-[8px] italic text-purple-700">+ACR +RO</span>
               </div>
-              <p className="text-gray-500 text-xs">Affichés en italique</p>
+              <p className="text-gray-500 text-xs">En bas de cellule, italique</p>
+              <p className="text-gray-500 text-xs">Sélection multiple possible</p>
             </div>
           </div>
         </div>
