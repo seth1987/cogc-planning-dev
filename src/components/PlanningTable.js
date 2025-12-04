@@ -54,10 +54,17 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
       } else if (typeof planningData === 'object') {
         const service = planningData.service || '';
         const poste = planningData.poste || '';
+        const posteSupplementaire = planningData.posteSupplementaire || '';
+        
         cellContent = (
-          <div className="flex flex-col">
+          <div className="flex flex-col relative">
             <span>{service}</span>
             {poste && <span className="text-xs font-bold">{poste}</span>}
+            {posteSupplementaire && (
+              <span className="text-xs italic text-purple-700 opacity-80 absolute bottom-0 right-0 text-[10px]">
+                {posteSupplementaire}
+              </span>
+            )}
           </div>
         );
         cellClass += CODE_COLORS[service] || 'bg-gray-100 text-gray-600';
@@ -166,10 +173,10 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
         </table>
       </div>
       
-      {/* Légende mise à jour (sans "Postes (réserve)") */}
+      {/* Légende mise à jour */}
       <div className="p-4 bg-gray-50 border-t">
         <h4 className="font-semibold text-sm mb-2">Légende des codes</h4>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
           <div>
             <p className="font-medium mb-1">Services :</p>
             <div className="space-y-1">
@@ -211,6 +218,16 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                 <span className="inline-block w-4 h-4 bg-red-100 rounded"></span>
                 <span>MA = Maladie</span>
               </div>
+            </div>
+          </div>
+          <div>
+            <p className="font-medium mb-1">Postes supplémentaires :</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-4 h-4 bg-purple-100 rounded italic text-[8px] flex items-center justify-center text-purple-700">+</span>
+                <span className="italic">+ACR, +RO, +RE...</span>
+              </div>
+              <p className="text-gray-500 text-xs">Affichés en italique</p>
             </div>
           </div>
         </div>
