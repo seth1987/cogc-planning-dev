@@ -1,5 +1,5 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info } from 'lucide-react';
 import MistralPDFReaderService from '../../services/MistralPDFReaderService';
 import mappingService from '../../services/mappingService';
@@ -7,6 +7,7 @@ import planningImportService from '../../services/planningImportService';
 import PDFUploadStep from '../pdf/PDFUploadStep';
 import PDFValidationStep from '../pdf/PDFValidationStep';
 import PDFImportResult from '../pdf/PDFImportResult';
+import { supabase } from '../../services/supabaseService';
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   // États
@@ -19,11 +20,15 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({ total: 0, mapped: 0 });
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
+  
+  // Mapping des codes depuis la BDD
+  const codesMapping = useRef({});
 
-  // Charger les stats au montage
+  // Charger les stats et le mapping au montage
   useEffect(() => {
     if (isOpen) {
       loadMappingStats();
+      loadCodesMapping();
     }
   }, [isOpen]);
 
@@ -31,6 +36,36 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const loadMappingStats = async () => {
     const mappingStats = await mappingService.getStats();
     setStats(mappingStats);
+  };
+
+  // Charger le mapping des codes depuis la BDD
+  const loadCodesMapping = async () => {
+    try {
+      console.log('🔄 Chargement du mapping codes depuis la BDD...');
+      const { data, error } = await supabase
+        .from('codes_services')
+        .select('code, poste_code, service_code, description');
+      
+      if (error) {
+        console.error('❌ Erreur chargement mapping:', error);
+        return;
+      }
+      
+      // Construire le mapping { CODE: { poste, service, desc } }
+      const mapping = {};
+      data.forEach(row => {
+        mapping[row.code.toUpperCase()] = {
+          poste: row.poste_code,
+          service: row.service_code,
+          description: row.description
+        };
+      });
+      
+      codesMapping.current = mapping;
+      console.log(`✅ ${Object.keys(mapping).length} codes chargés depuis la BDD`);
+    } catch (err) {
+      console.error('❌ Erreur chargement mapping:', err);
+    }
   };
 
   // Réinitialiser le modal
@@ -46,8 +81,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   /**
    * Détermine le type de service (Matin/Soir/Nuit) à partir des horaires extraits
-   * @param {Array} horaires - Tableau d'horaires [{debut: "HH:MM", fin: "HH:MM"}, ...]
-   * @returns {string} - Code service: '-' (Matin), 'O' (Soir), 'X' (Nuit)
+   * UNIQUEMENT utilisé comme fallback si le code n'est pas dans la BDD
    */
   const determineServiceTypeFromHoraires = (horaires) => {
     if (!horaires || horaires.length === 0) {
@@ -67,26 +101,17 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     const debutMinutes = heures * 60 + (minutes || 0);
 
     // Logique de détermination basée sur l'heure de début
-    // Matin: 04:00 - 10:00 (240 - 600 minutes)
-    // Soir: 10:00 - 18:00 (600 - 1080 minutes)
-    // Nuit: 18:00 - 04:00 (1080 - 240 minutes, en passant par minuit)
-
     if (debutMinutes >= 240 && debutMinutes < 600) {
-      // 04:00 - 10:00 → Matin
-      return '-';
+      return '-'; // 04:00 - 10:00 → Matin
     } else if (debutMinutes >= 600 && debutMinutes < 1080) {
-      // 10:00 - 18:00 → Soir
-      return 'O';
+      return 'O'; // 10:00 - 18:00 → Soir
     } else {
-      // 18:00 - 04:00 → Nuit
-      return 'X';
+      return 'X'; // 18:00 - 04:00 → Nuit
     }
   };
 
   /**
    * Transforme les données du MistralPDFReaderService vers le format attendu par PDFValidationStep
-   * MistralPDFReaderService retourne: { metadata: { agent: "NOM PRENOM" }, entries: [...] }
-   * PDFValidationStep attend: { agent: { nom, prenom }, planning: [...] }
    */
   const transformParsedDataForValidation = (parsed) => {
     console.log('🔄 Transformation des données pour validation...');
@@ -97,13 +122,11 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     let prenom = '';
     
     if (parsed.metadata?.agent) {
-      // Nettoyer la chaîne (enlever \n et caractères parasites)
       const agentClean = parsed.metadata.agent
         .replace(/\n/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
       
-      // Séparer nom et prénom (format: "NOM PRENOM" ou "NOM PRENOM\nN")
       const parts = agentClean.split(' ').filter(p => p.length > 1);
       if (parts.length >= 2) {
         nom = parts[0];
@@ -115,22 +138,35 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     
     // Transformer entries en planning avec le format attendu
     const planning = (parsed.entries || []).map(entry => {
-      // Déterminer le type de service à partir des horaires
-      const serviceType = entry.isNightService ? 'X' : determineServiceTypeFromHoraires(entry.horaires);
+      // Récupérer le mapping depuis la BDD
+      const upperCode = (entry.serviceCode || '').toUpperCase();
+      const bddMapping = codesMapping.current[upperCode];
       
-      // Mapper les codes spéciaux qui ne dépendent pas des horaires
-      const simpleCode = mapServiceCodeToSimple(entry.serviceCode, serviceType);
+      let serviceCode, posteCode, description;
       
-      console.log(`   📋 ${entry.date} ${entry.serviceCode} → ${simpleCode} (horaires: ${JSON.stringify(entry.horaires?.map(h => h.debut + '-' + h.fin))})`);
+      if (bddMapping) {
+        // ✅ Code trouvé dans la BDD → utiliser les valeurs de la BDD
+        serviceCode = bddMapping.service;
+        posteCode = bddMapping.poste;
+        description = bddMapping.description || entry.serviceLabel || entry.serviceCode;
+        console.log(`   📋 ${entry.date} ${entry.serviceCode} → ${serviceCode} (BDD: poste=${posteCode})`);
+      } else {
+        // ⚠️ Code non trouvé → fallback sur la logique des horaires
+        const serviceTypeFromHoraires = entry.isNightService ? 'X' : determineServiceTypeFromHoraires(entry.horaires);
+        serviceCode = mapServiceCodeToSimpleFallback(entry.serviceCode, serviceTypeFromHoraires);
+        posteCode = extractPosteCodeFallback(entry.serviceCode);
+        description = entry.serviceLabel || entry.description || entry.serviceCode;
+        console.log(`   ⚠️ ${entry.date} ${entry.serviceCode} → ${serviceCode} (fallback horaires, poste=${posteCode})`);
+      }
       
       return {
         date: entry.date || entry.dateISO,
-        service_code: simpleCode,
-        poste_code: extractPosteCode(entry.serviceCode),
+        service_code: serviceCode,
+        poste_code: posteCode,
         original_code: entry.serviceCode,
-        description: entry.serviceLabel || entry.description || entry.serviceCode,
+        description: description,
         horaires: entry.horaires || [],
-        isNightService: entry.isNightService || serviceType === 'X'
+        isNightService: entry.isNightService || serviceCode === 'X'
       };
     });
     
@@ -147,7 +183,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       },
       dateEdition: parsed.metadata?.dateEdition || null,
       parsing_mode: parsed.method || 'mistral-ocr',
-      original_data: parsed // Garder les données originales pour référence
+      original_data: parsed
     };
     
     console.log('✅ Données transformées:', transformed);
@@ -158,12 +194,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   };
 
   /**
-   * Mappe un code service complet (CCU001, ACR002, etc.) vers un code simple (-, O, X, RP, etc.)
-   * @param {string} code - Code service SNCF original
-   * @param {string} serviceTypeFromHoraires - Type déterminé par les horaires (-, O, X)
-   * @returns {string} - Code simple pour l'affichage
+   * Fallback: Mappe un code service vers un code simple SI pas trouvé dans la BDD
    */
-  const mapServiceCodeToSimple = (code, serviceTypeFromHoraires) => {
+  const mapServiceCodeToSimpleFallback = (code, serviceTypeFromHoraires) => {
     if (!code) return 'RP';
     
     const upperCode = code.toUpperCase();
@@ -179,33 +212,25 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     if (upperCode === 'MAL' || upperCode === 'MA') return 'MA';
     if (upperCode === 'VISIMED' || upperCode === 'VMT') return 'VISIMED';
     
-    // Codes de service opérationnels (CCU, CRC, ACR, CENT, REO)
-    // → Utiliser le type déterminé par les horaires
-    if (upperCode.startsWith('CCU') || 
-        upperCode.startsWith('CRC') || 
-        upperCode.startsWith('ACR') || 
-        upperCode.startsWith('CENT') || 
-        upperCode.startsWith('REO')) {
-      return serviceTypeFromHoraires || '-';
-    }
-    
-    // Par défaut, utiliser le type des horaires si disponible
+    // Codes de service opérationnels → utiliser le type des horaires
     return serviceTypeFromHoraires || '-';
   };
 
   /**
-   * Extrait le code poste depuis un code service complet
+   * Fallback: Extrait le code poste SI pas trouvé dans la BDD
    */
-  const extractPosteCode = (code) => {
+  const extractPosteCodeFallback = (code) => {
     if (!code) return null;
     
     const upperCode = code.toUpperCase();
     
-    if (upperCode.startsWith('CCU')) return 'CCU';
+    if (upperCode.startsWith('CCU')) return 'RE'; // RE = Régulateur Parc
     if (upperCode.startsWith('CRC')) return 'CRC';
     if (upperCode.startsWith('ACR')) return 'ACR';
-    if (upperCode.startsWith('CENT')) return 'SOUF';
+    if (upperCode.startsWith('CENT') || upperCode.startsWith('SOUF')) return 'SOUF';
     if (upperCode.startsWith('REO')) return 'REO';
+    if (upperCode.startsWith('RC')) return 'RC';
+    if (upperCode.startsWith('RO')) return 'RO';
     
     return null;
   };
