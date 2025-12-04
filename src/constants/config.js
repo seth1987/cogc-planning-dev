@@ -27,16 +27,19 @@ export const CODE_COLORS = {
   'O': '', 
   'X': '',
   
-  // === REPOS ET CONGES ===
+  // === REPOS ===
   'RP': 'bg-green-100 text-green-700',
   'RU': 'bg-green-100 text-green-700',
-  'C': 'bg-green-100 text-green-700',
   
-  // === MALADIE : JAUNE/OR ===
-  'MA': 'bg-yellow-400 text-yellow-900 font-semibold',
+  // === CONGES : JAUNE/OR ===
+  'C': 'bg-yellow-400 text-yellow-900 font-semibold',
+  
+  // === MALADIE : ROUGE ===
+  'MA': 'bg-red-200 text-red-800 font-semibold',
   
   // === INACTIF ===
   'I': 'bg-pink-100 text-pink-700',
+  'INACTIN': 'bg-gray-300 text-gray-700',
   
   // === DISPO : BLEU ===
   'D': 'bg-blue-200 text-blue-800',
@@ -57,7 +60,6 @@ export const CODE_COLORS = {
   // === SPECIAL ===
   'TQ': 'bg-pink-500 text-white',
   'figé': 'bg-gray-500 text-white',
-  'INACTIN': 'bg-gray-300 text-gray-700',
   
   // === POSTES DE RESERVE : PAS DE COULEUR ===
   'CRC': '',
