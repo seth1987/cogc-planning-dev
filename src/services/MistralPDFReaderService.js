@@ -3,9 +3,12 @@
  * Service de lecture de PDF SNCF utilisant l'API Mistral OCR
  * Optimisé pour les bulletins de commande COGC Paris Nord
  * 
- * @version 2.1.0
+ * @version 2.2.0
  * @date 2025-12-04
  * @changelog 
+ *   - 2.2.0: FIX - Élimination des doublons INCONNU par date
+ *   - 2.2.0: Fusion intelligente des entrées de même date
+ *   - 2.2.0: Amélioration guessCodeByHoraires avec postes
  *   - 2.1.0: Ajout de TOUS les 69 codes SNCF depuis la BDD
  *   - 2.1.0: Amélioration détection par descriptions et horaires
  *   - 2.1.0: Fallback intelligent basé sur les horaires
@@ -334,7 +337,7 @@ class MistralPDFReaderService {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // PARSING DU MARKDOWN OCR - AMÉLIORÉ
+  // PARSING DU MARKDOWN OCR - AMÉLIORÉ v2.2
   // ═══════════════════════════════════════════════════════════════
 
   static parseMarkdownToSNCF(markdown, method) {
@@ -350,7 +353,12 @@ class MistralPDFReaderService {
 
     try {
       result.metadata = this.extractAgentMetadata(markdown);
-      result.entries = this.extractPlanningEntries(markdown);
+      
+      // Extraire les entrées brutes
+      let rawEntries = this.extractPlanningEntries(markdown);
+      
+      // *** NOUVEAU v2.2 : Dédupliquer et fusionner par date ***
+      result.entries = this.deduplicateAndMergeEntries(rawEntries);
 
       result.stats.total = result.entries.length;
       result.stats.valid = result.entries.filter(e => e.isValid).length;
@@ -359,7 +367,7 @@ class MistralPDFReaderService {
       // Log des codes non reconnus pour debug
       const unknownCodes = result.entries.filter(e => e.serviceCode === 'INCONNU');
       if (unknownCodes.length > 0) {
-        console.warn('⚠️ Codes non reconnus:', unknownCodes.map(e => ({
+        console.warn('⚠️ Codes non reconnus après fusion:', unknownCodes.map(e => ({
           date: e.dateDisplay,
           rawText: e.rawText?.substring(0, 100)
         })));
@@ -374,6 +382,112 @@ class MistralPDFReaderService {
       result.error = error.message;
       return result;
     }
+  }
+
+  /**
+   * *** NOUVEAU v2.2 ***
+   * Déduplique et fusionne les entrées par date
+   * - Élimine les entrées INCONNU quand une entrée valide existe pour la même date
+   * - Fusionne les horaires des entrées de même date+service
+   */
+  static deduplicateAndMergeEntries(entries) {
+    console.log(`🔄 Déduplication de ${entries.length} entrées...`);
+    
+    // Grouper par date
+    const byDate = new Map();
+    
+    for (const entry of entries) {
+      const date = entry.date;
+      if (!byDate.has(date)) {
+        byDate.set(date, []);
+      }
+      byDate.get(date).push(entry);
+    }
+    
+    const result = [];
+    
+    for (const [date, dateEntries] of byDate) {
+      // Séparer les entrées valides et INCONNU
+      const validEntries = dateEntries.filter(e => e.serviceCode !== 'INCONNU' && e.isValid);
+      const unknownEntries = dateEntries.filter(e => e.serviceCode === 'INCONNU' || !e.isValid);
+      
+      if (validEntries.length > 0) {
+        // Il y a des entrées valides - les garder et ignorer les INCONNU
+        console.log(`   📅 ${date}: ${validEntries.length} valide(s), ${unknownEntries.length} INCONNU ignoré(s)`);
+        
+        // Fusionner par code service si plusieurs avec le même code
+        const byServiceCode = new Map();
+        for (const entry of validEntries) {
+          const key = entry.serviceCode;
+          if (byServiceCode.has(key)) {
+            // Fusionner les horaires
+            const existing = byServiceCode.get(key);
+            if (entry.horaires && entry.horaires.length > 0) {
+              existing.horaires = [...(existing.horaires || []), ...entry.horaires];
+            }
+            // Garder le meilleur rawText
+            if (entry.rawText && entry.rawText.length > (existing.rawText?.length || 0)) {
+              existing.rawText = entry.rawText;
+            }
+          } else {
+            byServiceCode.set(key, { ...entry });
+          }
+        }
+        
+        result.push(...byServiceCode.values());
+        
+      } else if (unknownEntries.length > 0) {
+        // Que des INCONNU - essayer de deviner avec les horaires fusionnés
+        console.log(`   📅 ${date}: ${unknownEntries.length} INCONNU - tentative de récupération`);
+        
+        // Fusionner tous les horaires
+        const allHoraires = [];
+        const allRawText = [];
+        let bestDayOfWeek = null;
+        
+        for (const entry of unknownEntries) {
+          if (entry.horaires) allHoraires.push(...entry.horaires);
+          if (entry.rawText) allRawText.push(entry.rawText);
+          if (entry.dayOfWeek) bestDayOfWeek = entry.dayOfWeek;
+        }
+        
+        // Tenter de deviner le code avec tous les horaires
+        let guessedCode = this.guessCodeByHoraires(allHoraires);
+        
+        // Tenter aussi par description dans le texte fusionné
+        if (!guessedCode) {
+          const fullText = allRawText.join(' ');
+          guessedCode = this.findCodeByDescription(fullText);
+        }
+        
+        if (guessedCode) {
+          console.log(`      🔮 Code deviné: ${guessedCode}`);
+          result.push({
+            date: date,
+            dateDisplay: unknownEntries[0].dateDisplay,
+            dayOfWeek: bestDayOfWeek,
+            serviceCode: guessedCode,
+            serviceLabel: this.getServiceLabel(guessedCode),
+            horaires: allHoraires,
+            isNightService: this.isNightService(allHoraires),
+            isValid: this.VALID_SERVICE_CODES.has(guessedCode),
+            hasError: false,
+            rawText: allRawText.join(' | '),
+            guessedByHoraires: true
+          });
+        } else {
+          // Garder une seule entrée INCONNU (la première)
+          console.log(`      ❌ Impossible de deviner - gardé 1 entrée INCONNU`);
+          result.push(unknownEntries[0]);
+        }
+      }
+    }
+    
+    // Trier par date
+    result.sort((a, b) => a.date.localeCompare(b.date));
+    
+    console.log(`✅ Déduplication terminée: ${entries.length} → ${result.length} entrées`);
+    return result;
   }
 
   static extractAgentMetadata(text) {
@@ -643,7 +757,8 @@ class MistralPDFReaderService {
   }
 
   /**
-   * Devine le code service basé sur les horaires
+   * Devine le code service basé sur les horaires - AMÉLIORÉ v2.2
+   * Retourne le code complet avec poste si possible
    */
   static guessCodeByHoraires(horaires) {
     if (!horaires || horaires.length === 0) return null;
@@ -776,6 +891,9 @@ class MistralPDFReaderService {
         });
       }
 
+      // *** NOUVEAU v2.2 : Appliquer la déduplication aussi pour Vision ***
+      result.entries = this.deduplicateAndMergeEntries(result.entries);
+
       result.stats.total = result.entries.length;
       result.stats.valid = result.entries.filter(e => e.isValid).length;
       result.stats.errors = result.entries.filter(e => e.hasError).length;
@@ -869,7 +987,7 @@ FORMAT JSON ATTENDU :
   }
 
   static async testExtraction(file) {
-    console.log('🧪 Test d\'extraction Mistral PDF Reader v2.1.0');
+    console.log('🧪 Test d\'extraction Mistral PDF Reader v2.2.0');
     console.log('═'.repeat(50));
     
     const result = await this.readPDF(file);
