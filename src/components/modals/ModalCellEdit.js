@@ -2,19 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3 } from 'lucide-react';
 import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES } from '../../constants/config';
 
-// Couleurs UNIQUEMENT pour la modal d'édition (pas le planning)
-// - MA en rouge
-// - C en jaune/or
-// - HAB/FO en orange
-// - D (DISPO) en bleu
+// Couleurs UNIQUEMENT pour la modal d'édition 
+// Alignées avec config.js :
+// - MA en JAUNE/OR
+// - C (congés) en vert
+// - HAB/FO en ORANGE
+// - D (DISPO) en BLEU
 // - Pas de couleur pour -, O, X et les postes de réserve
 const MODAL_COLORS = {
-  'MA': 'bg-red-200 text-red-800',
-  'C': 'bg-yellow-200 text-yellow-800',
-  'HAB': 'bg-orange-200 text-orange-800',
-  'FO': 'bg-orange-200 text-orange-800',
-  'D': 'bg-blue-200 text-blue-800',
-  // Les autres codes n'ont pas de couleur (gris par défaut)
+  'MA': 'bg-yellow-400 text-yellow-900 font-semibold',    // Maladie = Jaune/Or
+  'C': 'bg-green-100 text-green-800',                      // Congés = Vert
+  'RP': 'bg-green-100 text-green-800',                     // Repos = Vert
+  'RU': 'bg-green-100 text-green-800',                     // Repos = Vert
+  'HAB': 'bg-orange-200 text-orange-800',                  // Habilitation = Orange
+  'FO': 'bg-orange-200 text-orange-800',                   // Formation = Orange
+  'D': 'bg-blue-200 text-blue-800',                        // Disponible = Bleu
+  'I': 'bg-pink-100 text-pink-700',                        // Inactif
+  'NU': 'bg-gray-200 text-gray-600',                       // Non Utilisé
+  // Les autres codes (-, O, X) n'ont pas de couleur (gris par défaut)
 };
 
 /**
@@ -160,7 +165,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             </button>
           </div>
           
-          {/* Section Service / Horaire - SANS COULEUR sauf MA, C, HAB, FO, D */}
+          {/* Section Service / Horaire */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">Service / Horaire</label>
             <div className="grid grid-cols-3 gap-2">
