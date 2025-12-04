@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
  * Hook personnalisé pour la gestion centralisée des modals
  * Simplifie l'ouverture/fermeture et le passage de données aux modals
  * 
+ * @version 2.0.0 - Fix bouton "Nouvel Agent"
  * @returns {Object} État et fonctions de gestion des modals
  */
 export function useModals() {
@@ -23,7 +24,7 @@ export function useModals() {
   /**
    * Ouvre un modal spécifique
    * @param {string} modalName - Nom du modal à ouvrir
-   * @param {Object} data - Données optionnelles à associer
+   * @param {Object|null} data - Données optionnelles à associer (null = mode création)
    */
   const openModal = useCallback((modalName, data = null) => {
     setModals(prev => ({
@@ -31,13 +32,15 @@ export function useModals() {
       [modalName]: true
     }));
     
-    // Associer les données si fournies
-    if (data) {
-      if (modalName === 'cellEdit') {
-        setSelectedCell(data);
-      } else if (['editAgent', 'habilitations'].includes(modalName)) {
-        setSelectedAgent(data);
-      }
+    // Associer les données selon le modal
+    // IMPORTANT: Toujours mettre à jour même si data est null (mode création)
+    if (modalName === 'cellEdit') {
+      setSelectedCell(data);
+    } else if (modalName === 'editAgent') {
+      // FIX: Toujours mettre à jour selectedAgent, même avec null (mode création)
+      setSelectedAgent(data);
+    } else if (modalName === 'habilitations' && data) {
+      setSelectedAgent(data);
     }
   }, []);
 
@@ -104,7 +107,12 @@ export function useModals() {
     openModal('gestionAgents');
   }, [openModal]);
 
+  /**
+   * Ouvre le modal d'édition/création d'agent
+   * @param {Object|null} agent - Agent à éditer ou null pour création
+   */
   const openEditAgent = useCallback((agent = null) => {
+    // Explicitement passer null pour le mode création
     openModal('editAgent', agent);
   }, [openModal]);
 
