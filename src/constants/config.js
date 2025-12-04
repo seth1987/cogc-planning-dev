@@ -100,3 +100,13 @@ export const SERVICE_CODES = [
 ];
 
 export const POSTES_CODES = ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'S/S', 'CENT', 'SOUF'];
+
+// Postes figés / Postes supplémentaires (disponibles pour réserve ET roulement)
+export const POSTES_SUPPLEMENTAIRES = [
+  { code: '+ACR', desc: 'Poste ACR supplémentaire' },
+  { code: '+RO', desc: 'Poste RO supplémentaire' },
+  { code: '+RE', desc: 'Poste RE supplémentaire' },
+  { code: '+RC', desc: 'Poste RC supplémentaire' },
+  { code: '+CCU', desc: 'Poste CCU supplémentaire' },
+  { code: '+OV', desc: 'Poste OV supplémentaire' }
+];
