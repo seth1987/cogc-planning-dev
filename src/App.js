@@ -56,6 +56,7 @@ const App = () => {
     connectionStatus,
     loadData,
     updateCell,
+    getCellData,
     reloadHabilitations,
     setConnectionStatus
   } = usePlanning(user, currentMonth);
@@ -216,6 +217,11 @@ const App = () => {
     );
   }
 
+  // Récupérer les données de la cellule sélectionnée pour le modal
+  const selectedCellData = selectedCell 
+    ? getCellData(selectedCell.agent, selectedCell.day) 
+    : null;
+
   // === APPLICATION PRINCIPALE ===
   return (
     <div className="min-h-screen bg-gray-50">
@@ -265,6 +271,7 @@ const App = () => {
       {selectedCell && (
         <ModalCellEdit 
           selectedCell={selectedCell}
+          cellData={selectedCellData}
           agentsData={agentsData}
           onUpdateCell={handleUpdateCell}
           onClose={() => closeModal('cellEdit')}
