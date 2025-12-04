@@ -1,7 +1,7 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
 import React, { useState, useEffect } from 'react';
 import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info } from 'lucide-react';
-import BulletinParserService from '../../services/BulletinParserService';
+import MistralPDFReaderService from '../../services/MistralPDFReaderService';
 import mappingService from '../../services/mappingService';
 import planningImportService from '../../services/planningImportService';
 import PDFUploadStep from '../pdf/PDFUploadStep';
@@ -84,8 +84,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   };
 
   /**
-   * Transforme les données du BulletinParserService vers le format attendu par PDFValidationStep
-   * BulletinParserService retourne: { metadata: { agent: "NOM PRENOM" }, entries: [...] }
+   * Transforme les données du MistralPDFReaderService vers le format attendu par PDFValidationStep
+   * MistralPDFReaderService retourne: { metadata: { agent: "NOM PRENOM" }, entries: [...] }
    * PDFValidationStep attend: { agent: { nom, prenom }, planning: [...] }
    */
   const transformParsedDataForValidation = (parsed) => {
@@ -124,7 +124,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       console.log(`   📋 ${entry.date} ${entry.serviceCode} → ${simpleCode} (horaires: ${JSON.stringify(entry.horaires?.map(h => h.debut + '-' + h.fin))})`);
       
       return {
-        date: entry.dateISO || entry.date,
+        date: entry.date || entry.dateISO,
         service_code: simpleCode,
         poste_code: extractPosteCode(entry.serviceCode),
         original_code: entry.serviceCode,
@@ -146,7 +146,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         fin: parsed.metadata?.periodeFin
       },
       dateEdition: parsed.metadata?.dateEdition || null,
-      parsing_mode: parsed.method || 'mistral-ocr-markdown-v4',
+      parsing_mode: parsed.method || 'mistral-ocr',
       original_data: parsed // Garder les données originales pour référence
     };
     
@@ -217,10 +217,18 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setError(null);
 
     try {
+      console.log('📁 Fichier sélectionné:', uploadedFile.name);
       console.log('📄 Extraction du PDF avec Mistral OCR...');
       
-      // Parser le PDF avec BulletinParserService (Mistral OCR)
-      const parsed = await BulletinParserService.parseBulletin(uploadedFile);
+      // Utiliser MistralPDFReaderService pour lire le PDF
+      const parsed = await MistralPDFReaderService.readPDF(uploadedFile);
+      
+      // Vérifier si l'extraction a réussi
+      if (!parsed.success) {
+        throw new Error(parsed.error || 'Erreur lors de l\'extraction du PDF');
+      }
+      
+      console.log('✅ Extraction réussie:', parsed.stats);
       
       // Transformer les données vers le format attendu par PDFValidationStep
       const transformedData = transformParsedDataForValidation(parsed);
@@ -419,7 +427,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                 file={file}
                 onFileUpload={handleFileUpload}
                 error={error}
-                isApiConfigured={BulletinParserService.isConfigured()}
+                isApiConfigured={true}
                 stats={stats}
               />
             </div>
