@@ -69,7 +69,7 @@ export function usePlanning(user, currentMonth) {
       
       const planningFromDB = await supabaseService.getPlanningForMonth(startDate, endDate);
       
-      // Organiser les données de planning
+      // Organiser les données de planning AVEC les notes
       const planningData = {};
       agentsResult.forEach(agent => {
         const agentName = `${agent.nom} ${agent.prenom}`;
@@ -83,9 +83,19 @@ export function usePlanning(user, currentMonth) {
             const agentName = `${agent.nom} ${agent.prenom}`;
             const day = new Date(entry.date).getDate();
             
-            planningData[agentName][day] = entry.poste_code 
-              ? { service: entry.service_code, poste: entry.poste_code }
-              : entry.service_code;
+            // Construire l'objet de données de cellule avec note
+            const cellData = {
+              service: entry.service_code,
+              ...(entry.poste_code && { poste: entry.poste_code }),
+              ...(entry.commentaire && { note: entry.commentaire })
+            };
+            
+            // Si pas de poste ni de note, garder le format simple
+            if (!entry.poste_code && !entry.commentaire) {
+              planningData[agentName][day] = entry.service_code;
+            } else {
+              planningData[agentName][day] = cellData;
+            }
           }
         });
       }
@@ -102,21 +112,54 @@ export function usePlanning(user, currentMonth) {
   }, [currentMonth, user]);
 
   /**
-   * Met à jour une cellule du planning
+   * Récupère les données d'une cellule spécifique
+   * @param {string} agentName - Nom complet de l'agent
+   * @param {number} day - Jour du mois
+   * @returns {Object|null} Données de la cellule {service, poste, note} ou null
+   */
+  const getCellData = useCallback((agentName, day) => {
+    const cellValue = planning[agentName]?.[day];
+    
+    if (!cellValue) return null;
+    
+    if (typeof cellValue === 'string') {
+      return { service: cellValue, poste: null, note: null };
+    }
+    
+    return {
+      service: cellValue.service || null,
+      poste: cellValue.poste || null,
+      note: cellValue.note || null
+    };
+  }, [planning]);
+
+  /**
+   * Met à jour une cellule du planning avec support des notes
+   * @param {string} agentName - Nom complet de l'agent
+   * @param {number} day - Jour du mois
+   * @param {string|Object} value - Valeur: string (service simple), object {service, poste?, note?}, ou '' pour supprimer
    */
   const updateCell = useCallback(async (agentName, day, value) => {
     try {
       const agent = agents.find(a => `${a.nom} ${a.prenom}` === agentName);
-      if (!agent) return;
+      if (!agent) {
+        console.error('Agent non trouvé:', agentName);
+        return;
+      }
 
       const date = planningService.formatDate(day, currentMonth);
       
       if (value === '') {
+        // Suppression de l'entrée
         await supabaseService.deletePlanning(agent.id, date);
       } else {
+        // Extraction des valeurs
         const serviceCode = typeof value === 'object' ? value.service : value;
-        const posteCode = typeof value === 'object' ? value.poste : null;
-        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode);
+        const posteCode = typeof value === 'object' ? (value.poste || null) : null;
+        const note = typeof value === 'object' ? (value.note || null) : null;
+        
+        // Sauvegarde avec note
+        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note);
       }
       
       // Mise à jour optimiste du state local
@@ -127,6 +170,8 @@ export function usePlanning(user, currentMonth) {
           [day]: value
         }
       }));
+      
+      console.log(`✅ Cellule mise à jour: ${agentName} jour ${day}`, value);
       
     } catch (err) {
       console.error('Erreur sauvegarde:', err);
@@ -165,6 +210,7 @@ export function usePlanning(user, currentMonth) {
     // Actions
     loadData,
     updateCell,
+    getCellData,
     reloadHabilitations,
     setConnectionStatus
   };
