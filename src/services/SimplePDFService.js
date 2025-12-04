@@ -1,17 +1,32 @@
 /**
  * SimplePDFService.js - Service simplifié d'extraction PDF SNCF
- * Version: 1.0.0
+ * Version: 2.0.0
  * 
- * Remplace les 1200 lignes de parsing regex par un appel direct
- * à l'API Mistral Vision avec demande de JSON structuré.
+ * CORRIGÉ: Utilise l'API OCR de Mistral (qui accepte les PDF)
+ * puis structure en JSON via Chat.
+ * 
+ * Approche en 2 étapes:
+ * 1. OCR (/v1/ocr) avec mistral-ocr-latest → Extrait le texte/markdown
+ * 2. Chat avec response_format: json_object → Structure en JSON
  */
 
-// Clé API Mistral (déjà utilisée dans ton projet)
+// Clé API Mistral
 const MISTRAL_API_KEY = 'Kx84WAxDnne4YTTViVbWtPOedYLVHpo1';
-const MISTRAL_ENDPOINT = 'https://api.mistral.ai/v1/chat/completions';
 
-// Codes services SNCF valides
-const VALID_SERVICE_CODES = [
+// Endpoints API Mistral
+const ENDPOINTS = {
+  OCR: 'https://api.mistral.ai/v1/ocr',
+  CHAT: 'https://api.mistral.ai/v1/chat/completions'
+};
+
+// Modèles
+const MODELS = {
+  OCR: 'mistral-ocr-latest',
+  CHAT: 'mistral-small-latest'  // Rapide et efficace pour le JSON
+};
+
+// Codes services SNCF valides (pour validation)
+const VALID_SERVICE_CODES = new Set([
   // Services opérationnels
   'ACR001', 'ACR002', 'ACR003',
   'CAC001', 'CAC002', 'CAC003',
@@ -35,7 +50,13 @@ const VALID_SERVICE_CODES = [
   'EAC', 'EIA', 'F', 'JF', 'PCD', 'VL',
   // Génériques
   '-', 'O', 'X'
-];
+]);
+
+// Codes de nuit (pour décalage J+1)
+const NIGHT_SERVICE_CODES = new Set([
+  'ACR003', 'CAC003', 'CCU003', 'CCU006', 'CENT003',
+  'CRC003', 'RC003', 'RE003', 'REO003', 'RO003', 'SOUF003', 'X'
+]);
 
 /**
  * Convertit un fichier PDF en base64
@@ -53,174 +74,126 @@ async function pdfToBase64(file) {
 }
 
 /**
- * Prompt optimisé pour extraction directe en JSON
+ * Prompt optimisé pour structuration JSON
  */
-const EXTRACTION_PROMPT = `Tu es un expert en extraction de données de bulletins de commande SNCF.
+const STRUCTURATION_PROMPT = `Tu es un expert en extraction de données de bulletins de commande SNCF.
 
-ANALYSE ce bulletin PDF et retourne UNIQUEMENT un objet JSON valide (pas de texte avant/après).
+À partir du texte OCR ci-dessous, extrais et structure les données en JSON.
 
-RÈGLES IMPORTANTES:
-1. Extrais TOUTES les affectations de service (dates + codes)
-2. IGNORE les lignes METRO, RS, TRACTION, N1100010CO72 (ce sont des trajets, pas des services)
-3. Pour les services de NUIT (début ≥ 20h00), enregistre sur le LENDEMAIN
-   Exemple: CCU003 le 24/04/2025 à 22:00-06:00 → enregistre le 25/04/2025
-4. Codes valides: ${VALID_SERVICE_CODES.slice(0, 30).join(', ')}...
+RÈGLES CRITIQUES:
+1. Extrais TOUTES les affectations de service avec leur date et code
+2. IGNORE les lignes contenant METRO, RS, TRACTION, N1100010CO72 (ce sont des trajets)
+3. Les codes valides incluent: CCU001-006, CRC001-003, ACR001-003, CENT001-003, etc.
+4. Pour les absences: RP (repos), NU (non utilisé), DISPO, INACTIN, CONGE, etc.
 
-FORMAT JSON EXACT:
+FORMAT JSON EXACT (retourne UNIQUEMENT ce JSON, rien d'autre):
 {
   "agent": {
     "nom": "NOM PRENOM",
-    "numeroCP": "0000000X"
+    "numeroCP": "0000000X ou null"
   },
   "periode": {
     "debut": "JJ/MM/AAAA",
     "fin": "JJ/MM/AAAA"
   },
+  "dateEdition": "JJ/MM/AAAA",
   "services": [
     {
       "date": "JJ/MM/AAAA",
-      "dateISO": "AAAA-MM-JJ",
       "code": "CODE_SERVICE",
-      "description": "Description du service",
-      "horaires": "HH:MM-HH:MM ou null",
-      "estServiceNuit": false,
-      "dateDorigine": "JJ/MM/AAAA ou null si pas décalé"
+      "description": "Description si visible",
+      "heureDebut": "HH:MM ou null",
+      "heureFin": "HH:MM ou null"
     }
   ]
 }
 
-Retourne UNIQUEMENT le JSON, sans markdown, sans explication.`;
+TEXTE OCR DU BULLETIN:
+`;
 
 /**
- * Extrait les données d'un PDF bulletin SNCF
- * @param {File} pdfFile - Le fichier PDF à analyser
- * @returns {Promise<Object>} Les données extraites
+ * ÉTAPE 1: Extraction OCR du PDF
  */
-export async function extractBulletinData(pdfFile) {
-  console.log('📄 SimplePDFService: Début extraction', pdfFile.name);
+async function extractTextFromPDF(base64Data) {
+  console.log('📄 SimplePDFService: Appel API OCR...');
   
-  try {
-    // 1. Convertir PDF en base64
-    const base64Data = await pdfToBase64(pdfFile);
-    console.log('✅ PDF converti en base64');
-    
-    // 2. Appel API Mistral Vision
-    const response = await fetch(MISTRAL_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${MISTRAL_API_KEY}`
+  const response = await fetch(ENDPOINTS.OCR, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${MISTRAL_API_KEY}`
+    },
+    body: JSON.stringify({
+      model: MODELS.OCR,
+      document: {
+        type: 'document_url',
+        document_url: `data:application/pdf;base64,${base64Data}`
       },
-      body: JSON.stringify({
-        model: 'pixtral-large-latest',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: EXTRACTION_PROMPT
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:application/pdf;base64,${base64Data}`
-                }
-              }
-            ]
-          }
-        ],
-        temperature: 0.1,
-        max_tokens: 4000,
-        response_format: { type: 'json_object' }
-      })
-    });
+      include_image_base64: false
+    })
+  });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Erreur API Mistral: ${response.status} - ${errorText}`);
-    }
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Erreur API OCR: ${response.status} - ${errorText}`);
+  }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    
-    if (!content) {
-      throw new Error('Réponse vide de l\'API');
-    }
-
-    // 3. Parser le JSON
-    console.log('📥 Réponse brute:', content.substring(0, 200));
-    
-    let parsed;
-    try {
-      parsed = JSON.parse(content);
-    } catch (e) {
-      // Tenter d'extraire le JSON si entouré de texte
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('Impossible de parser la réponse JSON');
+  const ocrResult = await response.json();
+  
+  // Extraire le texte de toutes les pages
+  let fullText = '';
+  if (ocrResult.pages) {
+    for (const page of ocrResult.pages) {
+      if (page.markdown) {
+        fullText += page.markdown + '\n\n';
       }
     }
-
-    // 4. Valider et nettoyer les données
-    const result = validateAndClean(parsed);
-    
-    console.log('✅ Extraction réussie:', {
-      agent: result.agent?.nom,
-      nbServices: result.services?.length
-    });
-
-    return {
-      success: true,
-      data: result,
-      rawResponse: content
-    };
-
-  } catch (error) {
-    console.error('❌ Erreur extraction:', error);
-    return {
-      success: false,
-      error: error.message,
-      data: null
-    };
   }
+  
+  console.log(`✅ OCR réussi: ${ocrResult.pages?.length || 0} page(s), ${fullText.length} caractères`);
+  return fullText;
 }
 
 /**
- * Valide et nettoie les données extraites
+ * ÉTAPE 2: Structuration JSON via Chat
  */
-function validateAndClean(data) {
-  const result = {
-    agent: {
-      nom: data.agent?.nom || 'INCONNU',
-      numeroCP: data.agent?.numeroCP || ''
+async function structureToJSON(ocrText) {
+  console.log('🔄 SimplePDFService: Structuration JSON...');
+  
+  const response = await fetch(ENDPOINTS.CHAT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${MISTRAL_API_KEY}`
     },
-    periode: {
-      debut: data.periode?.debut || '',
-      fin: data.periode?.fin || ''
-    },
-    services: []
-  };
+    body: JSON.stringify({
+      model: MODELS.CHAT,
+      messages: [
+        {
+          role: 'user',
+          content: STRUCTURATION_PROMPT + ocrText
+        }
+      ],
+      temperature: 0.1,
+      max_tokens: 4000,
+      response_format: { type: 'json_object' }
+    })
+  });
 
-  if (Array.isArray(data.services)) {
-    result.services = data.services
-      .filter(s => s && s.code)
-      .map(s => ({
-        date: s.date || '',
-        dateISO: s.dateISO || convertToISO(s.date),
-        code: s.code?.toUpperCase() || '',
-        description: s.description || '',
-        horaires: s.horaires || null,
-        estServiceNuit: s.estServiceNuit || false,
-        dateDorigine: s.dateDorigine || null,
-        // Flag de validation
-        codeValide: VALID_SERVICE_CODES.includes(s.code?.toUpperCase())
-      }));
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Erreur API Chat: ${response.status} - ${errorText}`);
   }
 
-  return result;
+  const chatResult = await response.json();
+  const content = chatResult.choices?.[0]?.message?.content;
+  
+  if (!content) {
+    throw new Error('Réponse vide de l\'API Chat');
+  }
+  
+  console.log('✅ Structuration JSON réussie');
+  return JSON.parse(content);
 }
 
 /**
@@ -234,6 +207,156 @@ function convertToISO(dateStr) {
 }
 
 /**
+ * Ajoute un jour à une date ISO
+ */
+function addOneDay(dateISO) {
+  const date = new Date(dateISO + 'T12:00:00');
+  date.setDate(date.getDate() + 1);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Vérifie si un service doit être décalé au jour suivant (service de nuit)
+ */
+function shouldShiftToNextDay(service) {
+  const code = service.code?.toUpperCase();
+  
+  // Code explicitement de nuit
+  if (NIGHT_SERVICE_CODES.has(code)) return true;
+  
+  // Code finissant par 003
+  if (code?.match(/003$/)) return true;
+  
+  // Horaire de nuit (début >= 20h)
+  if (service.heureDebut) {
+    const heure = parseInt(service.heureDebut.split(':')[0] || 0);
+    if (heure >= 20) return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Valide et transforme les données extraites
+ */
+function transformData(parsed) {
+  const result = {
+    agent: {
+      nom: parsed.agent?.nom || 'INCONNU',
+      numeroCP: parsed.agent?.numeroCP || ''
+    },
+    periode: {
+      debut: parsed.periode?.debut || '',
+      fin: parsed.periode?.fin || ''
+    },
+    dateEdition: parsed.dateEdition || '',
+    services: []
+  };
+
+  let nightShiftedCount = 0;
+
+  if (Array.isArray(parsed.services)) {
+    for (const s of parsed.services) {
+      if (!s || !s.code) continue;
+      
+      const code = s.code.toUpperCase();
+      let dateISO = convertToISO(s.date);
+      let dateDisplay = s.date;
+      let shiftedFromNight = false;
+      let originalDate = null;
+      
+      // Décalage J+1 pour services de nuit
+      if (shouldShiftToNextDay(s)) {
+        originalDate = dateISO;
+        dateISO = addOneDay(dateISO);
+        const parts = dateISO.split('-');
+        dateDisplay = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        shiftedFromNight = true;
+        nightShiftedCount++;
+        console.log(`   🌙 ${s.date} ${code} → décalé au ${dateDisplay}`);
+      }
+      
+      result.services.push({
+        date: dateDisplay,
+        dateISO: dateISO,
+        code: code,
+        description: s.description || '',
+        heureDebut: s.heureDebut || null,
+        heureFin: s.heureFin || null,
+        codeValide: VALID_SERVICE_CODES.has(code),
+        shiftedFromNight: shiftedFromNight,
+        originalDate: originalDate
+      });
+    }
+  }
+
+  // Trier par date
+  result.services.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+  
+  result.stats = {
+    total: result.services.length,
+    valid: result.services.filter(s => s.codeValide).length,
+    nightShifted: nightShiftedCount
+  };
+
+  return result;
+}
+
+/**
+ * MÉTHODE PRINCIPALE - Extraction complète d'un bulletin PDF
+ * @param {File} pdfFile - Le fichier PDF à analyser
+ * @returns {Promise<Object>} Les données extraites
+ */
+export async function extractBulletinData(pdfFile) {
+  const startTime = Date.now();
+  console.log('📄 SimplePDFService v2.0: Début extraction', pdfFile.name);
+  
+  try {
+    // 1. Convertir PDF en base64
+    const base64Data = await pdfToBase64(pdfFile);
+    console.log('✅ PDF converti en base64');
+    
+    // 2. Extraction OCR (API qui accepte les PDF!)
+    const ocrText = await extractTextFromPDF(base64Data);
+    
+    if (!ocrText || ocrText.length < 50) {
+      throw new Error('OCR n\'a pas retourné suffisamment de texte');
+    }
+    
+    // 3. Structuration en JSON via Chat
+    const parsed = await structureToJSON(ocrText);
+    
+    // 4. Transformation et validation
+    const result = transformData(parsed);
+    
+    const processingTime = Date.now() - startTime;
+    
+    console.log(`✅ SimplePDFService: Extraction réussie en ${processingTime}ms`, {
+      agent: result.agent?.nom,
+      nbServices: result.services?.length,
+      stats: result.stats
+    });
+
+    return {
+      success: true,
+      data: result,
+      processingTimeMs: processingTime
+    };
+
+  } catch (error) {
+    console.error('❌ SimplePDFService erreur:', error);
+    return {
+      success: false,
+      error: error.message,
+      data: null
+    };
+  }
+}
+
+/**
  * Vérifie si l'API est configurée
  */
 export function isAPIConfigured() {
@@ -244,7 +367,7 @@ export function isAPIConfigured() {
  * Retourne les codes valides pour référence
  */
 export function getValidCodes() {
-  return VALID_SERVICE_CODES;
+  return Array.from(VALID_SERVICE_CODES);
 }
 
 export default {
