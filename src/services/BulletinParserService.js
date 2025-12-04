@@ -1,16 +1,19 @@
 /**
- * BulletinParserService v9.0
- * Service de parsing des bulletins de commande SNCF - VERSION CORRIGÉE
+ * BulletinParserService v9.1
+ * Service de parsing des bulletins de commande SNCF
+ * 
+ * CORRECTIONS v9.1 :
+ * - ✅ NUITS: Le code X est enregistré sur J+1 (pas sur J)
+ * - ✅ Exemple: 21/04 ACR003 → 22/04 X (poste ACR)
+ * - ✅ Si J a NU + nuit → J=NU, J+1=X
  * 
  * CORRECTIONS v9.0 :
- * - ✅ Gestion des entrées MULTIPLES sur la MÊME date (ex: 24/04 NU + CCU003)
- * - ✅ Priorisation codes longs (CCU, CRC) sur codes courts (NU, RP)
+ * - ✅ Gestion des entrées MULTIPLES sur la MÊME date
+ * - ✅ Priorisation codes longs sur codes courts
  * - ✅ Meilleure exclusion des références "NU du CCU601"
- * - ✅ Support complet services de nuit
- * - ✅ Séparation parsing par BLOC au lieu de recherche globale
  * 
  * @author COGC Planning Team
- * @version 9.0.0
+ * @version 9.1.0
  */
 
 // ============================================================================
@@ -86,6 +89,9 @@ const SERVICE_CODES = {
   'EIA': { service: 'EIA', poste: '', type: 'special', horaires: null }
 };
 
+// Codes de nuit (le X va sur J+1)
+const CODES_NUIT = ['CRC003', 'ACR003', 'CCU003', 'CCU006', 'CENT003', 'REO003', 'REO006', 'RC003', 'RE003'];
+
 // Mots à exclure de la détection de noms
 const MOTS_EXCLUS = [
   'BULLETIN', 'COMMANDE', 'AGENT', 'COGC', 'SNCF', 'SOCIETE', 'NATIONALE',
@@ -139,7 +145,7 @@ let _staticConfig = {
 };
 
 // ============================================================================
-// CLASSE PRINCIPALE - VERSION 9.0
+// CLASSE PRINCIPALE - VERSION 9.1
 // ============================================================================
 
 class BulletinParserService {
@@ -156,19 +162,20 @@ class BulletinParserService {
     return {
       configured: _staticConfig.configured,
       mode: _staticConfig.mode,
-      version: '9.0.0',
+      version: '9.1.0',
       features: {
-        multiServicePerDate: true, // v9.0 NEW
+        multiServicePerDate: true,
         agentDetection: 'ultra-robust',
         nightShiftSupport: true,
-        codePrioritization: true // v9.0 NEW
+        nightShiftJ1: true, // v9.1 NEW - Nuits décalées à J+1
+        codePrioritization: true
       }
     };
   }
   
   static configure(config = {}) {
     _staticConfig = { ..._staticConfig, ...config, configured: true };
-    console.log('[BulletinParserService] Configuration v9.0:', _staticConfig);
+    console.log('[BulletinParserService] Configuration v9.1:', _staticConfig);
   }
   
   static parse(texte) {
@@ -357,13 +364,13 @@ class BulletinParserService {
   }
 
   // ==========================================================================
-  // MÉTHODE PRINCIPALE DE PARSING v9.0
+  // MÉTHODE PRINCIPALE DE PARSING v9.1
   // ==========================================================================
 
   parseBulletin(texte) {
-    this.log('\n═══════════════════════════════════════════════════════', 'info');
-    this.log('🚀 DÉMARRAGE PARSING BULLETIN v9.0 (multi-service)', 'info');
-    this.log('═══════════════════════════════════════════════════════\n', 'info');
+    this.log('\n═══════════════════════════════════════════════════════════', 'info');
+    this.log('🚀 DÉMARRAGE PARSING BULLETIN v9.1 (nuits J+1)', 'info');
+    this.log('═══════════════════════════════════════════════════════════\n', 'info');
     
     if (!texte || texte.trim().length === 0) {
       this.log('❌ Texte vide reçu', 'error');
@@ -382,22 +389,17 @@ class BulletinParserService {
     this.log(`📋 Période: ${periode ? `${periode.debut} - ${periode.fin}` : 'Non détectée'}`, 'info');
     
     // ===== EXTRACTION SERVICES v9.0 =====
-    const services = this.extraireServicesV9(texte);
+    const servicesRaw = this.extraireServicesV9(texte);
     
-    // Post-traitement: ajout des nuits
-    const servicesFinaux = this.postTraitementNuits(services);
+    // ===== POST-TRAITEMENT NUITS v9.1 =====
+    const servicesFinaux = this.postTraitementNuitsV91(servicesRaw);
     
     this.log(`\n📊 RÉSULTAT FINAL: ${servicesFinaux.length} services extraits`, 'success');
     
-    // Stats multi-service
-    const dateCount = new Map();
-    servicesFinaux.forEach(s => {
-      const count = dateCount.get(s.date) || 0;
-      dateCount.set(s.date, count + 1);
-    });
-    const multiDates = Array.from(dateCount.entries()).filter(([_, c]) => c > 1);
-    if (multiDates.length > 0) {
-      this.log(`   Dates avec multi-services: ${multiDates.map(([d,c]) => `${d.substring(5)}(${c})`).join(', ')}`, 'info');
+    // Stats
+    const nuitsDecalees = servicesFinaux.filter(s => s.source_nuit).length;
+    if (nuitsDecalees > 0) {
+      this.log(`   🌙 ${nuitsDecalees} nuits décalées à J+1`, 'info');
     }
     
     return {
@@ -454,10 +456,11 @@ class BulletinParserService {
       const serviceInfo = this.analyserContexteServiceV9(blocLignes, date);
       
       if (serviceInfo) {
-        const key = `${date}|${serviceInfo.code_service}`;
+        const key = `${date}|${serviceInfo.code_service}|${serviceInfo.est_nuit}`;
         if (!entriesMap.has(key)) {
           entriesMap.set(key, serviceInfo);
-          this.log(`      ✅ Service: ${serviceInfo.code_service} (${serviceInfo.poste || 'sans poste'})`, 'success');
+          const nuitTag = serviceInfo.est_nuit ? ' [NUIT→J+1]' : '';
+          this.log(`      ✅ Service: ${serviceInfo.code_service} (${serviceInfo.poste || 'sans poste'})${nuitTag}`, 'success');
         }
       }
     }
@@ -474,6 +477,7 @@ class BulletinParserService {
     let codePoste = '';
     let horaires = null;
     let estNuit = false;
+    let codeOriginal = null; // Pour savoir quel code a généré X
     
     // ===== PASSE 1 : Chercher d'abord les codes LONGS (prioritaires) =====
     for (const ligne of contexte) {
@@ -491,10 +495,11 @@ class BulletinParserService {
         if (!new RegExp(`du\\s+${codeComplet}`, 'i').test(ligne)) {
           const mapping = SERVICE_CODES[codeComplet];
           if (mapping) {
+            codeOriginal = codeComplet;
             codeService = mapping.service;
             codePoste = mapping.poste;
-            estNuit = mapping.type === 'nuit';
-            this.log(`      Code LONG: ${codeComplet} → ${codeService}/${codePoste}`, 'debug');
+            estNuit = mapping.type === 'nuit' || CODES_NUIT.includes(codeComplet);
+            this.log(`      Code LONG: ${codeComplet} → ${codeService}/${codePoste} (nuit: ${estNuit})`, 'debug');
             break; // Code long trouvé, on arrête
           }
         }
@@ -541,9 +546,10 @@ class BulletinParserService {
       if (matchHoraires && !horaires) {
         horaires = `${matchHoraires[1]}-${matchHoraires[2]}`;
         
+        // Vérifier si c'est une nuit par les horaires
         const heureDebut = parseInt(matchHoraires[1].split(':')[0]);
         const heureFin = parseInt(matchHoraires[2].split(':')[0]);
-        if (heureDebut >= 22 || (heureDebut >= 20 && heureFin <= 8)) {
+        if ((heureDebut >= 22 || heureDebut <= 2) && heureFin <= 8) {
           estNuit = true;
         }
       }
@@ -554,6 +560,7 @@ class BulletinParserService {
     return {
       date,
       code_service: codeService,
+      code_original: codeOriginal,
       poste: codePoste || '',
       horaires: horaires || null,
       est_nuit: estNuit
@@ -561,42 +568,42 @@ class BulletinParserService {
   }
 
   // ==========================================================================
-  // POST-TRAITEMENT NUITS
+  // POST-TRAITEMENT NUITS v9.1 - DÉCALAGE J → J+1
   // ==========================================================================
   
-  postTraitementNuits(services) {
-    const resultatFinal = [];
-    const nuitsAjoutees = new Set();
+  postTraitementNuitsV91(services) {
+    this.log('\n🌙 Post-traitement nuits v9.1 (décalage J→J+1)...', 'info');
+    
+    const resultat = [];
     
     for (const service of services) {
-      resultatFinal.push(service);
-      
       if (service.est_nuit && service.code_service === 'X') {
-        const dateOrigine = new Date(service.date);
+        // Service de nuit → décaler à J+1
+        const dateOrigine = new Date(service.date + 'T12:00:00'); // Midi pour éviter les problèmes de timezone
         dateOrigine.setDate(dateOrigine.getDate() + 1);
         const dateLendemain = dateOrigine.toISOString().split('T')[0];
         
-        const dejaPresent = services.some(s => s.date === dateLendemain);
-        const dejaAjoute = nuitsAjoutees.has(dateLendemain);
+        this.log(`   🌙 ${service.date} ${service.code_original || 'X'} → ${dateLendemain} X (${service.poste})`, 'info');
         
-        if (!dejaPresent && !dejaAjoute) {
-          this.log(`Nuit: ajout X automatique pour ${dateLendemain}`, 'info');
-          resultatFinal.push({
-            date: dateLendemain,
-            code_service: 'X',
-            poste: service.poste,
-            horaires: '00:00-06:00',
-            est_nuit: true,
-            genere_auto: true,
-            source_nuit: service.date
-          });
-          nuitsAjoutees.add(dateLendemain);
-        }
+        resultat.push({
+          date: dateLendemain,
+          code_service: 'X',
+          poste: service.poste,
+          horaires: '00:00-06:00',
+          est_nuit: true,
+          source_nuit: service.date, // Date originale du bulletin
+          code_original: service.code_original
+        });
+      } else {
+        // Service de jour → garder tel quel
+        resultat.push(service);
       }
     }
     
-    resultatFinal.sort((a, b) => new Date(a.date) - new Date(b.date));
-    return resultatFinal;
+    // Trier par date
+    resultat.sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    return resultat;
   }
 
   getLogs() {
@@ -609,85 +616,84 @@ class BulletinParserService {
 // ============================================================================
 
 export default BulletinParserService;
-export { BulletinParserService, SERVICE_CODES, PATTERNS, AGENT_PATTERNS };
+export { BulletinParserService, SERVICE_CODES, PATTERNS, AGENT_PATTERNS, CODES_NUIT };
 
 // ============================================================================
-// TEST UNITAIRE v9.0
+// TEST UNITAIRE v9.1
 // ============================================================================
 
-export function testBulletinParserV9() {
-  console.log('\n🧪 TEST BULLETIN PARSER v9.0 (multi-service)\n');
+export function testBulletinParserV91() {
+  console.log('\n🧪 TEST BULLETIN PARSER v9.1 (nuits J+1)\n');
   console.log('═'.repeat(70));
   
   const parser = new BulletinParserService({ debug: true });
   
-  // Test avec le bulletin de l'utilisateur (24/04 avec NU + CCU003)
+  // Test avec le bulletin CHAVET (21/04 NU + ACR003)
   const texteTest = `
 BULLETIN DE COMMANDE UOP :
 Agent :
 COGC PN
-GILLON THOMAS
-N° CP : 8409385L
-Date Utilisation Composition
-Message :
-Edition le 11/04/2025 , 15:07
-Commande allant du 21/04/2025 au 30/04/2025
-pu déjà être notifié par un bulletin précédent.
+CHAVET ROMAIN
+N° CP : 9009352Z
+Commande allant du 21/04/2025 au 24/04/2025
 21/04/2025
-Régulateur Table PARC Denfert
-CCU004 Lun
-METRO 05:35 06:00 du CCU602
-N1100010CO72 06:00 14:00
+NU Utilisable non utilisé Lun
+10:00 10:00
+21/04/2025
+AIDE COORDONNATEUR REGIONAL
+ACR003 Lun
+N123B010CO72 22:00 06:00 du ACR601
 22/04/2025
-Coordonnateur Régional Circulation
-CRC001 Mar
-N1100010CO72 06:00 14:00 du CRC601
-24/04/2025
-NU Utilisable non utilisé Jeu
-04:05 09:00 NU
-24/04/2025
-CRC/CCU DENFERT .
-CCU003 Jeu
-METRO 21:35 22:00 NU du CCU601
-N1100010CO72 22:00 06:00
-27/04/2025
-Dim RP Repos périodique
-28/04/2025
-RP Repos périodique Lun
-29/04/2025
-INACTIN Mar
-30/04/2025
-Disponible
-DISPO Mer
+AIDE COORDONNATEUR REGIONAL
+ACR003 Mar
+N123B010CO72 22:00 06:00 du ACR601
+23/04/2025
+AIDE COORDONNATEUR REGIONAL
+ACR003 Mer
+N123B010CO72 22:00 06:00 du ACR601
 `;
 
-  console.log('\n📋 Test bulletin avec MULTI-SERVICE (24/04):\n');
+  console.log('\n📋 Test bulletin CHAVET avec NUITS:\n');
   console.log('─'.repeat(70));
   
   const resultat = parser.parseBulletin(texteTest);
   
-  console.log(`\n📊 RÉSULTAT v9.0:`);
+  console.log(`\n📊 RÉSULTAT v9.1:`);
   console.log(`  Agent: ${resultat.agent || '❌ Non détecté'}`);
-  console.log(`  N° CP: ${resultat.numeroCP || '❌ Non détecté'}`);
   console.log(`  Total Services: ${resultat.services.length}`);
   
   console.log(`\n📅 Détail des services:`);
   resultat.services.forEach((s, i) => {
-    console.log(`  ${i + 1}. ${s.date} → ${s.code_service} | Poste: ${s.poste || '-'} | Nuit: ${s.est_nuit ? '✓' : '✗'}`);
+    const src = s.source_nuit ? ` (nuit du ${s.source_nuit})` : '';
+    console.log(`  ${i + 1}. ${s.date} → ${s.code_service} | Poste: ${s.poste || '-'}${src}`);
   });
   
-  // Vérification spécifique pour le 24/04
-  const services24 = resultat.services.filter(s => s.date === '2025-04-24');
-  console.log(`\n🎯 TEST CRITIQUE - 24/04/2025:`);
-  console.log(`  Attendu: 2 services (NU + CCU003/X)`);
-  console.log(`  Obtenu: ${services24.length} services`);
-  services24.forEach(s => console.log(`    - ${s.code_service} (${s.poste || 'sans poste'})`));
+  // Vérification
+  console.log(`\n🎯 VÉRIFICATION ATTENDUE:`);
+  console.log(`  21/04 → NU (jour)`);
+  console.log(`  22/04 → X (nuit du 21)`);
+  console.log(`  23/04 → X (nuit du 22)`);
+  console.log(`  24/04 → X (nuit du 23)`);
   
-  if (services24.length === 2) {
-    console.log(`  ✅ TEST RÉUSSI!`);
-  } else {
-    console.log(`  ❌ TEST ÉCHOUÉ - multi-service non détecté`);
+  const verif = {
+    '2025-04-21': 'NU',
+    '2025-04-22': 'X',
+    '2025-04-23': 'X',
+    '2025-04-24': 'X'
+  };
+  
+  let success = true;
+  for (const [date, code] of Object.entries(verif)) {
+    const found = resultat.services.find(s => s.date === date && s.code_service === code);
+    if (found) {
+      console.log(`  ✅ ${date} = ${code}`);
+    } else {
+      console.log(`  ❌ ${date} devrait être ${code}`);
+      success = false;
+    }
   }
+  
+  console.log(success ? '\n✅ TEST RÉUSSI!' : '\n❌ TEST ÉCHOUÉ');
   
   return resultat;
 }
