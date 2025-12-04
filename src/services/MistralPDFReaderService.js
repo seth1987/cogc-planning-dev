@@ -3,8 +3,8 @@
  * Service de lecture de PDF SNCF utilisant l'API Mistral OCR
  * Optimisé pour les bulletins de commande COGC Paris Nord
  * 
- * @version 2.0.0
- * @date 2025-12-03
+ * @version 2.0.1
+ * @date 2025-12-04
  */
 
 class MistralPDFReaderService {
@@ -12,7 +12,7 @@ class MistralPDFReaderService {
   // CONFIGURATION API MISTRAL
   // ═══════════════════════════════════════════════════════════════
   
-  static MISTRAL_API_KEY = 'WKZ6fHhJ7wW5rUruSkLFiUuLVpwmXfxz';
+  static MISTRAL_API_KEY = 'Kx84WAxDnne4YTTViVbWtPOedYLVHpo1';
   
   // Endpoints API Mistral
   static ENDPOINTS = {
