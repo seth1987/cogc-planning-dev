@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3 } from 'lucide-react';
-import { CODE_COLORS, SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES } from '../../constants/config';
+import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES } from '../../constants/config';
+
+// Couleurs UNIQUEMENT pour la modal d'édition (pas le planning)
+// - MA en rouge
+// - C en jaune/or
+// - HAB/FO en orange
+// - D (DISPO) en bleu
+// - Pas de couleur pour -, O, X et les postes de réserve
+const MODAL_COLORS = {
+  'MA': 'bg-red-200 text-red-800',
+  'C': 'bg-yellow-200 text-yellow-800',
+  'HAB': 'bg-orange-200 text-orange-800',
+  'FO': 'bg-orange-200 text-orange-800',
+  'D': 'bg-blue-200 text-blue-800',
+  // Les autres codes n'ont pas de couleur (gris par défaut)
+};
 
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
@@ -21,7 +36,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
   const [tempNote, setTempNote] = useState('');
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [noteInput, setNoteInput] = useState('');
-  const [isEditMode, setIsEditMode] = useState(false); // Pour distinguer ajout/modification
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // Initialiser les états avec les données existantes
   useEffect(() => {
@@ -29,7 +44,6 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
       setTempService(cellData.service || '');
       setTempPoste(cellData.poste || '');
       setTempNote(cellData.note || '');
-      // TODO: gérer les postes supplémentaires si présents dans cellData
     } else {
       setTempService('');
       setTempPoste('');
@@ -39,6 +53,17 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
   }, [cellData, selectedCell]);
 
   if (!selectedCell) return null;
+
+  // Fonction pour obtenir la couleur d'un code service dans la modal
+  const getModalColor = (code, isSelected) => {
+    if (isSelected) {
+      // Si sélectionné : bordure bleue + couleur spécifique ou gris clair
+      const baseColor = MODAL_COLORS[code] || 'bg-gray-200 text-gray-800';
+      return `ring-2 ring-blue-500 ${baseColor}`;
+    }
+    // Non sélectionné : couleur spécifique ou gris très clair
+    return MODAL_COLORS[code] || 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+  };
 
   // Toggle un poste supplémentaire (ajout/retrait du tableau)
   const togglePosteSupplementaire = (code) => {
@@ -73,7 +98,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
 
   // Annuler la note
   const handleCancelNote = () => {
-    setNoteInput(''); // Réinitialiser
+    setNoteInput('');
     setShowNoteModal(false);
   };
 
@@ -87,7 +112,6 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
   const handleSave = () => {
     let planningData;
     
-    // Construire les données de planning avec service, poste, postes supplémentaires et note
     if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote) {
       planningData = { 
         service: tempService,
@@ -113,7 +137,6 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
     agents.some(agent => `${agent.nom} ${agent.prenom}` === selectedCell.agent)
   );
 
-  // Indicateur si une note existe
   const hasExistingNote = Boolean(tempNote);
 
   return (
@@ -137,7 +160,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             </button>
           </div>
           
-          {/* Section Service / Horaire */}
+          {/* Section Service / Horaire - SANS COULEUR sauf MA, C, HAB, FO, D */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">Service / Horaire</label>
             <div className="grid grid-cols-3 gap-2">
@@ -145,11 +168,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
                 <button
                   key={code}
                   onClick={() => setTempService(code)}
-                  className={`p-2 rounded text-center text-xs transition-all ${
-                    tempService === code 
-                      ? 'ring-2 ring-blue-500 ' + (CODE_COLORS[code] || 'bg-blue-100')
-                      : CODE_COLORS[code] || 'bg-gray-100 hover:bg-gray-200'
-                  }`}
+                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempService === code)}`}
                 >
                   <div className="font-semibold">{code}</div>
                   <div className="text-xs mt-1">{desc}</div>
@@ -158,7 +177,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             </div>
           </div>
 
-          {/* Section Poste (uniquement pour agents réserve) */}
+          {/* Section Poste (uniquement pour agents réserve) - SANS COULEUR */}
           {isReserveAgent && (
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">Poste (Réserve)</label>
@@ -169,8 +188,8 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
                     onClick={() => setTempPoste(tempPoste === poste ? '' : poste)}
                     className={`p-2 rounded text-center text-xs transition-all ${
                       tempPoste === poste 
-                        ? 'ring-2 ring-blue-500 ' + (CODE_COLORS[poste] || 'bg-rose-100')
-                        : CODE_COLORS[poste] || 'bg-gray-100 hover:bg-gray-200'
+                        ? 'ring-2 ring-blue-500 bg-gray-200 text-gray-800 font-semibold'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
                     {poste}
@@ -180,7 +199,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             </div>
           )}
 
-          {/* Section Postes figés / Postes supplémentaires (pour TOUS les agents) */}
+          {/* Section Postes figés / Postes supplémentaires - SANS COULEUR */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Postes figés / Postes supplémentaires 
@@ -195,12 +214,12 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
                     onClick={() => togglePosteSupplementaire(code)}
                     className={`p-2 rounded text-center text-xs transition-all relative ${
                       isSelected 
-                        ? 'ring-2 ring-purple-500 bg-purple-100 text-purple-800'
-                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                        ? 'ring-2 ring-blue-500 bg-gray-200 text-gray-800'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
                     {isSelected && (
-                      <Check className="w-3 h-3 absolute top-1 right-1 text-purple-600" />
+                      <Check className="w-3 h-3 absolute top-1 right-1 text-blue-600" />
                     )}
                     <div className="font-semibold italic">{code}</div>
                     <div className="text-xs mt-1 not-italic">{desc.replace('Poste ', '').replace(' supplémentaire', '')}</div>
@@ -209,8 +228,8 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
               })}
             </div>
             {tempPostesSupplementaires.length > 0 && (
-              <div className="mt-2 p-2 bg-purple-50 rounded">
-                <p className="text-xs text-purple-700">
+              <div className="mt-2 p-2 bg-gray-100 rounded">
+                <p className="text-xs text-gray-700">
                   <span className="font-medium">Sélectionnés :</span>{' '}
                   <span className="italic">{tempPostesSupplementaires.join(', ')}</span>
                 </p>
@@ -218,13 +237,11 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             )}
           </div>
 
-          {/* Section Notes - BOUTONS DISTINCTS */}
+          {/* Section Notes */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">Notes / Commentaires</label>
             
-            {/* Deux boutons toujours visibles */}
             <div className="flex gap-2 mb-3">
-              {/* Bouton Ajouter une note */}
               <button
                 onClick={hasExistingNote ? openEditNoteModal : openAddNoteModal}
                 className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-sm rounded-lg border-2 transition-all ${
@@ -246,7 +263,6 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
                 )}
               </button>
 
-              {/* Bouton Supprimer une note - Toujours visible mais désactivé si pas de note */}
               <button
                 onClick={handleDeleteNote}
                 disabled={!hasExistingNote}
@@ -261,7 +277,6 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
               </button>
             </div>
 
-            {/* Affichage de la note existante */}
             {hasExistingNote && (
               <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
                 <div className="flex items-start gap-2">
@@ -338,7 +353,6 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
               </p>
             </div>
 
-            {/* Boutons Valider / Annuler */}
             <div className="flex justify-end gap-3">
               <button
                 onClick={handleCancelNote}
