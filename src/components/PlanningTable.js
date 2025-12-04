@@ -193,7 +193,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
         </table>
       </div>
       
-      {/* Légende mise à jour */}
+      {/* Légende mise à jour - Nouvelles couleurs */}
       <div className="p-4 bg-gray-50 border-t">
         <h4 className="font-semibold text-sm mb-2">Légende des codes</h4>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs">
@@ -201,16 +201,16 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
             <p className="font-medium mb-1">Services :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-blue-100 rounded"></span>
-                <span>- = Matin (06h-14h)</span>
+                <span className="inline-block w-6 h-4 bg-white border border-gray-300 rounded text-center text-[10px] font-semibold">-</span>
+                <span>Matin (06h-14h)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-orange-100 rounded"></span>
-                <span>O = Soir (14h-22h)</span>
+                <span className="inline-block w-6 h-4 bg-white border border-gray-300 rounded text-center text-[10px] font-semibold">O</span>
+                <span>Soir (14h-22h)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-purple-100 rounded"></span>
-                <span>X = Nuit (22h-06h)</span>
+                <span className="inline-block w-6 h-4 bg-white border border-gray-300 rounded text-center text-[10px] font-semibold">X</span>
+                <span>Nuit (22h-06h)</span>
               </div>
             </div>
           </div>
@@ -231,12 +231,16 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
             <p className="font-medium mb-1">États :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-yellow-100 rounded"></span>
+                <span className="inline-block w-4 h-4 bg-blue-200 rounded"></span>
                 <span>D = Disponible</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-red-100 rounded"></span>
+                <span className="inline-block w-4 h-4 bg-yellow-400 rounded"></span>
                 <span>MA = Maladie</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block w-4 h-4 bg-orange-200 rounded"></span>
+                <span>HAB/FO = Formation</span>
               </div>
             </div>
           </div>
