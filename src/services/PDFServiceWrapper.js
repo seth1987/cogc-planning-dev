@@ -1,9 +1,9 @@
 /**
  * PDFServiceWrapper.js - Wrapper intelligent avec fallback
- * Version: 1.0.0
+ * Version: 1.1.0
  * 
- * Essaie d'abord SimplePDFService (version légère)
- * Si échec, bascule sur MistralPDFReaderService (version complète)
+ * Essaie d'abord SimplePDFService (OCR + JSON structuré)
+ * Si échec, bascule sur MistralPDFReaderService (OCR + parsing regex)
  */
 
 import { extractBulletinData } from './SimplePDFService';
@@ -19,17 +19,18 @@ export async function readPDF(pdfFile) {
   console.log('📄 Fichier:', pdfFile.name, `(${(pdfFile.size / 1024).toFixed(1)} KB)`);
   
   // ════════════════════════════════════════════════════════════════
-  // TENTATIVE 1: SimplePDFService (version légère ~150 lignes)
+  // TENTATIVE 1: SimplePDFService v2.0 (OCR + Chat JSON)
   // ════════════════════════════════════════════════════════════════
   try {
-    console.log('🚀 Tentative 1: SimplePDFService (Mistral Vision direct)');
+    console.log('🚀 Tentative 1: SimplePDFService v2.0 (OCR + JSON structuré)');
     
     const simpleResult = await extractBulletinData(pdfFile);
     
     if (simpleResult.success && simpleResult.data?.services?.length > 0) {
       console.log('✅ SimplePDFService réussi!', {
         agent: simpleResult.data.agent?.nom,
-        nbServices: simpleResult.data.services.length
+        nbServices: simpleResult.data.services.length,
+        stats: simpleResult.data.stats
       });
       
       // Transformer vers le format attendu par ModalUploadPDF
@@ -38,15 +39,16 @@ export async function readPDF(pdfFile) {
       return {
         success: true,
         ...transformed,
-        method: 'simple-vision',
+        method: 'simple-ocr-json',
         stats: {
-          total: simpleResult.data.services.length,
-          valides: simpleResult.data.services.filter(s => s.codeValide).length
+          ...transformed.stats,
+          processingTimeMs: simpleResult.processingTimeMs,
+          nightShifted: simpleResult.data.stats?.nightShifted || 0
         }
       };
     } else {
       console.warn('⚠️ SimplePDFService: Pas de services extraits, fallback...');
-      throw new Error('Aucun service extrait');
+      throw new Error(simpleResult.error || 'Aucun service extrait');
     }
     
   } catch (simpleError) {
@@ -55,10 +57,10 @@ export async function readPDF(pdfFile) {
   }
   
   // ════════════════════════════════════════════════════════════════
-  // TENTATIVE 2: MistralPDFReaderService (version complète ~1200 lignes)
+  // TENTATIVE 2: MistralPDFReaderService (OCR + parsing regex ~1200 lignes)
   // ════════════════════════════════════════════════════════════════
   try {
-    console.log('🚀 Tentative 2: MistralPDFReaderService (OCR + parsing)');
+    console.log('🚀 Tentative 2: MistralPDFReaderService (OCR + parsing regex)');
     
     const legacyResult = await MistralPDFReaderService.readPDF(pdfFile);
     
@@ -81,7 +83,7 @@ export async function readPDF(pdfFile) {
     
     return {
       success: false,
-      error: `Les deux méthodes d'extraction ont échoué. Simple: ${legacyError.message}`,
+      error: `Les deux méthodes d'extraction ont échoué. Dernière erreur: ${legacyError.message}`,
       method: 'failed',
       metadata: {},
       entries: []
@@ -90,9 +92,21 @@ export async function readPDF(pdfFile) {
 }
 
 /**
- * Transforme le format SimplePDFService vers le format legacy attendu
- * SimplePDFService retourne: { agent, periode, services[] }
- * ModalUploadPDF attend: { metadata, entries[] }
+ * Transforme le format SimplePDFService v2.0 vers le format legacy attendu
+ * 
+ * SimplePDFService retourne:
+ * {
+ *   agent: { nom, numeroCP },
+ *   periode: { debut, fin },
+ *   dateEdition,
+ *   services: [{ date, dateISO, code, description, heureDebut, heureFin, codeValide, shiftedFromNight, originalDate }]
+ * }
+ * 
+ * ModalUploadPDF attend:
+ * {
+ *   metadata: { agent, numeroCP, periodeDebut, periodeFin, dateEdition },
+ *   entries: [{ date, dateISO, serviceCode, serviceLabel, horaires, isNightService }]
+ * }
  */
 function transformSimpleToLegacyFormat(simpleData) {
   // Extraire nom et prénom depuis le nom complet
@@ -112,37 +126,47 @@ function transformSimpleToLegacyFormat(simpleData) {
   // Construire metadata
   const metadata = {
     agent: simpleData.agent?.nom || `${nom} ${prenom}`.trim(),
-    numeroCP: simpleData.agent?.numeroCP || '',
+    numeroCP: simpleData.agent?.numeroCP || null,
     periodeDebut: simpleData.periode?.debut || '',
     periodeFin: simpleData.periode?.fin || '',
-    dateEdition: new Date().toISOString().split('T')[0]
+    dateEdition: simpleData.dateEdition || new Date().toISOString().split('T')[0]
   };
   
   // Transformer services en entries
   const entries = (simpleData.services || []).map(service => {
-    // Déterminer les horaires structurés
+    // Construire les horaires structurés depuis heureDebut/heureFin
     let horaires = [];
-    if (service.horaires) {
-      const match = service.horaires.match(/(\d{2}:\d{2})-(\d{2}:\d{2})/);
-      if (match) {
-        horaires = [{
-          type: 'SERVICE',
-          debut: match[1],
-          fin: match[2]
-        }];
-      }
+    if (service.heureDebut && service.heureFin) {
+      horaires = [{
+        type: 'SERVICE',
+        debut: service.heureDebut,
+        fin: service.heureFin
+      }];
     }
     
+    // Déterminer si c'est un service de nuit
+    const isNightService = service.shiftedFromNight || 
+                           service.code?.match(/003$/) || 
+                           service.code === 'X' ||
+                           (service.heureDebut && parseInt(service.heureDebut.split(':')[0]) >= 20);
+    
     return {
-      date: service.dateISO || service.date,
+      date: service.dateISO || convertDateToISO(service.date),
       dateISO: service.dateISO || convertDateToISO(service.date),
+      dateDisplay: service.date,
       serviceCode: service.code,
       serviceLabel: service.description || service.code,
       description: service.description || '',
       horaires: horaires,
-      isNightService: service.estServiceNuit || false,
-      originalDate: service.dateDorigine || null,
-      confidence: service.codeValide ? 1.0 : 0.5
+      isNightService: isNightService,
+      isValid: service.codeValide !== false,
+      hasError: !service.codeValide,
+      // Infos de décalage nuit
+      dateShiftedFromNight: service.shiftedFromNight || false,
+      originalDate: service.originalDate || null,
+      // Pour compatibilité
+      codeFoundExplicitly: true,
+      guessedByHoraires: false
     };
   });
   
@@ -151,7 +175,9 @@ function transformSimpleToLegacyFormat(simpleData) {
     entries,
     stats: {
       total: entries.length,
-      mapped: entries.filter(e => e.confidence >= 0.8).length
+      valid: entries.filter(e => e.isValid).length,
+      errors: entries.filter(e => e.hasError).length,
+      mapped: entries.filter(e => e.isValid).length
     }
   };
 }
@@ -188,8 +214,8 @@ export function isAPIConfigured() {
  */
 export function getAvailableMethods() {
   return [
-    { name: 'simple-vision', description: 'Mistral Vision direct (recommandé)', lines: 150 },
-    { name: 'legacy-ocr-parsing', description: 'OCR + parsing regex (fallback)', lines: 1200 }
+    { name: 'simple-ocr-json', description: 'OCR + JSON structuré (recommandé, ~200 lignes)', priority: 1 },
+    { name: 'legacy-ocr-parsing', description: 'OCR + parsing regex (fallback, ~1200 lignes)', priority: 2 }
   ];
 }
 
