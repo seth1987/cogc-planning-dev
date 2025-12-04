@@ -1,8 +1,12 @@
 /**
- * BulletinParserService v8.0
+ * BulletinParserService v8.1
  * Service de parsing des bulletins de commande SNCF
  * 
- * Améliorations v8 :
+ * Améliorations v8.1 :
+ * - Ajout méthodes statiques pour compatibilité ModalUploadPDF
+ * - isConfigured(), getStatus(), configure()
+ * 
+ * Améliorations v8.0 :
  * - Détection ULTRA-ROBUSTE du nom de l'agent (15+ patterns)
  * - Support noms composés (DE LA FONTAINE, LE GOFF, D'AMATO)
  * - Support particules françaises (DE, DU, LE, LA, DES, D')
@@ -11,7 +15,7 @@
  * - Gestion casse mixte (Martin DUPONT, MARTIN Jean-Pierre)
  * 
  * @author COGC Planning Team
- * @version 8.0.0
+ * @version 8.1.0
  */
 
 // ============================================================================
@@ -165,14 +169,90 @@ const AGENT_PATTERNS = {
 };
 
 // ============================================================================
+// CONFIGURATION STATIQUE (pour compatibilité avec ModalUploadPDF)
+// ============================================================================
+
+let _staticConfig = {
+  configured: true,
+  apiKey: null,
+  mode: 'local', // 'local' ou 'api'
+  debug: true
+};
+
+// ============================================================================
 // CLASSE PRINCIPALE
 // ============================================================================
 
 class BulletinParserService {
+  
+  // ==========================================================================
+  // MÉTHODES STATIQUES (pour compatibilité ModalUploadPDF)
+  // ==========================================================================
+  
+  /**
+   * Vérifie si le service est configuré
+   * @returns {boolean}
+   */
+  static isConfigured() {
+    return _staticConfig.configured;
+  }
+  
+  /**
+   * Retourne le statut du service
+   * @returns {Object}
+   */
+  static getStatus() {
+    return {
+      configured: _staticConfig.configured,
+      mode: _staticConfig.mode,
+      version: '8.1.0',
+      features: {
+        agentDetection: 'ultra-robust',
+        nightShiftSupport: true,
+        levenshteinMatching: true
+      }
+    };
+  }
+  
+  /**
+   * Configure le service
+   * @param {Object} config - Configuration
+   */
+  static configure(config = {}) {
+    _staticConfig = {
+      ..._staticConfig,
+      ...config,
+      configured: true
+    };
+    console.log('[BulletinParserService] Configuration mise à jour:', _staticConfig);
+  }
+  
+  /**
+   * Parse un bulletin (méthode statique pour compatibilité)
+   * @param {string} texte - Texte OCR du bulletin
+   * @returns {Object}
+   */
+  static parse(texte) {
+    const instance = new BulletinParserService({ debug: _staticConfig.debug });
+    return instance.parseBulletin(texte);
+  }
+  
+  /**
+   * Retourne les codes de service disponibles
+   * @returns {Object}
+   */
+  static getServiceCodes() {
+    return SERVICE_CODES;
+  }
+
+  // ==========================================================================
+  // CONSTRUCTEUR ET MÉTHODES D'INSTANCE
+  // ==========================================================================
+  
   constructor(options = {}) {
     this.debug = options.debug !== false;
     this.logs = [];
-    this.agentsConnus = options.agents || []; // Liste optionnelle d'agents connus
+    this.agentsConnus = options.agents || [];
   }
 
   /**
@@ -207,23 +287,14 @@ class BulletinParserService {
     if (!texte) return '';
     
     return texte
-      // Caractères invisibles et espaces
       .replace(/[\t\r\n]+/g, ' ')
       .replace(/\s{2,}/g, ' ')
-      .replace(/\u00A0/g, ' ')  // &nbsp;
-      .replace(/\u200B/g, '')  // Zero-width space
-      
-      // Apostrophes et guillemets
+      .replace(/\u00A0/g, ' ')
+      .replace(/\u200B/g, '')
       .replace(/[''‚]/g, "'")
       .replace(/[""„]/g, '"')
-      
-      // Tirets
       .replace(/[–—−]/g, '-')
-      
-      // Points de suspension
       .replace(/…/g, '...')
-      
-      // Trim
       .trim();
   }
 
@@ -237,13 +308,9 @@ class BulletinParserService {
     
     const normalise = this.normaliserTexte(texte);
     
-    // Doit contenir au moins un espace (2 mots minimum)
     if (!normalise.includes(' ')) return false;
-    
-    // Ne doit pas contenir de chiffres
     if (/\d/.test(normalise)) return false;
     
-    // Ne doit pas être un mot exclu
     const motsPrincipaux = normalise.toUpperCase().split(/\s+/);
     for (const mot of motsPrincipaux) {
       if (MOTS_EXCLUS.includes(mot) && !PARTICULES.includes(mot)) {
@@ -251,7 +318,6 @@ class BulletinParserService {
       }
     }
     
-    // Doit matcher au moins un pattern de nom
     for (const [nomPattern, pattern] of Object.entries(AGENT_PATTERNS)) {
       if (pattern.test(normalise)) {
         return true;
@@ -271,12 +337,10 @@ class BulletinParserService {
     
     let normalise = this.normaliserTexte(nom);
     
-    // Si tout en minuscules, mettre en majuscules
     if (normalise === normalise.toLowerCase()) {
       normalise = normalise.toUpperCase();
     }
     
-    // Normaliser les particules
     for (const particule of PARTICULES) {
       const regex = new RegExp(`\\b${particule}\\s+`, 'gi');
       normalise = normalise.replace(regex, particule.toUpperCase() + ' ');
@@ -287,9 +351,6 @@ class BulletinParserService {
 
   /**
    * Calcule la distance de Levenshtein entre deux chaînes
-   * @param {string} a - Première chaîne
-   * @param {string} b - Deuxième chaîne
-   * @returns {number} Distance
    */
   levenshtein(a, b) {
     if (!a || !b) return Math.max(a?.length || 0, b?.length || 0);
@@ -323,8 +384,6 @@ class BulletinParserService {
 
   /**
    * Valide un nom détecté contre la liste des agents connus
-   * @param {string} nomDetecte - Nom détecté par le parser
-   * @returns {Object|null} Agent correspondant ou null
    */
   validerContreListe(nomDetecte) {
     if (!this.agentsConnus.length || !nomDetecte) return null;
@@ -338,13 +397,11 @@ class BulletinParserService {
       const nomAgent = `${agent.nom} ${agent.prenom}`.toUpperCase();
       const nomAgentInverse = `${agent.prenom} ${agent.nom}`.toUpperCase();
       
-      // Correspondance exacte
       if (nomAgent === nomNormalise || nomAgentInverse === nomNormalise) {
         this.log(`Correspondance exacte trouvée: ${nomAgent}`, 'success');
         return { exact: true, agent, nom: nomAgent };
       }
       
-      // Correspondance partielle (distance de Levenshtein)
       const distance1 = this.levenshtein(nomAgent, nomNormalise);
       const distance2 = this.levenshtein(nomAgentInverse, nomNormalise);
       const distance = Math.min(distance1, distance2);
@@ -364,12 +421,10 @@ class BulletinParserService {
 
   /**
    * Parse un bulletin complet
-   * @param {string} texte - Texte OCR du bulletin
-   * @returns {Object} Résultat du parsing
    */
   parseBulletin(texte) {
     this.logs = [];
-    this.log('=== PARSING BULLETIN v8.0 (Détection Agent Améliorée) ===', 'info');
+    this.log('=== PARSING BULLETIN v8.1 ===', 'info');
     
     const lignes = this.preparerTexte(texte);
     
@@ -384,21 +439,16 @@ class BulletinParserService {
       logs: this.logs
     };
     
-    // Extraction de l'agent avec la nouvelle méthode robuste
     const extractionAgent = this.extraireAgentV8(lignes);
     resultat.agent = extractionAgent.nom;
     resultat.agentConfiance = extractionAgent.confiance;
     resultat.agentMethode = extractionAgent.methode;
     
-    // Validation contre la liste si disponible
     if (resultat.agent && this.agentsConnus.length > 0) {
       resultat.agentValidation = this.validerContreListe(resultat.agent);
     }
     
-    // Extraire les services
     const servicesExtraits = this.extraireServices(lignes);
-    
-    // Post-traitement : ajouter les X pour les services de nuit
     resultat.services = this.postTraitementNuits(servicesExtraits);
     
     this.log(`=== RÉSULTAT: Agent="${resultat.agent}" (${resultat.agentMethode}), ${resultat.services.length} services ===`, 'success');
@@ -421,16 +471,13 @@ class BulletinParserService {
 
   /**
    * Extraction ULTRA-ROBUSTE du nom de l'agent (v8)
-   * Utilise 5 stratégies de détection avec scoring de confiance
    */
   extraireAgentV8(lignes) {
     this.log('Recherche du nom de l\'agent (v8 - multi-stratégies)...', 'debug');
     
     const candidats = [];
     
-    // =========================================================================
     // STRATÉGIE 1: Pattern "Agent :" sur même ligne
-    // =========================================================================
     for (const ligne of lignes) {
       const match = ligne.match(AGENT_PATTERNS.agentDirect);
       if (match) {
@@ -442,21 +489,15 @@ class BulletinParserService {
       }
     }
     
-    // =========================================================================
     // STRATÉGIE 2: Ligne "Agent :" puis nom dans les 5 lignes suivantes
-    // =========================================================================
     for (let i = 0; i < lignes.length; i++) {
       const ligne = lignes[i];
       
       if (/^Agent\s*:?\s*$/i.test(ligne)) {
-        // Parcourir les 5 lignes suivantes
         for (let j = 1; j <= 5 && i + j < lignes.length; j++) {
           const ligneSuivante = lignes[i + j];
           
-          // Ignorer "COGC PN" et lignes vides
           if (ligneSuivante === 'COGC PN' || ligneSuivante.length < 4) continue;
-          
-          // Ignorer les lignes avec N° CP
           if (/N°\s*CP/i.test(ligneSuivante)) break;
           
           if (this.ressembleANom(ligneSuivante)) {
@@ -469,23 +510,18 @@ class BulletinParserService {
       }
     }
     
-    // =========================================================================
     // STRATÉGIE 3: Pattern NOM PRÉNOM dans les 20 premières lignes
-    // =========================================================================
     for (let i = 0; i < Math.min(20, lignes.length); i++) {
       const ligne = lignes[i];
       
-      // Ignorer les lignes non pertinentes
       if (ligne === 'COGC PN' || MOTS_EXCLUS.some(m => ligne.includes(m))) continue;
       
-      // Tester tous les patterns de noms
       for (const [nomPattern, pattern] of Object.entries(AGENT_PATTERNS)) {
-        if (nomPattern === 'agentDirect') continue; // Déjà traité
+        if (nomPattern === 'agentDirect') continue;
         
         if (pattern.test(ligne)) {
           const nom = this.standardiserNom(ligne);
           if (this.ressembleANom(nom)) {
-            // Confiance variable selon le pattern
             let confiance = 70;
             if (nomPattern === 'toutMajuscules') confiance = 85;
             if (nomPattern === 'nomMajPrenom') confiance = 80;
@@ -498,9 +534,7 @@ class BulletinParserService {
       }
     }
     
-    // =========================================================================
     // STRATÉGIE 4: Recherche après "COGC PN"
-    // =========================================================================
     for (let i = 0; i < lignes.length; i++) {
       if (lignes[i] === 'COGC PN' && i + 1 < lignes.length) {
         const ligneSuivante = lignes[i + 1];
@@ -512,9 +546,7 @@ class BulletinParserService {
       }
     }
     
-    // =========================================================================
     // STRATÉGIE 5: Validation par liste d'agents connus
-    // =========================================================================
     if (this.agentsConnus.length > 0) {
       for (let i = 0; i < Math.min(25, lignes.length); i++) {
         const ligne = lignes[i];
@@ -538,18 +570,14 @@ class BulletinParserService {
       }
     }
     
-    // =========================================================================
     // SÉLECTION DU MEILLEUR CANDIDAT
-    // =========================================================================
     if (candidats.length === 0) {
       this.log('Aucun nom d\'agent détecté', 'warning');
       return { nom: null, confiance: 0, methode: 'non_detecte' };
     }
     
-    // Trier par confiance décroissante
     candidats.sort((a, b) => b.confiance - a.confiance);
     
-    // Prendre le meilleur
     const meilleur = candidats[0];
     this.log(`Agent sélectionné: "${meilleur.nom}" (confiance: ${meilleur.confiance}%, méthode: ${meilleur.methode})`, 'success');
     
@@ -607,7 +635,6 @@ class BulletinParserService {
     const services = [];
     let indexActuel = 0;
     
-    // Trouver le début des services
     while (indexActuel < lignes.length) {
       if (lignes[indexActuel].includes('pu déjà être notifié') ||
           lignes[indexActuel].includes('Commande allant du')) {
@@ -619,7 +646,6 @@ class BulletinParserService {
     
     this.log(`Début des services à l'index: ${indexActuel}`, 'debug');
     
-    // Parcourir et extraire les services
     while (indexActuel < lignes.length) {
       const ligne = lignes[indexActuel];
       
@@ -654,7 +680,6 @@ class BulletinParserService {
       if (PATTERNS.ignorer.test(ligne)) continue;
       if (/^du\s+[A-Z]{3}\d{3}/i.test(ligne)) continue;
       
-      // Codes numériques
       const matchCode = ligne.match(PATTERNS.codePosteNum);
       if (matchCode && !codeService) {
         const codeComplet = `${matchCode[1]}${matchCode[2]}`;
@@ -668,7 +693,6 @@ class BulletinParserService {
         }
       }
       
-      // Codes simples
       const matchSimple = ligne.match(PATTERNS.codeSimple);
       if (matchSimple && !codeService) {
         const code = matchSimple[0].toUpperCase();
@@ -680,7 +704,6 @@ class BulletinParserService {
         }
       }
       
-      // Textes spéciaux
       if (!codeService) {
         if (/Repos\s+périodique/i.test(ligne)) {
           codeService = 'RP';
@@ -695,7 +718,6 @@ class BulletinParserService {
         }
       }
       
-      // Horaires
       const matchHoraires = ligne.match(PATTERNS.horairesN) || ligne.match(PATTERNS.horairesTexte);
       if (matchHoraires && !horaires) {
         horaires = `${matchHoraires[1]}-${matchHoraires[2]}`;
@@ -782,12 +804,16 @@ export { BulletinParserService, SERVICE_CODES, PATTERNS, AGENT_PATTERNS };
 // ============================================================================
 
 export function testBulletinParserV8() {
-  console.log('\n🧪 TEST BULLETIN PARSER v8.0\n');
+  console.log('\n🧪 TEST BULLETIN PARSER v8.1\n');
   console.log('═'.repeat(70));
+  
+  // Test méthodes statiques
+  console.log('\n📌 Test méthodes statiques:');
+  console.log(`  isConfigured(): ${BulletinParserService.isConfigured()}`);
+  console.log(`  getStatus():`, BulletinParserService.getStatus());
   
   const parser = new BulletinParserService({ debug: true });
   
-  // Test avec différents formats de noms
   const testsNoms = [
     'GILLON THOMAS',
     'DE LA FONTAINE Jean',
@@ -808,7 +834,6 @@ export function testBulletinParserV8() {
     console.log(`  ${ressemble ? '✅' : '❌'} "${nom}" → "${standardise}"`);
   }
   
-  // Test avec bulletin complet
   const texteTest = `
 BULLETIN DE COMMANDE UOP :
 Agent :
