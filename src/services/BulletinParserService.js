@@ -7,8 +7,8 @@
  * 2. Images → Mistral Pixtral OCR → Markdown
  * 3. Markdown → Parser → Données structurées COGC
  * 
- * @version 4.0.2
- * @date 2025-12-03
+ * @version 4.0.3
+ * @date 2025-12-04
  * @accuracy 100% (testé sur bulletins réels)
  */
 
@@ -17,7 +17,7 @@ class BulletinParserService {
   // CONFIGURATION
   // ═══════════════════════════════════════════════════════════════
   
-  static API_KEY = process.env.REACT_APP_MISTRAL_API_KEY || 'duQZd7M1SHUuJtUe0KyMLGr5ROhBiLM6';
+  static API_KEY = process.env.REACT_APP_MISTRAL_API_KEY || 'qK0tiHDxaLU8WBDukaa6Jmpg1QQkq8ua';
   static API_URL = 'https://api.mistral.ai/v1/chat/completions';
   static MODEL = 'pixtral-12b-2409';
   static RENDER_SCALE = 2.0;
