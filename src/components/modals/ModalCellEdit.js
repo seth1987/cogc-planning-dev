@@ -3,20 +3,21 @@ import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3 } from 'lucide-r
 import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES } from '../../constants/config';
 
 // Couleurs UNIQUEMENT pour la modal d'édition 
-// Alignées avec config.js :
-// - MA en JAUNE/OR
-// - C (congés) en vert
-// - HAB/FO en ORANGE
-// - D (DISPO) en BLEU
+// CORRIGÉES selon spécifications utilisateur :
+// - MA en ROUGE 🔴
+// - C (congés) en JAUNE/OR 🟡
+// - HAB/FO en ORANGE 🟠
+// - D (DISPO) en BLEU 🔵
+// - RP/RU en VERT 🟢
 // - Pas de couleur pour -, O, X et les postes de réserve
 const MODAL_COLORS = {
-  'MA': 'bg-yellow-400 text-yellow-900 font-semibold',    // Maladie = Jaune/Or
-  'C': 'bg-green-100 text-green-800',                      // Congés = Vert
-  'RP': 'bg-green-100 text-green-800',                     // Repos = Vert
-  'RU': 'bg-green-100 text-green-800',                     // Repos = Vert
-  'HAB': 'bg-orange-200 text-orange-800',                  // Habilitation = Orange
-  'FO': 'bg-orange-200 text-orange-800',                   // Formation = Orange
-  'D': 'bg-blue-200 text-blue-800',                        // Disponible = Bleu
+  'MA': 'bg-red-200 text-red-800 font-semibold',          // Maladie = ROUGE 🔴
+  'C': 'bg-yellow-400 text-yellow-900 font-semibold',     // Congés = JAUNE/OR 🟡
+  'RP': 'bg-green-100 text-green-800',                     // Repos = Vert 🟢
+  'RU': 'bg-green-100 text-green-800',                     // Repos = Vert 🟢
+  'HAB': 'bg-orange-200 text-orange-800',                  // Habilitation = ORANGE 🟠
+  'FO': 'bg-orange-200 text-orange-800',                   // Formation = ORANGE 🟠
+  'D': 'bg-blue-200 text-blue-800',                        // Disponible = BLEU 🔵
   'I': 'bg-pink-100 text-pink-700',                        // Inactif
   'NU': 'bg-gray-200 text-gray-600',                       // Non Utilisé
   // Les autres codes (-, O, X) n'ont pas de couleur (gris par défaut)
