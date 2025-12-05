@@ -30,8 +30,9 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
+ * @version 1.1.0 - Support des postes supplémentaires persistés
  * @param {Object} selectedCell - {agent: string, day: number}
- * @param {Object|null} cellData - Données existantes {service, poste, note, texteLibre}
+ * @param {Object|null} cellData - Données existantes {service, poste, note, texteLibre, postesSupplementaires}
  * @param {Object} agentsData - Données des agents par groupe
  * @param {Function} onUpdateCell - Callback pour sauvegarder (agentName, day, value)
  * @param {Function} onClose - Callback pour fermer le modal
@@ -54,13 +55,15 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
   const [texteLibreInput, setTexteLibreInput] = useState('');
   const [isTexteLibreEditMode, setIsTexteLibreEditMode] = useState(false);
 
-  // Initialiser les états avec les données existantes
+  // Initialiser les états avec les données existantes (y compris postes supplémentaires)
   useEffect(() => {
     if (cellData) {
       setTempService(cellData.service || '');
       setTempPoste(cellData.poste || '');
       setTempNote(cellData.note || '');
       setTempTexteLibre(cellData.texteLibre || '');
+      // ✅ Charger les postes supplémentaires existants depuis la BDD
+      setTempPostesSupplementaires(cellData.postesSupplementaires || []);
     } else {
       setTempService('');
       setTempPoste('');
@@ -204,6 +207,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
 
   const hasExistingNote = Boolean(tempNote);
   const hasExistingTexteLibre = Boolean(tempTexteLibre);
+  const hasExistingPostesSupp = tempPostesSupplementaires.length > 0;
 
   return (
     <>
@@ -224,6 +228,12 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
                 <div className="flex items-center gap-1 mt-1">
                   <Type className="w-3 h-3 text-purple-500" />
                   <span className="text-xs text-purple-600">Texte libre : {tempTexteLibre}</span>
+                </div>
+              )}
+              {hasExistingPostesSupp && (
+                <div className="flex items-center gap-1 mt-1">
+                  <Check className="w-3 h-3 text-purple-500" />
+                  <span className="text-xs text-purple-600 italic">Postes supp: {tempPostesSupplementaires.join(', ')}</span>
                 </div>
               )}
             </div>
