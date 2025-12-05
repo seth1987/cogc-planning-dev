@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
  * Hook personnalisé pour la gestion centralisée des modals
  * Simplifie l'ouverture/fermeture et le passage de données aux modals
  * 
- * @version 2.0.0 - Fix bouton "Nouvel Agent"
+ * @version 2.1.0 - Ajout ModalPrevisionnelJour (Équipes du Jour)
  * @returns {Object} État et fonctions de gestion des modals
  */
 export function useModals() {
@@ -15,11 +15,13 @@ export function useModals() {
     editAgent: false,
     habilitations: false,
     uploadPDF: false,
+    previsionnelJour: false, // Nouveau modal Équipes du Jour
   });
 
   // Données associées aux modals
   const [selectedCell, setSelectedCell] = useState(null);
   const [selectedAgent, setSelectedAgent] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(null); // Date pour modal Équipes du Jour
 
   /**
    * Ouvre un modal spécifique
@@ -41,6 +43,8 @@ export function useModals() {
       setSelectedAgent(data);
     } else if (modalName === 'habilitations' && data) {
       setSelectedAgent(data);
+    } else if (modalName === 'previsionnelJour') {
+      setSelectedDate(data);
     }
   }, []);
 
@@ -60,6 +64,8 @@ export function useModals() {
     } else if (['editAgent', 'habilitations'].includes(modalName)) {
       // Délai pour éviter le flash de contenu vide
       setTimeout(() => setSelectedAgent(null), 200);
+    } else if (modalName === 'previsionnelJour') {
+      setTimeout(() => setSelectedDate(null), 200);
     }
   }, []);
 
@@ -73,9 +79,11 @@ export function useModals() {
       editAgent: false,
       habilitations: false,
       uploadPDF: false,
+      previsionnelJour: false,
     });
     setSelectedCell(null);
     setSelectedAgent(null);
+    setSelectedDate(null);
   }, []);
 
   /**
@@ -124,11 +132,20 @@ export function useModals() {
     openModal('uploadPDF');
   }, [openModal]);
 
+  /**
+   * Ouvre le modal Équipes du Jour (Prévisionnel)
+   * @param {Date|string} date - Date pour laquelle afficher les équipes
+   */
+  const openPrevisionnelJour = useCallback((date) => {
+    openModal('previsionnelJour', date);
+  }, [openModal]);
+
   return {
     // État brut
     modals,
     selectedCell,
     selectedAgent,
+    selectedDate,
     
     // Fonctions génériques
     openModal,
@@ -143,10 +160,12 @@ export function useModals() {
     openEditAgent,
     openHabilitations,
     openUploadPDF,
+    openPrevisionnelJour, // Nouveau raccourci
     
     // Setters directs (pour cas spéciaux)
     setSelectedAgent,
     setSelectedCell,
+    setSelectedDate,
   };
 }
 
