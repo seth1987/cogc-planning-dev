@@ -1,4 +1,4 @@
-import { MONTHS, JOURS_FERIES_2025, ORDRE_GROUPES } from '../constants/config';
+import { MONTHS, JOURS_FERIES, CURRENT_YEAR, ORDRE_GROUPES } from '../constants/config';
 
 class PlanningService {
   constructor() {
@@ -59,17 +59,17 @@ class PlanningService {
 
   getDaysInMonth(month) {
     const monthIndex = MONTHS.indexOf(month);
-    const year = 2025;
+    const year = CURRENT_YEAR;
     return new Date(year, monthIndex + 1, 0).getDate();
   }
 
   getJourType(day, month) {
     const monthIndex = MONTHS.indexOf(month);
-    const date = new Date(2025, monthIndex, day);
+    const date = new Date(CURRENT_YEAR, monthIndex, day);
     const dayOfWeek = date.getDay();
     
-    // Vérifier si c'est un jour férié
-    const joursFeriesMois = JOURS_FERIES_2025[month] || [];
+    // Vérifier si c'est un jour férié - utilise JOURS_FERIES (année courante)
+    const joursFeriesMois = JOURS_FERIES[month] || [];
     const isFerier = joursFeriesMois.includes(day);
     
     return {
@@ -80,7 +80,7 @@ class PlanningService {
     };
   }
 
-  formatDate(day, month, year = 2025) {
+  formatDate(day, month, year = CURRENT_YEAR) {
     const monthIndex = MONTHS.indexOf(month);
     const date = new Date(year, monthIndex, day);
     return date.toISOString().split('T')[0];
@@ -88,7 +88,7 @@ class PlanningService {
 
   getDayName(day, month) {
     const monthIndex = MONTHS.indexOf(month);
-    const date = new Date(2025, monthIndex, day);
+    const date = new Date(CURRENT_YEAR, monthIndex, day);
     return date.toLocaleDateString('fr-FR', { weekday: 'short' });
   }
 
@@ -205,7 +205,7 @@ class PlanningService {
     
     // Déterminer le mois du bulletin
     let bulletinMonth = null;
-    let bulletinYear = 2025;
+    let bulletinYear = CURRENT_YEAR;
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
