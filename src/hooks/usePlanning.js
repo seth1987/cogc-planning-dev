@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import supabaseService from '../services/supabaseService';
 import planningService from '../services/planningService';
-import { MONTHS, CURRENT_YEAR } from '../constants/config';
+import { MONTHS, DEFAULT_YEAR } from '../constants/config';
 
 /**
  * Hook personnalisé pour la gestion du planning
@@ -9,9 +9,10 @@ import { MONTHS, CURRENT_YEAR } from '../constants/config';
  * 
  * @param {Object} user - L'utilisateur authentifié
  * @param {string} currentMonth - Le mois actuellement sélectionné
+ * @param {number} currentYear - L'année actuellement sélectionnée
  * @returns {Object} État et fonctions de gestion du planning
  */
-export function usePlanning(user, currentMonth) {
+export function usePlanning(user, currentMonth, currentYear = DEFAULT_YEAR) {
   // États des données
   const [agents, setAgents] = useState([]);
   const [agentsData, setAgentsData] = useState({});
@@ -57,9 +58,9 @@ export function usePlanning(user, currentMonth) {
       setHabilitations(habilitationsByAgent);
       setConnectionStatus(`✅ ${agentsResult.length} agents connectés`);
       
-      // Charger le planning du mois - Utilise CURRENT_YEAR depuis config
+      // Charger le planning du mois - Utilise currentYear passé en paramètre
       const monthIndex = MONTHS.indexOf(month);
-      const year = CURRENT_YEAR;
+      const year = currentYear;
       
       const startDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
       const lastDay = new Date(year, monthIndex + 1, 0).getDate();
@@ -109,7 +110,7 @@ export function usePlanning(user, currentMonth) {
     } finally {
       setLoading(false);
     }
-  }, [currentMonth, user]);
+  }, [currentMonth, currentYear, user]);
 
   /**
    * Récupère les données d'une cellule spécifique
@@ -147,7 +148,7 @@ export function usePlanning(user, currentMonth) {
         return;
       }
 
-      const date = planningService.formatDate(day, currentMonth);
+      const date = planningService.formatDate(day, currentMonth, currentYear);
       
       if (value === '') {
         // Suppression de l'entrée
@@ -177,7 +178,7 @@ export function usePlanning(user, currentMonth) {
       console.error('Erreur sauvegarde:', err);
       throw err;
     }
-  }, [agents, currentMonth]);
+  }, [agents, currentMonth, currentYear]);
 
   /**
    * Recharge les habilitations depuis la base
@@ -188,12 +189,12 @@ export function usePlanning(user, currentMonth) {
     setHabilitations(habilitationsByAgent);
   }, [agents]);
 
-  // Charger les données quand l'utilisateur ou le mois change
+  // Charger les données quand l'utilisateur, le mois ou l'année change
   useEffect(() => {
     if (user) {
       loadData();
     }
-  }, [user, currentMonth, loadData]);
+  }, [user, currentMonth, currentYear, loadData]);
 
   return {
     // Données
