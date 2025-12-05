@@ -61,6 +61,8 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
       setTempPoste(cellData.poste || '');
       setTempNote(cellData.note || '');
       setTempTexteLibre(cellData.texteLibre || '');
+      // Charger les postes supplémentaires existants
+      setTempPostesSupplementaires(cellData.postesSupplementaires || []);
     } else {
       setTempService('');
       setTempPoste('');
