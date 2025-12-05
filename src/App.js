@@ -25,7 +25,7 @@ import ModalUploadPDF from './components/modals/ModalUploadPDF';
 import ModalPrevisionnelJour from './components/modals/ModalPrevisionnelJour';
 
 // Constants
-import { MONTHS } from './constants/config';
+import { MONTHS, CURRENT_YEAR } from './constants/config';
 
 // Styles
 import './App.css';
@@ -38,7 +38,7 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
- * v2.1 - Ajout modal Équipes du Jour
+ * v2.2 - Fix date calculation for modal Équipes du Jour
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -136,14 +136,16 @@ const App = () => {
   /**
    * Handler pour le clic sur un en-tête de jour (header)
    * Ouvre le modal Équipes du Jour pour cette date
+   * 
+   * FIX v2.2: Use CURRENT_YEAR from config instead of new Date().getFullYear()
    */
   const handleDayHeaderClick = (day) => {
     // Construire la date complète à partir du mois courant et du jour
     const monthIndex = MONTHS.indexOf(currentMonth);
-    const year = new Date().getFullYear();
-    const date = new Date(year, monthIndex, day);
+    // FIX: Utiliser CURRENT_YEAR (2026) au lieu de new Date().getFullYear() (2025)
+    const date = new Date(CURRENT_YEAR, monthIndex, day);
     
-    // Ouvrir le modal avec cette date
+    // Ouvrir le modal avec cette date (format YYYY-MM-DD)
     openPrevisionnelJour(date.toISOString().split('T')[0]);
   };
 
