@@ -1,30 +1,7 @@
 // Composant pour l'étape de validation des données extraites
-// Version 2.1 - Vue split-screen avec PDF en regard + scrollbar visible
+// Version 2.2 - Vue split-screen avec PDF en regard + scrollbar forcée
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
-
-// Styles pour la scrollbar personnalisée
-const scrollbarStyles = `
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 10px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 5px;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #94a3b8;
-    border-radius: 5px;
-    border: 2px solid #f1f5f9;
-  }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #64748b;
-  }
-  .custom-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: #94a3b8 #f1f5f9;
-  }
-`;
+import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ZoomIn, ZoomOut } from 'lucide-react';
 
 const PDFValidationStep = ({ 
   data,  // Données extraites
@@ -40,7 +17,7 @@ const PDFValidationStep = ({
   const [showPDF, setShowPDF] = useState(true);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pdfZoom, setPdfZoom] = useState(100);
-  const [splitRatio, setSplitRatio] = useState(50); // % de largeur pour le PDF
+  const [splitRatio, setSplitRatio] = useState(50);
 
   // Créer l'URL du PDF au montage
   useEffect(() => {
@@ -49,7 +26,6 @@ const PDFValidationStep = ({
       setPdfUrl(url);
       console.log('📄 PDF URL créée pour prévisualisation');
       
-      // Cleanup
       return () => {
         URL.revokeObjectURL(url);
       };
@@ -120,21 +96,18 @@ const PDFValidationStep = ({
     });
   };
 
-  // Fonction pour modifier une cellule
   const handleCellEdit = (index, field, value) => {
     const updatedData = { ...data };
     updatedData.planning[index][field] = value;
     onChange(updatedData);
   };
 
-  // Fonction pour supprimer une entrée
   const handleDeleteEntry = (index) => {
     const updatedData = { ...data };
     updatedData.planning = updatedData.planning.filter((_, i) => i !== index);
     onChange(updatedData);
   };
 
-  // Fonction pour ajouter une entrée manuelle
   const handleAddEntry = () => {
     const today = new Date().toISOString().split('T')[0];
     const newEntry = {
@@ -149,7 +122,6 @@ const PDFValidationStep = ({
     onChange(updatedData);
   };
 
-  // Grouper par date pour un affichage plus clair
   const groupedByDate = (data.planning || []).reduce((acc, entry, index) => {
     if (!acc[entry.date]) {
       acc[entry.date] = [];
@@ -161,13 +133,11 @@ const PDFValidationStep = ({
   // Composant de visualisation du PDF
   const PDFViewer = () => (
     <div className="h-full flex flex-col bg-gray-800 rounded-lg overflow-hidden">
-      {/* Toolbar PDF */}
       <div className="bg-gray-700 px-3 py-2 flex items-center justify-between flex-shrink-0">
         <span className="text-white text-sm font-medium flex items-center gap-2">
           📄 Bulletin original
         </span>
         <div className="flex items-center gap-2">
-          {/* Zoom controls */}
           <button
             onClick={() => setPdfZoom(Math.max(50, pdfZoom - 25))}
             className="text-white hover:bg-gray-600 p-1 rounded"
@@ -183,7 +153,6 @@ const PDFValidationStep = ({
           >
             <ZoomIn size={16} />
           </button>
-          {/* Toggle */}
           <button
             onClick={() => setShowPDF(false)}
             className="text-white hover:bg-gray-600 p-1 rounded ml-2"
@@ -194,7 +163,6 @@ const PDFValidationStep = ({
         </div>
       </div>
       
-      {/* PDF iframe */}
       <div className="flex-1 overflow-auto bg-gray-600 p-2">
         {pdfUrl ? (
           <iframe
@@ -218,14 +186,17 @@ const PDFValidationStep = ({
     </div>
   );
 
-  // Composant des données extraites
+  // Composant des données extraites avec scrollbar forcée
   const DataEditor = () => (
-    <div className="h-full flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div 
+      className="flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden"
+      style={{ height: '100%', maxHeight: '100%' }}
+    >
       {/* Header fixe */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-100 to-slate-50 border-b border-gray-200 flex-shrink-0">
         <h3 className="font-semibold text-gray-800 flex items-center gap-2">
           📋 Données extraites
-          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+          <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">
             {data.planning ? data.planning.length : 0} entrées
           </span>
         </h3>
@@ -240,10 +211,17 @@ const PDFValidationStep = ({
         )}
       </div>
 
-      {/* Contenu scrollable avec scrollbar visible */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+      {/* Contenu scrollable - HAUTEUR FIXE avec scrollbar toujours visible */}
+      <div 
+        className="flex-1 p-4 space-y-4 overflow-y-scroll"
+        style={{ 
+          minHeight: 0,  // Important pour que flex-1 fonctionne avec overflow
+          scrollbarWidth: 'auto',
+          scrollbarColor: '#6b7280 #e5e7eb'
+        }}
+      >
         {/* Agent détecté */}
-        <div className="bg-blue-50 p-4 rounded-lg">
+        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
           <div className="flex items-center gap-2 mb-2">
             <User className="text-blue-600" size={20} />
             <h3 className="font-semibold">Agent</h3>
@@ -330,18 +308,17 @@ const PDFValidationStep = ({
           </div>
 
           {data.planning && data.planning.length > 0 ? (
-            <div className="border rounded-lg overflow-hidden">
+            <div className="border rounded-lg overflow-hidden shadow-sm">
               {Object.entries(groupedByDate).map(([date, entries]) => (
                 <div key={date} className="border-b last:border-b-0">
-                  <div className="bg-gray-100 px-3 py-2 sticky top-0 z-10 border-b">
-                    <span className="font-medium text-sm">{formatDate(date)}</span>
-                    <span className="text-xs text-gray-600 ml-2">({entries.length} service{entries.length > 1 ? 's' : ''})</span>
+                  <div className="bg-slate-200 px-3 py-2 border-b">
+                    <span className="font-semibold text-sm text-slate-700">{formatDate(date)}</span>
+                    <span className="text-xs text-slate-500 ml-2">({entries.length} service{entries.length > 1 ? 's' : ''})</span>
                   </div>
                   
                   <div className="p-2 space-y-1 bg-white">
                     {entries.map((entry) => (
-                      <div key={entry.index} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded text-sm border border-transparent hover:border-gray-200">
-                        {/* Service */}
+                      <div key={entry.index} className="flex items-center gap-2 p-2 hover:bg-blue-50 rounded text-sm border border-transparent hover:border-blue-200 transition-colors">
                         <select
                           value={entry.service_code}
                           onChange={(e) => handleCellEdit(entry.index, 'service_code', e.target.value)}
@@ -360,12 +337,10 @@ const PDFValidationStep = ({
                           <option value="VISIMED">Visite Médicale</option>
                         </select>
 
-                        {/* Badge service */}
                         <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${getServiceColor(entry.service_code)}`}>
                           {getServiceLabel(entry.service_code)}
                         </span>
 
-                        {/* Poste */}
                         {entry.poste_code && (
                           <select
                             value={entry.poste_code || ''}
@@ -384,17 +359,15 @@ const PDFValidationStep = ({
                           </select>
                         )}
 
-                        {/* Code original */}
                         {entry.original_code && (
                           <span className="text-xs text-gray-400 truncate max-w-[80px]" title={entry.original_code}>
                             ({entry.original_code})
                           </span>
                         )}
 
-                        {/* Supprimer */}
                         <button
                           onClick={() => handleDeleteEntry(entry.index)}
-                          className="text-red-500 hover:text-red-700 p-1 flex-shrink-0"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded flex-shrink-0"
                           title="Supprimer cette entrée"
                         >
                           <X size={16} />
@@ -406,7 +379,7 @@ const PDFValidationStep = ({
               ))}
             </div>
           ) : (
-            <div className="bg-gray-50 rounded-lg p-6 text-center">
+            <div className="bg-gray-50 rounded-lg p-6 text-center border">
               <p className="text-gray-600">Aucune entrée de planning détectée</p>
               <p className="text-sm text-gray-500 mt-2">Utilisez le bouton ci-dessus pour ajouter des entrées manuellement</p>
             </div>
@@ -415,7 +388,7 @@ const PDFValidationStep = ({
 
         {/* Résumé */}
         {data.planning && data.planning.length > 0 && (
-          <div className="bg-gray-50 rounded-lg p-3">
+          <div className="bg-slate-100 rounded-lg p-3 border">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
               <div>
                 <span className="text-gray-600">Période :</span>
@@ -437,13 +410,16 @@ const PDFValidationStep = ({
             </div>
           </div>
         )}
+        
+        {/* Spacer pour s'assurer qu'il y a assez de contenu pour scroller */}
+        <div className="h-4"></div>
       </div>
 
       {/* Boutons d'action - fixés en bas */}
-      <div className="flex justify-between p-4 border-t bg-gray-50 flex-shrink-0">
+      <div className="flex justify-between p-4 border-t bg-gradient-to-r from-slate-100 to-slate-50 flex-shrink-0">
         <button
           onClick={onCancel}
-          className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+          className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 font-medium"
         >
           ← Retour
         </button>
@@ -472,38 +448,53 @@ const PDFValidationStep = ({
     </div>
   );
 
-  // Rendu principal - Split View ou Vue simple
   return (
     <>
-      {/* Injection des styles de scrollbar */}
-      <style>{scrollbarStyles}</style>
+      {/* Styles globaux pour les scrollbars */}
+      <style>{`
+        .data-scroll-container::-webkit-scrollbar {
+          width: 12px;
+        }
+        .data-scroll-container::-webkit-scrollbar-track {
+          background: #e5e7eb;
+          border-radius: 6px;
+        }
+        .data-scroll-container::-webkit-scrollbar-thumb {
+          background: #6b7280;
+          border-radius: 6px;
+          border: 2px solid #e5e7eb;
+        }
+        .data-scroll-container::-webkit-scrollbar-thumb:hover {
+          background: #4b5563;
+        }
+      `}</style>
       
-      <div className="h-full">
+      <div style={{ height: 'calc(70vh)', minHeight: '500px' }}>
         {/* Message d'aide */}
         {pdfFile && showPDF && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
             <p className="text-sm text-blue-800">
               💡 <strong>Astuce :</strong> Comparez le bulletin original (à gauche) avec les données extraites (à droite). 
-              Utilisez la barre de défilement pour parcourir toutes les entrées.
+              Faites défiler la liste pour voir toutes les entrées.
             </p>
           </div>
         )}
 
         {/* Layout Split ou Simple */}
         {pdfFile && showPDF ? (
-          // Vue Split-Screen
-          <div className="flex gap-4 h-[calc(100%-60px)]" style={{ minHeight: '500px' }}>
+          <div className="flex gap-4" style={{ height: 'calc(100% - 50px)' }}>
             {/* Panneau PDF - Gauche */}
             <div 
               className="flex-shrink-0 transition-all duration-300"
-              style={{ width: `${splitRatio}%`, minWidth: '300px', maxWidth: '60%' }}
+              style={{ width: `${splitRatio}%`, minWidth: '300px', maxWidth: '60%', height: '100%' }}
             >
               <PDFViewer />
             </div>
 
             {/* Séparateur redimensionnable */}
             <div 
-              className="w-2 bg-gray-300 hover:bg-blue-400 cursor-col-resize rounded flex-shrink-0 flex items-center justify-center transition-colors"
+              className="w-3 bg-gray-300 hover:bg-blue-500 cursor-col-resize rounded flex-shrink-0 flex items-center justify-center transition-colors"
+              style={{ height: '100%' }}
               onMouseDown={(e) => {
                 const startX = e.clientX;
                 const startRatio = splitRatio;
@@ -524,17 +515,16 @@ const PDFValidationStep = ({
                 document.addEventListener('mouseup', onMouseUp);
               }}
             >
-              <div className="w-1 h-12 bg-gray-500 rounded" />
+              <div className="w-1 h-16 bg-gray-500 rounded" />
             </div>
 
             {/* Panneau Données - Droite */}
-            <div className="flex-1 min-w-[350px]">
+            <div className="flex-1 min-w-[350px]" style={{ height: '100%' }}>
               <DataEditor />
             </div>
           </div>
         ) : (
-          // Vue Simple (sans PDF)
-          <div className="h-full">
+          <div style={{ height: '100%' }}>
             <DataEditor />
           </div>
         )}
