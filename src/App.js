@@ -38,7 +38,7 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
- * v2.2 - Fix date calculation for modal Équipes du Jour
+ * v2.3 - Fix timezone issue for modal date calculation
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -137,16 +137,19 @@ const App = () => {
    * Handler pour le clic sur un en-tête de jour (header)
    * Ouvre le modal Équipes du Jour pour cette date
    * 
-   * FIX v2.2: Use CURRENT_YEAR from config instead of new Date().getFullYear()
+   * FIX v2.3: Format date manually to avoid timezone conversion issues
+   * toISOString() converts to UTC which shifts the date by -1 day in France (UTC+1)
    */
   const handleDayHeaderClick = (day) => {
-    // Construire la date complète à partir du mois courant et du jour
+    // Construire la date au format YYYY-MM-DD sans conversion UTC
     const monthIndex = MONTHS.indexOf(currentMonth);
-    // FIX: Utiliser CURRENT_YEAR (2026) au lieu de new Date().getFullYear() (2025)
-    const date = new Date(CURRENT_YEAR, monthIndex, day);
+    const year = CURRENT_YEAR;
+    const month = String(monthIndex + 1).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    const dateStr = `${year}-${month}-${dayStr}`;
     
-    // Ouvrir le modal avec cette date (format YYYY-MM-DD)
-    openPrevisionnelJour(date.toISOString().split('T')[0]);
+    // Ouvrir le modal avec cette date
+    openPrevisionnelJour(dateStr);
   };
 
   const handleUpdateCell = async (agentName, day, value) => {
