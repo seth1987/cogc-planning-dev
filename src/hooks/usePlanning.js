@@ -7,6 +7,7 @@ import { MONTHS, CURRENT_YEAR } from '../constants/config';
  * Hook personnalisé pour la gestion du planning
  * Centralise le chargement, la mise à jour et la suppression des données de planning
  * 
+ * @version 1.1.0 - Support des postes supplémentaires (persistance)
  * @param {Object} user - L'utilisateur authentifié
  * @param {string} currentMonth - Le mois actuellement sélectionné
  * @param {number} currentYear - L'année actuellement sélectionnée
@@ -70,7 +71,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       
       const planningFromDB = await supabaseService.getPlanningForMonth(startDate, endDate);
       
-      // Organiser les données de planning AVEC les notes
+      // Organiser les données de planning AVEC les notes et postes supplémentaires
       const planningData = {};
       agentsResult.forEach(agent => {
         const agentName = `${agent.nom} ${agent.prenom}`;
@@ -84,15 +85,19 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
             const agentName = `${agent.nom} ${agent.prenom}`;
             const day = new Date(entry.date).getDate();
             
-            // Construire l'objet de données de cellule avec note
+            // Construire l'objet de données de cellule avec note ET postes supplémentaires
             const cellData = {
               service: entry.service_code,
               ...(entry.poste_code && { poste: entry.poste_code }),
-              ...(entry.commentaire && { note: entry.commentaire })
+              ...(entry.commentaire && { note: entry.commentaire }),
+              ...(entry.postes_supplementaires && entry.postes_supplementaires.length > 0 && { 
+                postesSupplementaires: entry.postes_supplementaires 
+              })
             };
             
-            // Si pas de poste ni de note, garder le format simple
-            if (!entry.poste_code && !entry.commentaire) {
+            // Si pas de données supplémentaires, garder le format simple
+            if (!entry.poste_code && !entry.commentaire && 
+                (!entry.postes_supplementaires || entry.postes_supplementaires.length === 0)) {
               planningData[agentName][day] = entry.service_code;
             } else {
               planningData[agentName][day] = cellData;
@@ -116,7 +121,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
    * Récupère les données d'une cellule spécifique
    * @param {string} agentName - Nom complet de l'agent
    * @param {number} day - Jour du mois
-   * @returns {Object|null} Données de la cellule {service, poste, note} ou null
+   * @returns {Object|null} Données de la cellule {service, poste, note, postesSupplementaires} ou null
    */
   const getCellData = useCallback((agentName, day) => {
     const cellValue = planning[agentName]?.[day];
@@ -124,21 +129,22 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
     if (!cellValue) return null;
     
     if (typeof cellValue === 'string') {
-      return { service: cellValue, poste: null, note: null };
+      return { service: cellValue, poste: null, note: null, postesSupplementaires: null };
     }
     
     return {
       service: cellValue.service || null,
       poste: cellValue.poste || null,
-      note: cellValue.note || null
+      note: cellValue.note || null,
+      postesSupplementaires: cellValue.postesSupplementaires || null
     };
   }, [planning]);
 
   /**
-   * Met à jour une cellule du planning avec support des notes
+   * Met à jour une cellule du planning avec support des notes et postes supplémentaires
    * @param {string} agentName - Nom complet de l'agent
    * @param {number} day - Jour du mois
-   * @param {string|Object} value - Valeur: string (service simple), object {service, poste?, note?}, ou '' pour supprimer
+   * @param {string|Object} value - Valeur: string (service simple), object {service, poste?, note?, postesSupplementaires?}, ou '' pour supprimer
    */
   const updateCell = useCallback(async (agentName, day, value) => {
     try {
@@ -158,9 +164,12 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
         const serviceCode = typeof value === 'object' ? value.service : value;
         const posteCode = typeof value === 'object' ? (value.poste || null) : null;
         const note = typeof value === 'object' ? (value.note || null) : null;
+        const postesSupplementaires = typeof value === 'object' 
+          ? (value.postesSupplementaires || null) 
+          : null;
         
-        // Sauvegarde avec note
-        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note);
+        // Sauvegarde avec note ET postes supplémentaires
+        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires);
       }
       
       // Mise à jour optimiste du state local
