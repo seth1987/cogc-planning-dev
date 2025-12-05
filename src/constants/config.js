@@ -5,27 +5,32 @@ export const MONTHS = [
   'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DECEMBRE'
 ];
 
+// Année courante du planning
+export const ANNEE_PLANNING = 2026;
+export const CURRENT_YEAR = 2026;
+
 // Jours fériés français 2026
+// Pâques 2026 = 5 avril
 export const JOURS_FERIES_2026 = {
   JANVIER: [1],           // Nouvel An (Jeudi)
   FEVRIER: [],
   MARS: [],
-  AVRIL: [6],            // Lundi de Pâques (Pâques = 5 avril 2026)
-  MAI: [1, 8, 14, 25],   // Fête du Travail (Ven), Victoire 1945 (Ven), Ascension (Jeu), Lundi Pentecôte (Lun)
+  AVRIL: [6],             // Lundi de Pâques (Pâques = 5 avril 2026)
+  MAI: [1, 8, 14, 25],    // Fête du Travail (Ven), Victoire 1945 (Ven), Ascension (Jeu), Lundi Pentecôte (Lun)
   JUIN: [],
-  JUILLET: [14],         // Fête Nationale (Mar)
-  AOÛT: [15],            // Assomption (Sam)
+  JUILLET: [14],          // Fête Nationale (Mar)
+  AOÛT: [15],             // Assomption (Sam)
   SEPTEMBRE: [],
   OCTOBRE: [],
-  NOVEMBRE: [1, 11],     // Toussaint (Dim), Armistice (Mer)
-  DECEMBRE: [25]         // Noël (Ven)
+  NOVEMBRE: [1, 11],      // Toussaint (Dim), Armistice (Mer)
+  DECEMBRE: [25]          // Noël (Ven)
 };
 
-// Alias pour compatibilité (2025 pointe vers 2026)
-export const JOURS_FERIES_2025 = JOURS_FERIES_2026;
+// Export principal utilisé par planningService
+export const JOURS_FERIES = JOURS_FERIES_2026;
 
-// Année courante du planning
-export const ANNEE_PLANNING = 2026;
+// Alias pour compatibilité descendante
+export const JOURS_FERIES_2025 = JOURS_FERIES_2026;
 
 export const CODE_COLORS = {
   // === SERVICES (-, O, X) : PAS DE COULEUR ===
