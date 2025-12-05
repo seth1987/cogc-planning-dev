@@ -5,7 +5,7 @@ import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle } from
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée) et par poste
  * 
- * @version 1.1.0 - Fix: planningData structure handling
+ * @version 1.2.0 - Fix: getGroupeSimple order to prevent "ROULEMENT" matching "RO"
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -108,21 +108,45 @@ const ModalPrevisionnelJour = ({
     return d.getDate();
   }, [selectedDate]);
 
-  // Obtenir le groupe simplifié d'un agent (CRC, CCU, RC, etc.)
+  /**
+   * Obtenir le groupe simplifié d'un agent (CRC, CCU, RC, etc.)
+   * 
+   * FIX v1.2: L'ordre des vérifications est CRUCIAL car certains groupes contiennent
+   * des sous-chaînes d'autres groupes:
+   * - "RE - ROULEMENT..." contient "RO" dans "ROULEMENT" 
+   * - On doit vérifier TABLE EST/RE AVANT TABLE OUEST/RO
+   */
   const getGroupeSimple = useCallback((agent) => {
     if (!agent?.groupe) return null;
     const groupe = agent.groupe.toUpperCase();
     
-    if (groupe.includes('CRC')) return 'CRC';
-    if (groupe.includes('ACR')) return 'ACR';
-    if (groupe.includes('RC') && !groupe.includes('ACR') && !groupe.includes('CRC')) return 'RC';
-    if (groupe.includes('RO')) return 'RO';
-    if (groupe.includes('CCU')) return 'CCU';
-    if (groupe.includes('RE ') || groupe.includes('REGULATEUR TABLE EST')) return 'RE';
-    if (groupe.includes('CAC')) return 'CAC';
+    // 1. Vérifications avec préfixe explicite (plus spécifique)
+    if (groupe.startsWith('CRC ') || groupe.startsWith('CRC-')) return 'CRC';
+    if (groupe.startsWith('ACR ') || groupe.startsWith('ACR-')) return 'ACR';
+    if (groupe.startsWith('CCU ') || groupe.startsWith('CCU-')) return 'CCU';
+    if (groupe.startsWith('CAC ') || groupe.startsWith('CAC-')) return 'CAC';
+    
+    // 2. RE doit être vérifié AVANT RO car "ROULEMENT" contient "RO"
+    if (groupe.includes('TABLE EST') || groupe.startsWith('RE ') || groupe.startsWith('RE-')) return 'RE';
+    
+    // 3. RO maintenant (après RE)
+    if (groupe.includes('TABLE OUEST') || groupe.startsWith('RO ') || groupe.startsWith('RO-')) return 'RO';
+    
+    // 4. RC - vérifié après car "REGULATEUR CENTRE" est explicite
+    if (groupe.includes('REGULATEUR CENTRE') || groupe.startsWith('RC ') || groupe.startsWith('RC-')) return 'RC';
+    
+    // 5. Groupes de réserve - vérification par mots-clés combinés
     if (groupe.includes('RESERVE') && groupe.includes('PN')) return 'RESERVE_PN';
     if (groupe.includes('RESERVE') && groupe.includes('DR')) return 'RESERVE_DR';
+    if (groupe.includes('RESERVE') && groupe.includes('PCD')) return 'RESERVE_PCD';
+    
+    // 6. Autres groupes spéciaux
     if (groupe.includes('SOUFF') || groupe.includes('SOUFFLEUR')) return 'SOUFF';
+    
+    // 7. Fallback: anciennes vérifications pour compatibilité avec formats non standard
+    if (groupe.includes('CRC')) return 'CRC';
+    if (groupe.includes('ACR')) return 'ACR';
+    if (groupe.includes('CCU')) return 'CCU';
     
     return null;
   }, []);
