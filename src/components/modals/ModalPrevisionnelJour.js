@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle } from 'lucide-react';
+import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle, Loader2 } from 'lucide-react';
+import supabaseService from '../../services/supabaseService';
 
 /**
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée) et par poste
  * 
- * @version 1.4.0 - Fix: Normalize SOUF → SOUFF for poste_code (service assignment)
+ * @version 1.5.0 - Fix: Persist postes figés in DB + fix SOUF display
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -26,6 +27,10 @@ const ModalPrevisionnelJour = ({
     soir: {},
     nuitApres: {}
   });
+  
+  // État de chargement pour les postes figés
+  const [loadingPostes, setLoadingPostes] = useState(false);
+  const [savingPoste, setSavingPoste] = useState(null); // Format: "creneau-poste"
   
   // Menu déroulant ouvert
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -73,18 +78,111 @@ const ModalPrevisionnelJour = ({
   // Postes avec menu déroulant (FIGÉ ou RAPATRIÉ PN)
   const POSTES_AVEC_MENU = useMemo(() => ['CCU', 'RE'], []);
 
-  // Reset status quand la date change
-  useEffect(() => {
-    if (selectedDate) {
-      setPostesStatus({
+  /**
+   * Formater la date sélectionnée en ISO (YYYY-MM-DD)
+   */
+  const dateISO = useMemo(() => {
+    if (!selectedDate) return null;
+    const d = new Date(selectedDate);
+    return d.toISOString().split('T')[0];
+  }, [selectedDate]);
+
+  /**
+   * Charger les postes figés depuis Supabase pour la date sélectionnée
+   */
+  const loadPostesFiges = useCallback(async () => {
+    if (!dateISO) return;
+    
+    setLoadingPostes(true);
+    try {
+      const { data, error } = await supabaseService.client
+        .from('postes_figes')
+        .select('*')
+        .eq('date', dateISO);
+      
+      if (error) {
+        console.error('Erreur chargement postes figés:', error);
+        return;
+      }
+      
+      // Reconstruire l'état à partir des données
+      const newStatus = {
         nuitAvant: {},
         matin: {},
         soir: {},
         nuitApres: {}
-      });
+      };
+      
+      if (data) {
+        data.forEach(row => {
+          if (newStatus[row.creneau]) {
+            newStatus[row.creneau][row.poste] = row.status;
+          }
+        });
+      }
+      
+      setPostesStatus(newStatus);
+      console.log(`✅ Postes figés chargés pour ${dateISO}:`, newStatus);
+    } catch (err) {
+      console.error('Erreur chargement postes figés:', err);
+    } finally {
+      setLoadingPostes(false);
+    }
+  }, [dateISO]);
+
+  /**
+   * Sauvegarder ou supprimer un poste figé
+   */
+  const savePosteFige = useCallback(async (creneauId, poste, status) => {
+    if (!dateISO) return;
+    
+    const key = `${creneauId}-${poste}`;
+    setSavingPoste(key);
+    
+    try {
+      if (status === null) {
+        // Supprimer
+        const { error } = await supabaseService.client
+          .from('postes_figes')
+          .delete()
+          .eq('date', dateISO)
+          .eq('creneau', creneauId)
+          .eq('poste', poste);
+        
+        if (error) throw error;
+        console.log(`🗑️ Poste figé supprimé: ${poste} (${creneauId}) pour ${dateISO}`);
+      } else {
+        // Upsert (insert ou update)
+        const { error } = await supabaseService.client
+          .from('postes_figes')
+          .upsert({
+            date: dateISO,
+            creneau: creneauId,
+            poste: poste,
+            status: status
+          }, {
+            onConflict: 'date,creneau,poste'
+          });
+        
+        if (error) throw error;
+        console.log(`✅ Poste figé sauvegardé: ${poste} ${status} (${creneauId}) pour ${dateISO}`);
+      }
+    } catch (err) {
+      console.error('Erreur sauvegarde poste figé:', err);
+      // Recharger les données en cas d'erreur
+      loadPostesFiges();
+    } finally {
+      setSavingPoste(null);
+    }
+  }, [dateISO, loadPostesFiges]);
+
+  // Charger les postes figés quand la date change
+  useEffect(() => {
+    if (isOpen && dateISO) {
+      loadPostesFiges();
       setOpenDropdown(null);
     }
-  }, [selectedDate]);
+  }, [isOpen, dateISO, loadPostesFiges]);
 
   // Formatage de la date
   const formattedDate = useMemo(() => {
@@ -170,6 +268,28 @@ const ModalPrevisionnelJour = ({
     // SOUF → SOUFF (le poste s'appelle SOUFF dans CRENEAUX)
     if (cleaned === 'SOUF') return 'SOUFF';
     return cleaned;
+  }, []);
+
+  /**
+   * Vérifie si un code brut est une variante de normalisation d'un poste
+   * Ex: "SOUF" est une normalisation de "SOUFF"
+   * 
+   * FIX v1.5: Utilisé pour éviter d'afficher "(SOUF)" quand c'est juste la version DB
+   */
+  const isNormalizationOf = useCallback((rawCode, normalizedPoste) => {
+    if (!rawCode || !normalizedPoste) return false;
+    const raw = rawCode.toUpperCase().trim();
+    const norm = normalizedPoste.toUpperCase().trim();
+    
+    // Cas SOUF/SOUFF
+    if ((raw === 'SOUF' && norm === 'SOUFF') || (raw === 'SOUFF' && norm === 'SOUFF')) {
+      return true;
+    }
+    // Cas identique
+    if (raw === norm) {
+      return true;
+    }
+    return false;
   }, []);
 
   // Calculer les équipes pour chaque créneau
@@ -312,27 +432,39 @@ const ModalPrevisionnelJour = ({
       setOpenDropdown(prev => prev === key ? null : key);
     } else {
       // Toggle simple FIGÉ
+      const currentStatus = postesStatus[creneauId]?.[poste];
+      const newStatus = currentStatus === 'fige' ? null : 'fige';
+      
       setPostesStatus(prev => ({
         ...prev,
         [creneauId]: {
           ...prev[creneauId],
-          [poste]: prev[creneauId]?.[poste] === 'fige' ? null : 'fige'
+          [poste]: newStatus
         }
       }));
+      
+      // Sauvegarder en base
+      savePosteFige(creneauId, poste, newStatus);
     }
-  }, [POSTES_AVEC_MENU]);
+  }, [POSTES_AVEC_MENU, postesStatus, savePosteFige]);
 
   // Gestion de la sélection dans le menu déroulant
   const handleMenuSelect = useCallback((creneauId, poste, status) => {
+    const currentStatus = postesStatus[creneauId]?.[poste];
+    const newStatus = currentStatus === status ? null : status;
+    
     setPostesStatus(prev => ({
       ...prev,
       [creneauId]: {
         ...prev[creneauId],
-        [poste]: prev[creneauId]?.[poste] === status ? null : status
+        [poste]: newStatus
       }
     }));
     setOpenDropdown(null);
-  }, []);
+    
+    // Sauvegarder en base
+    savePosteFige(creneauId, poste, newStatus);
+  }, [postesStatus, savePosteFige]);
 
   // Fermer le dropdown quand on clique ailleurs
   useEffect(() => {
@@ -349,6 +481,7 @@ const ModalPrevisionnelJour = ({
     const hasMenu = POSTES_AVEC_MENU.includes(poste);
     const dropdownKey = `${creneauId}-${poste}`;
     const isDropdownOpen = openDropdown === dropdownKey;
+    const isSaving = savingPoste === dropdownKey;
 
     let buttonClass = 'px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1 ';
     
@@ -374,9 +507,13 @@ const ModalPrevisionnelJour = ({
             handlePosteClick(creneauId, poste);
           }}
           className={buttonClass}
+          disabled={isSaving}
         >
+          {isSaving ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : null}
           {buttonLabel}
-          {hasMenu && (
+          {hasMenu && !isSaving && (
             isDropdownOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
           )}
         </button>
@@ -406,7 +543,7 @@ const ModalPrevisionnelJour = ({
         )}
       </div>
     );
-  }, [postesStatus, openDropdown, handlePosteClick, handleMenuSelect, POSTES_AVEC_MENU]);
+  }, [postesStatus, openDropdown, handlePosteClick, handleMenuSelect, POSTES_AVEC_MENU, savingPoste]);
 
   // Rendu d'un agent dans la liste
   const renderAgent = useCallback((agent, creneauId, poste) => {
@@ -419,9 +556,10 @@ const ModalPrevisionnelJour = ({
       statusBadge = <span className="ml-2 text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">[RAPATRIÉ PN]</span>;
     }
 
-    // Afficher le poste brut si présent (pour info)
+    // FIX v1.5: Ne PAS afficher le badge si c'est juste une normalisation (SOUF → SOUFF)
     let additionalInfo = null;
-    if (agent.posteCodeRaw && agent.posteCodeRaw.toUpperCase() !== poste) {
+    if (agent.posteCodeRaw && !isNormalizationOf(agent.posteCodeRaw, poste)) {
+      // Afficher seulement si c'est vraiment un poste différent
       additionalInfo = <span className="ml-1 text-xs text-blue-500">({agent.posteCodeRaw})</span>;
     }
 
@@ -458,7 +596,7 @@ const ModalPrevisionnelJour = ({
         {statusBadge}
       </div>
     );
-  }, [postesStatus]);
+  }, [postesStatus, isNormalizationOf]);
 
   // Rendu d'un créneau complet
   const renderCreneau = useCallback((creneauConfig, periodLabel = null) => {
@@ -602,6 +740,12 @@ const ModalPrevisionnelJour = ({
             <span className="text-gray-600">Nuit (après):</span>
             <span className="font-bold text-indigo-700">{statsCreneaux.nuitApres || 0}</span>
           </div>
+          {loadingPostes && (
+            <div className="flex items-center gap-1 text-gray-400 ml-auto">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span className="text-xs">Chargement...</span>
+            </div>
+          )}
         </div>
 
         {/* Contenu principal */}
