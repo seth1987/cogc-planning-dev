@@ -6,7 +6,7 @@ import supabaseService from '../../services/supabaseService';
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée) et par poste
  * 
- * @version 1.5.2 - Fix: Use supabaseService methods for postes figés persistence
+ * @version 1.5.3 - Fix: Dropdown menu z-index and overflow issues
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -435,7 +435,7 @@ const ModalPrevisionnelJour = ({
         : poste;
 
     return (
-      <div className="relative" key={poste}>
+      <div className="relative" key={poste} style={{ zIndex: isDropdownOpen ? 100 : 1 }}>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -455,12 +455,18 @@ const ModalPrevisionnelJour = ({
 
         {hasMenu && isDropdownOpen && (
           <div 
-            className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[140px]"
+            className="absolute left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl min-w-[140px]"
+            style={{ 
+              zIndex: 9999,
+              bottom: '100%',
+              marginBottom: '4px',
+              top: 'auto'
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => handleMenuSelect(creneauId, poste, 'fige')}
-              className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2
+              className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 rounded-t-lg
                 ${status === 'fige' ? 'bg-red-50 text-red-700' : 'text-gray-700'}`}
             >
               <span className={`w-2 h-2 rounded-full ${status === 'fige' ? 'bg-red-500' : 'bg-gray-300'}`} />
@@ -468,7 +474,7 @@ const ModalPrevisionnelJour = ({
             </button>
             <button
               onClick={() => handleMenuSelect(creneauId, poste, 'rapatrie')}
-              className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2
+              className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 rounded-b-lg
                 ${status === 'rapatrie' ? 'bg-orange-50 text-orange-700' : 'text-gray-700'}`}
             >
               <span className={`w-2 h-2 rounded-full ${status === 'rapatrie' ? 'bg-orange-500' : 'bg-gray-300'}`} />
@@ -543,8 +549,8 @@ const ModalPrevisionnelJour = ({
     const colors = colorClasses[color] || colorClasses.indigo;
 
     return (
-      <div className={`rounded-lg border ${colors.border} ${colors.bg} overflow-hidden`}>
-        <div className={`${colors.header} px-4 py-2.5 flex items-center justify-between`}>
+      <div className={`rounded-lg border ${colors.border} ${colors.bg}`} style={{ overflow: 'visible' }}>
+        <div className={`${colors.header} px-4 py-2.5 flex items-center justify-between rounded-t-lg`}>
           <div className="flex items-center gap-2">
             <Icon className={`w-5 h-5 ${colors.icon}`} />
             <span className="font-semibold text-gray-800">
@@ -577,9 +583,9 @@ const ModalPrevisionnelJour = ({
           })}
         </div>
 
-        <div className={`${colors.header} px-4 py-2 border-t ${colors.border}`}>
+        <div className={`${colors.header} px-4 py-2 border-t ${colors.border} rounded-b-lg`} style={{ overflow: 'visible' }}>
           <div className="text-xs text-gray-600 mb-2">Postes figés / Rapatriés :</div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2" style={{ overflow: 'visible' }}>
             {postes.map(poste => renderPosteButton(id, poste))}
           </div>
         </div>
@@ -622,11 +628,12 @@ const ModalPrevisionnelJour = ({
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col"
+        style={{ overflow: 'visible' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex justify-between items-center">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex justify-between items-center rounded-t-xl">
           <div className="flex items-center gap-3">
             <Users className="w-6 h-6 text-white" />
             <div>
@@ -677,14 +684,14 @@ const ModalPrevisionnelJour = ({
         </div>
 
         {/* Contenu */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6" style={{ overflow: 'visible auto' }}>
           {!selectedDate ? (
             <div className="flex flex-col items-center justify-center h-48 text-gray-500">
               <AlertCircle className="w-12 h-12 mb-2 text-gray-400" />
               <p>Sélectionnez une date pour voir les équipes</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ overflow: 'visible' }}>
               {renderCreneau(CRENEAUX.nuitAvant, nuitAvantLabel)}
               {renderCreneau(CRENEAUX.matin, '☀️ Matin')}
               {renderCreneau(CRENEAUX.soir, '🌆 Soirée')}
@@ -694,7 +701,7 @@ const ModalPrevisionnelJour = ({
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 px-6 py-3 border-t flex justify-between items-center">
+        <div className="bg-gray-50 px-6 py-3 border-t flex justify-between items-center rounded-b-xl">
           <div className="text-xs text-gray-500">
             <span className="inline-flex items-center gap-1 mr-4">
               <span className="w-2 h-2 rounded-full bg-red-500"></span> FIGÉ
