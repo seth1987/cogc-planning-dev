@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import supabaseService from '../services/supabaseService';
 import planningService from '../services/planningService';
-import { MONTHS } from '../constants/config';
+import { MONTHS, CURRENT_YEAR } from '../constants/config';
 
 /**
  * Hook personnalisé pour la gestion du planning
@@ -57,9 +57,9 @@ export function usePlanning(user, currentMonth) {
       setHabilitations(habilitationsByAgent);
       setConnectionStatus(`✅ ${agentsResult.length} agents connectés`);
       
-      // Charger le planning du mois
+      // Charger le planning du mois - Utilise CURRENT_YEAR depuis config
       const monthIndex = MONTHS.indexOf(month);
-      const year = 2025;
+      const year = CURRENT_YEAR;
       
       const startDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-01`;
       const lastDay = new Date(year, monthIndex + 1, 0).getDate();
