@@ -6,7 +6,48 @@ class SupabaseService {
     return supabase;
   }
 
-  // Agents
+  // ============================================
+  // ANNÉES DISPONIBLES
+  // ============================================
+
+  /**
+   * Récupère les années distinctes disponibles dans la table planning
+   * @returns {Promise<number[]>} Liste des années triées (récent d'abord)
+   */
+  async getAvailableYears() {
+    try {
+      const { data, error } = await supabase
+        .from('planning')
+        .select('date')
+        .order('date', { ascending: false });
+      
+      if (error) {
+        console.error('Erreur getAvailableYears:', error);
+        return [new Date().getFullYear()];
+      }
+      
+      if (!data || data.length === 0) {
+        return [new Date().getFullYear()];
+      }
+      
+      // Extraire les années uniques - parse direct pour éviter timezone issues
+      const years = [...new Set(data.map(row => {
+        // Parse YYYY-MM-DD directement sans Date object
+        return parseInt(row.date.split('-')[0], 10);
+      }))];
+      
+      console.log('📅 Années disponibles:', years);
+      return years.sort((a, b) => b - a); // Tri descendant (récent d'abord)
+    } catch (err) {
+      console.error('Exception getAvailableYears:', err);
+      return [new Date().getFullYear()];
+    }
+  }
+
+  // ============================================
+  // AGENTS
+  // ============================================
+
   async getAgents() {
     const { data, error } = await supabase
       .from('agents')
@@ -107,7 +148,10 @@ class SupabaseService {
     return data[0];
   }
 
-  // Habilitations
+  // ============================================
+  // HABILITATIONS
+  // ============================================
+
   async getHabilitations() {
     const { data, error } = await supabase
       .from('habilitations')
@@ -151,7 +195,10 @@ class SupabaseService {
     return true;
   }
 
-  // Planning
+  // ============================================
+  // PLANNING
+  // ============================================
+
   async getPlanningForMonth(startDate, endDate) {
     const { data, error } = await supabase
       .from('planning')
@@ -400,7 +447,10 @@ class SupabaseService {
     return true;
   }
 
-  // Upload PDF
+  // ============================================
+  // UPLOAD PDF
+  // ============================================
+
   async saveUploadRecord(uploadData) {
     const { data, error } = await supabase
       .from('uploads_pdf')
