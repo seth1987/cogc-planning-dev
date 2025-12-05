@@ -14,6 +14,7 @@ import Header from './components/Header';
 import MonthTabs from './components/MonthTabs';
 import PlanningTable from './components/PlanningTable';
 import LoginPage from './components/LoginPage';
+import LandingPage from './components/LandingPage';
 
 // Modals
 import ModalCellEdit from './components/modals/ModalCellEdit';
@@ -35,15 +36,20 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
 /**
  * App - Composant principal de l'application COGC Planning
  * 
- * Version optimisée avec hooks personnalisés pour une meilleure
- * séparation des responsabilités et maintenabilité.
+ * Version avec page d'accueil Nexaverse et navigation vers le planning.
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
   const { user, loading: authLoading, signOut } = useAuth();
   
+  // État de navigation : 'landing' ou 'planning'
+  const [currentView, setCurrentView] = React.useState('landing');
+  
   // État du mois sélectionné
   const [currentMonth, setCurrentMonth] = React.useState(MONTHS[new Date().getMonth()]);
+  
+  // Actions différées depuis la landing page
+  const [pendingAction, setPendingAction] = React.useState(null);
   
   // Données et actions du planning
   const {
@@ -77,6 +83,44 @@ const App = () => {
 
   // État debug (dev only)
   const [showDebug, setShowDebug] = React.useState(false);
+
+  // === NAVIGATION ===
+  
+  // Handler pour la navigation depuis la landing page
+  const handleNavigate = (view, options = {}) => {
+    if (view === 'planning') {
+      setCurrentView('planning');
+      
+      // Si options demandent d'ouvrir un modal, stocker l'action
+      if (options.openModal) {
+        setPendingAction({ type: 'openModal', modal: options.openModal });
+      }
+    }
+  };
+
+  // Retour à la landing page
+  const handleBackToLanding = () => {
+    setCurrentView('landing');
+  };
+
+  // Exécuter les actions différées quand les données sont chargées
+  React.useEffect(() => {
+    if (pendingAction && !dataLoading && currentView === 'planning') {
+      if (pendingAction.type === 'openModal') {
+        switch (pendingAction.modal) {
+          case 'gestionAgents':
+            openGestionAgents();
+            break;
+          case 'uploadPDF':
+            openUploadPDF();
+            break;
+          default:
+            break;
+        }
+      }
+      setPendingAction(null);
+    }
+  }, [pendingAction, dataLoading, currentView, openGestionAgents, openUploadPDF]);
 
   // === HANDLERS ===
   
@@ -185,6 +229,18 @@ const App = () => {
     return <LoginPage onLogin={() => {}} />;
   }
 
+  // === PAGE D'ACCUEIL LANDING ===
+  if (currentView === 'landing') {
+    return (
+      <LandingPage 
+        onNavigate={handleNavigate}
+        user={user}
+      />
+    );
+  }
+
+  // === VUE PLANNING ===
+
   // Chargement des données
   if (dataLoading) {
     return (
@@ -206,12 +262,20 @@ const App = () => {
           <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4" />
           <div className="text-lg text-red-600 mb-2">Erreur de connexion</div>
           <div className="text-sm text-gray-600 mb-4">{error}</div>
-          <button 
-            onClick={() => loadData()} 
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Réessayer
-          </button>
+          <div className="flex gap-3 justify-center">
+            <button 
+              onClick={() => loadData()} 
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Réessayer
+            </button>
+            <button 
+              onClick={handleBackToLanding} 
+              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+            >
+              Retour à l'accueil
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -222,7 +286,7 @@ const App = () => {
     ? getCellData(selectedCell.agent, selectedCell.day) 
     : null;
 
-  // === APPLICATION PRINCIPALE ===
+  // === APPLICATION PRINCIPALE PLANNING ===
   return (
     <div className="min-h-screen bg-gray-50">
       <Header 
@@ -231,6 +295,8 @@ const App = () => {
         onOpenGestionAgents={openGestionAgents}
         onOpenUploadPDF={openUploadPDF}
         onSignOut={signOut}
+        onBackToLanding={handleBackToLanding}
+        showBackButton={true}
       />
       
       <MonthTabs 
