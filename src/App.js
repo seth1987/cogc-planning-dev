@@ -25,7 +25,7 @@ import ModalUploadPDF from './components/modals/ModalUploadPDF';
 import ModalPrevisionnelJour from './components/modals/ModalPrevisionnelJour';
 
 // Constants
-import { MONTHS, CURRENT_YEAR } from './constants/config';
+import { MONTHS } from './constants/config';
 
 // Styles
 import './App.css';
@@ -38,7 +38,7 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
- * v2.3 - Fix timezone issue for modal date calculation
+ * v2.4 - Dynamic year selection from database
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -50,10 +50,15 @@ const App = () => {
   // État du mois sélectionné
   const [currentMonth, setCurrentMonth] = React.useState(MONTHS[new Date().getMonth()]);
   
+  // État de l'année sélectionnée (dynamique depuis la DB)
+  const [currentYear, setCurrentYear] = React.useState(new Date().getFullYear());
+  const [availableYears, setAvailableYears] = React.useState([]);
+  const [yearsLoading, setYearsLoading] = React.useState(true);
+  
   // Actions différées depuis la landing page
   const [pendingAction, setPendingAction] = React.useState(null);
   
-  // Données et actions du planning
+  // Données et actions du planning (passer currentYear au hook)
   const {
     agents,
     agentsData,
@@ -67,7 +72,7 @@ const App = () => {
     getCellData,
     reloadHabilitations,
     setConnectionStatus
-  } = usePlanning(user, currentMonth);
+  } = usePlanning(user, currentMonth, currentYear);
   
   // Gestion des modals
   const {
@@ -88,6 +93,37 @@ const App = () => {
   // État debug (dev only)
   const [showDebug, setShowDebug] = React.useState(false);
 
+  // === CHARGEMENT DES ANNÉES DISPONIBLES ===
+  React.useEffect(() => {
+    const loadAvailableYears = async () => {
+      try {
+        setYearsLoading(true);
+        const years = await supabaseService.getAvailableYears();
+        console.log('📅 Années chargées:', years);
+        
+        if (years && years.length > 0) {
+          setAvailableYears(years);
+          // Si l'année courante n'est pas dans la liste, prendre la plus récente
+          if (!years.includes(currentYear)) {
+            setCurrentYear(years[0]);
+          }
+        } else {
+          // Fallback: année actuelle
+          setAvailableYears([new Date().getFullYear()]);
+        }
+      } catch (err) {
+        console.error('Erreur chargement années:', err);
+        setAvailableYears([new Date().getFullYear()]);
+      } finally {
+        setYearsLoading(false);
+      }
+    };
+    
+    if (user) {
+      loadAvailableYears();
+    }
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // === NAVIGATION ===
   
   // Handler pour la navigation depuis la landing page
@@ -105,6 +141,12 @@ const App = () => {
   // Retour à la landing page
   const handleBackToLanding = () => {
     setCurrentView('landing');
+  };
+
+  // Handler pour changement d'année
+  const handleChangeYear = (year) => {
+    console.log(`🗓️ Changement année: ${currentYear} → ${year}`);
+    setCurrentYear(year);
   };
 
   // Exécuter les actions différées quand les données sont chargées
@@ -137,13 +179,12 @@ const App = () => {
    * Handler pour le clic sur un en-tête de jour (header)
    * Ouvre le modal Équipes du Jour pour cette date
    * 
-   * FIX v2.3: Format date manually to avoid timezone conversion issues
-   * toISOString() converts to UTC which shifts the date by -1 day in France (UTC+1)
+   * FIX v2.4: Use dynamic currentYear state instead of CURRENT_YEAR constant
    */
   const handleDayHeaderClick = (day) => {
-    // Construire la date au format YYYY-MM-DD sans conversion UTC
+    // Construire la date au format YYYY-MM-DD avec l'année dynamique
     const monthIndex = MONTHS.indexOf(currentMonth);
-    const year = CURRENT_YEAR;
+    const year = currentYear; // Utiliser l'année sélectionnée dynamiquement
     const month = String(monthIndex + 1).padStart(2, '0');
     const dayStr = String(day).padStart(2, '0');
     const dateStr = `${year}-${month}-${dayStr}`;
@@ -264,8 +305,8 @@ const App = () => {
 
   // === VUE PLANNING ===
 
-  // Chargement des données
-  if (dataLoading) {
+  // Chargement des données ou des années
+  if (dataLoading || yearsLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -324,7 +365,10 @@ const App = () => {
       
       <MonthTabs 
         currentMonth={currentMonth}
+        currentYear={currentYear}
+        availableYears={availableYears}
         onChangeMonth={setCurrentMonth}
+        onChangeYear={handleChangeYear}
       />
       
       <div className="p-4">
