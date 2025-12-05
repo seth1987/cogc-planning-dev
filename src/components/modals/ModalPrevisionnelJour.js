@@ -5,7 +5,7 @@ import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle } from
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée) et par poste
  * 
- * @version 1.3.0 - Fix: EAC/RESERVE → RE, SOUFF from postesSupplementaires, display postes supp
+ * @version 1.4.0 - Fix: Normalize SOUF → SOUFF for poste_code (service assignment)
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -158,11 +158,15 @@ const ModalPrevisionnelJour = ({
   }, []);
 
   /**
-   * Fonction helper pour normaliser un code de poste supplémentaire
-   * Gère les cas: +SOUF, SOUF, +RC, RC, etc.
+   * Fonction helper pour normaliser un code de poste
+   * Gère les cas: SOUF → SOUFF, +SOUF → SOUFF, etc.
+   * 
+   * FIX v1.4: Utilisé pour poste_code principal ET postes supplémentaires
+   * Car dans la base Supabase, le poste est "SOUF" (1 F) mais dans CRENEAUX c'est "SOUFF" (2 F)
    */
-  const normalizePosteSupp = useCallback((posteSupp) => {
-    const cleaned = posteSupp.toUpperCase().replace(/^\+/, '').trim();
+  const normalizePosteCode = useCallback((posteCode) => {
+    if (!posteCode) return null;
+    const cleaned = posteCode.toUpperCase().replace(/^\+/, '').trim();
     // SOUF → SOUFF (le poste s'appelle SOUFF dans CRENEAUX)
     if (cleaned === 'SOUF') return 'SOUFF';
     return cleaned;
@@ -201,7 +205,9 @@ const ModalPrevisionnelJour = ({
       // Récupérer le service du jour J
       const serviceJ = agentPlanning[selectedDay];
       const serviceCodeJ = typeof serviceJ === 'object' ? serviceJ?.service : serviceJ;
-      const posteCodeJ = typeof serviceJ === 'object' ? serviceJ?.poste : null;
+      // FIX v1.4: Normaliser le poste_code (SOUF → SOUFF)
+      const posteCodeJRaw = typeof serviceJ === 'object' ? serviceJ?.poste : null;
+      const posteCodeJ = normalizePosteCode(posteCodeJRaw);
       // Récupérer les postes supplémentaires (affichés en italique dans le planning)
       const postesSupplementairesJ = typeof serviceJ === 'object' 
         ? (serviceJ?.postesSupplementaires || (serviceJ?.posteSupplementaire ? [serviceJ.posteSupplementaire] : []))
@@ -210,6 +216,9 @@ const ModalPrevisionnelJour = ({
       // Récupérer le service du jour J+1 (pour nuit J→J+1)
       const serviceJ1 = nextDay ? agentPlanning[nextDay] : null;
       const serviceCodeJ1 = typeof serviceJ1 === 'object' ? serviceJ1?.service : serviceJ1;
+      // FIX v1.4: Normaliser aussi pour J+1
+      const posteCodeJ1Raw = typeof serviceJ1 === 'object' ? serviceJ1?.poste : null;
+      const posteCodeJ1 = normalizePosteCode(posteCodeJ1Raw);
       const postesSupplementairesJ1 = typeof serviceJ1 === 'object'
         ? (serviceJ1?.postesSupplementaires || (serviceJ1?.posteSupplementaire ? [serviceJ1.posteSupplementaire] : []))
         : [];
@@ -222,6 +231,7 @@ const ModalPrevisionnelJour = ({
         posteEffectif,
         serviceCode: serviceCodeJ,
         posteCode: posteCodeJ,
+        posteCodeRaw: posteCodeJRaw, // Garder le code brut pour affichage
         postesSupplementaires: postesSupplementairesJ
       };
 
@@ -232,7 +242,7 @@ const ModalPrevisionnelJour = ({
         }
         // Ajouter aussi dans les postes supplémentaires pour ce créneau
         postesSupplementairesJ.forEach(posteSupp => {
-          const posteNorm = normalizePosteSupp(posteSupp);
+          const posteNorm = normalizePosteCode(posteSupp);
           if (CRENEAUX.nuitAvant.postes.includes(posteNorm) && result.nuitAvant[posteNorm]) {
             result.nuitAvant[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
           }
@@ -246,7 +256,7 @@ const ModalPrevisionnelJour = ({
         }
         // Ajouter aussi dans les postes supplémentaires pour ce créneau
         postesSupplementairesJ.forEach(posteSupp => {
-          const posteNorm = normalizePosteSupp(posteSupp);
+          const posteNorm = normalizePosteCode(posteSupp);
           if (CRENEAUX.matin.postes.includes(posteNorm) && result.matin[posteNorm]) {
             result.matin[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
           }
@@ -260,7 +270,7 @@ const ModalPrevisionnelJour = ({
         }
         // Ajouter aussi dans les postes supplémentaires pour ce créneau (ex: SOUF)
         postesSupplementairesJ.forEach(posteSupp => {
-          const posteNorm = normalizePosteSupp(posteSupp);
+          const posteNorm = normalizePosteCode(posteSupp);
           if (CRENEAUX.soir.postes.includes(posteNorm) && result.soir[posteNorm]) {
             result.soir[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
           }
@@ -269,18 +279,21 @@ const ModalPrevisionnelJour = ({
 
       // Nuit J → J+1 : X dans colonne J+1
       if (serviceCodeJ1 === 'X') {
+        const posteEffectifJ1 = posteCodeJ1 || posteAgent;
         const agentInfoJ1 = {
           ...agent,
-          posteEffectif,
+          posteEffectif: posteEffectifJ1,
           serviceCode: serviceCodeJ1,
+          posteCode: posteCodeJ1,
+          posteCodeRaw: posteCodeJ1Raw,
           postesSupplementaires: postesSupplementairesJ1
         };
-        if (CRENEAUX.nuitApres.postes.includes(posteEffectif)) {
-          result.nuitApres[posteEffectif].push(agentInfoJ1);
+        if (CRENEAUX.nuitApres.postes.includes(posteEffectifJ1)) {
+          result.nuitApres[posteEffectifJ1].push(agentInfoJ1);
         }
         // Ajouter aussi dans les postes supplémentaires pour ce créneau
         postesSupplementairesJ1.forEach(posteSupp => {
-          const posteNorm = normalizePosteSupp(posteSupp);
+          const posteNorm = normalizePosteCode(posteSupp);
           if (CRENEAUX.nuitApres.postes.includes(posteNorm) && result.nuitApres[posteNorm]) {
             result.nuitApres[posteNorm].push({ ...agentInfoJ1, fromPosteSupp: posteSupp });
           }
@@ -289,7 +302,7 @@ const ModalPrevisionnelJour = ({
     });
 
     return result;
-  }, [selectedDate, selectedDay, nextDay, agents, planningData, CRENEAUX, getGroupeSimple, normalizePosteSupp]);
+  }, [selectedDate, selectedDay, nextDay, agents, planningData, CRENEAUX, getGroupeSimple, normalizePosteCode]);
 
   // Gestion du clic sur un bouton de poste
   const handlePosteClick = useCallback((creneauId, poste) => {
@@ -406,10 +419,10 @@ const ModalPrevisionnelJour = ({
       statusBadge = <span className="ml-2 text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">[RAPATRIÉ PN]</span>;
     }
 
-    // Afficher le poste principal si différent
+    // Afficher le poste brut si présent (pour info)
     let additionalInfo = null;
-    if (agent.posteCode && agent.posteCode !== poste) {
-      additionalInfo = <span className="ml-1 text-xs text-blue-500">({agent.posteCode})</span>;
+    if (agent.posteCodeRaw && agent.posteCodeRaw.toUpperCase() !== poste) {
+      additionalInfo = <span className="ml-1 text-xs text-blue-500">({agent.posteCodeRaw})</span>;
     }
 
     // Afficher les postes supplémentaires en italique violet (comme dans PlanningTable)
