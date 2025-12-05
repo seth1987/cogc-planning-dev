@@ -5,6 +5,30 @@ Tous les changements notables de ce projet sont documentés dans ce fichier.
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2025-12-05
+
+### 🚀 Ajouté - Sélection d'année 2025/2026
+
+- **Onglets de sélection d'année** :
+  - Boutons 2025 et 2026 dans la barre de navigation (MonthTabs)
+  - Changement d'année recharge automatiquement les données du mois sélectionné
+  - Design intégré avec les onglets de mois existants
+
+- **Support multi-année complet** :
+  - Le hook `usePlanning` accepte maintenant `currentYear` en paramètre
+  - Les dates sont correctement formatées avec l'année sélectionnée
+  - Les jours fériés sont chargés selon l'année (2025 ou 2026)
+  - L'useEffect recharge les données lors du changement d'année
+
+- **Configuration des années** :
+  - `AVAILABLE_YEARS = [2025, 2026]` dans config.js
+  - `DEFAULT_YEAR = 2026` pour l'année par défaut
+  - Jours fériés définis pour 2025 et 2026
+
+### 🔧 Corrigé
+- Bug où `formatDate` utilisait toujours l'année par défaut au lieu de l'année sélectionnée
+- Dépendances manquantes dans les hooks `useCallback`
+
 ## [3.0.0] - 2025-12-03
 
 ### 🚀 MAJEUR - Nouveau Parser Mistral OCR (100% précision)
@@ -127,6 +151,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+[3.1.0]: https://github.com/seth1987/cogc-planning-dev/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/seth1987/cogc-planning-dev/compare/v2.4.0...v3.0.0
 [2.4.0]: https://github.com/seth1987/cogc-planning-dev/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/seth1987/cogc-planning-dev/compare/v2.2.0...v2.3.0
