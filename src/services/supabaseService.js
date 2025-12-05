@@ -150,7 +150,7 @@ class SupabaseService {
   async getPlanningForMonth(startDate, endDate) {
     const { data, error } = await supabase
       .from('planning')
-      .select('*, commentaire')
+      .select('*, commentaire, postes_supplementaires')
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date');
@@ -163,14 +163,15 @@ class SupabaseService {
   }
 
   /**
-   * Sauvegarde une entrée de planning avec support des notes
+   * Sauvegarde une entrée de planning avec support des notes et postes supplémentaires
    * @param {string} agentId - ID de l'agent
    * @param {string} date - Date au format YYYY-MM-DD
    * @param {string} serviceCode - Code du service (-, O, X, RP, etc.)
    * @param {string|null} posteCode - Code du poste pour les réserves (CRC, CCU, etc.)
    * @param {string|null} note - Note/commentaire associé à cette cellule
+   * @param {Array|null} postesSupplementaires - Liste des postes supplémentaires ["+SOUF", "+RC"]
    */
-  async savePlanning(agentId, date, serviceCode, posteCode = null, note = null) {
+  async savePlanning(agentId, date, serviceCode, posteCode = null, note = null, postesSupplementaires = null) {
     // Chercher si une entrée existe déjà
     const { data: existing } = await supabase
       .from('planning')
@@ -185,6 +186,9 @@ class SupabaseService {
       service_code: serviceCode,
       poste_code: posteCode,
       commentaire: note || null,
+      postes_supplementaires: postesSupplementaires && postesSupplementaires.length > 0 
+        ? postesSupplementaires 
+        : null,
       statut: 'actif',
       updated_at: new Date().toISOString()
     };
@@ -289,6 +293,139 @@ class SupabaseService {
       throw error;
     }
     return data || [];
+  }
+
+  // ============================================
+  // POSTES STATUS (Figé / Rapatrié)
+  // ============================================
+
+  /**
+   * Récupère les statuts des postes pour une date donnée
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @returns {Object} Statuts par créneau {nuitAvant: {CRC: 'fige'}, matin: {}, ...}
+   */
+  async getPostesStatusForDate(date) {
+    const { data, error } = await supabase
+      .from('postes_status')
+      .select('*')
+      .eq('date', date);
+    
+    if (error) {
+      console.error('Erreur getPostesStatusForDate:', error);
+      // Retourner un objet vide si la table n'existe pas encore
+      return { nuitAvant: {}, matin: {}, soir: {}, nuitApres: {} };
+    }
+    
+    // Organiser les données par créneau
+    const result = {
+      nuitAvant: {},
+      matin: {},
+      soir: {},
+      nuitApres: {}
+    };
+    
+    (data || []).forEach(entry => {
+      if (result[entry.creneau]) {
+        result[entry.creneau][entry.poste] = entry.status;
+      }
+    });
+    
+    return result;
+  }
+
+  /**
+   * Sauvegarde ou supprime le statut d'un poste pour une date/créneau
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @param {string} creneau - Créneau: nuitAvant, matin, soir, nuitApres
+   * @param {string} poste - Code du poste: CRC, ACR, RC, etc.
+   * @param {string|null} status - Statut: 'fige', 'rapatrie', ou null pour supprimer
+   */
+  async savePosteStatus(date, creneau, poste, status) {
+    if (!status) {
+      // Supprimer l'entrée
+      const { error } = await supabase
+        .from('postes_status')
+        .delete()
+        .eq('date', date)
+        .eq('creneau', creneau)
+        .eq('poste', poste);
+      
+      if (error && error.code !== 'PGRST116') { // Ignorer "no rows returned"
+        console.error('Erreur delete poste status:', error);
+      }
+      return null;
+    }
+    
+    // Upsert (insert ou update)
+    const { data, error } = await supabase
+      .from('postes_status')
+      .upsert({
+        date,
+        creneau,
+        poste,
+        status,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'date,creneau,poste'
+      })
+      .select();
+    
+    if (error) {
+      console.error('Erreur upsert poste status:', error);
+      throw error;
+    }
+    
+    return data;
+  }
+
+  /**
+   * Sauvegarde tous les statuts des postes pour une date (batch)
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @param {Object} postesStatus - {nuitAvant: {CRC: 'fige'}, matin: {CCU: 'rapatrie'}, ...}
+   */
+  async saveAllPostesStatus(date, postesStatus) {
+    const upsertData = [];
+    const deleteConditions = [];
+    
+    Object.entries(postesStatus).forEach(([creneau, postes]) => {
+      Object.entries(postes).forEach(([poste, status]) => {
+        if (status) {
+          upsertData.push({
+            date,
+            creneau,
+            poste,
+            status,
+            updated_at: new Date().toISOString()
+          });
+        } else {
+          deleteConditions.push({ creneau, poste });
+        }
+      });
+    });
+    
+    // Supprimer les entrées nulles
+    for (const condition of deleteConditions) {
+      await supabase
+        .from('postes_status')
+        .delete()
+        .eq('date', date)
+        .eq('creneau', condition.creneau)
+        .eq('poste', condition.poste);
+    }
+    
+    // Upsert les nouvelles valeurs
+    if (upsertData.length > 0) {
+      const { error } = await supabase
+        .from('postes_status')
+        .upsert(upsertData, { onConflict: 'date,creneau,poste' });
+      
+      if (error) {
+        console.error('Erreur batch upsert postes status:', error);
+        throw error;
+      }
+    }
+    
+    console.log(`✅ Postes status sauvegardés pour ${date}:`, upsertData.length, 'entrées');
   }
 }
 

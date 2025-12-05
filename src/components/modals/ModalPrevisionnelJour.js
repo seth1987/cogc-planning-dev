@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle, Loader2 } from 'lucide-react';
+import supabaseService from '../../services/supabaseService';
 
 /**
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée) et par poste
  * 
- * @version 1.2.0 - Fix: getGroupeSimple order to prevent "ROULEMENT" matching "RO"
+ * @version 1.3.0 - Fix: EAC/RESERVE PCD comme RE, SOUFF depuis postesSupplementaires, affichage postes supp
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -26,6 +27,13 @@ const ModalPrevisionnelJour = ({
     soir: {},
     nuitApres: {}
   });
+  
+  // État de chargement des statuts
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+  
+  // Référence pour le debounce de sauvegarde
+  const saveTimeoutRef = useRef(null);
   
   // Menu déroulant ouvert
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -73,18 +81,73 @@ const ModalPrevisionnelJour = ({
   // Postes avec menu déroulant (FIGÉ ou RAPATRIÉ PN)
   const POSTES_AVEC_MENU = useMemo(() => ['CCU', 'RE'], []);
 
-  // Reset status quand la date change
+  // Charger les statuts depuis Supabase quand la date change
   useEffect(() => {
-    if (selectedDate) {
-      setPostesStatus({
-        nuitAvant: {},
-        matin: {},
-        soir: {},
-        nuitApres: {}
-      });
+    const loadPostesStatus = async () => {
+      if (!selectedDate || !isOpen) return;
+      
+      setLoadingStatus(true);
+      try {
+        const dateStr = typeof selectedDate === 'string' 
+          ? selectedDate 
+          : selectedDate.toISOString().split('T')[0];
+        
+        const statusFromDB = await supabaseService.getPostesStatusForDate(dateStr);
+        setPostesStatus(statusFromDB);
+        console.log(`✅ Statuts chargés pour ${dateStr}:`, statusFromDB);
+      } catch (error) {
+        console.error('Erreur chargement statuts:', error);
+        // En cas d'erreur, initialiser avec des valeurs vides
+        setPostesStatus({
+          nuitAvant: {},
+          matin: {},
+          soir: {},
+          nuitApres: {}
+        });
+      } finally {
+        setLoadingStatus(false);
+      }
       setOpenDropdown(null);
+    };
+    
+    loadPostesStatus();
+  }, [selectedDate, isOpen]);
+  
+  // Sauvegarder les statuts dans Supabase (avec debounce)
+  const savePostesStatus = useCallback(async (newStatus) => {
+    if (!selectedDate) return;
+    
+    const dateStr = typeof selectedDate === 'string' 
+      ? selectedDate 
+      : selectedDate.toISOString().split('T')[0];
+    
+    // Annuler la sauvegarde précédente si elle existe
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
     }
+    
+    // Sauvegarder après un court délai (debounce)
+    saveTimeoutRef.current = setTimeout(async () => {
+      setSavingStatus(true);
+      try {
+        await supabaseService.saveAllPostesStatus(dateStr, newStatus);
+        console.log(`✅ Statuts sauvegardés pour ${dateStr}`);
+      } catch (error) {
+        console.error('Erreur sauvegarde statuts:', error);
+      } finally {
+        setSavingStatus(false);
+      }
+    }, 500);
   }, [selectedDate]);
+  
+  // Nettoyage du timeout au démontage
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Formatage de la date
   const formattedDate = useMemo(() => {
@@ -135,15 +198,18 @@ const ModalPrevisionnelJour = ({
     // 4. RC - vérifié après car "REGULATEUR CENTRE" est explicite
     if (groupe.includes('REGULATEUR CENTRE') || groupe.startsWith('RC ') || groupe.startsWith('RC-')) return 'RC';
     
-    // 5. Groupes de réserve - vérification par mots-clés combinés
-    if (groupe.includes('RESERVE') && groupe.includes('PN')) return 'RESERVE_PN';
-    if (groupe.includes('RESERVE') && groupe.includes('DR')) return 'RESERVE_DR';
-    if (groupe.includes('RESERVE') && groupe.includes('PCD')) return 'RESERVE_PCD';
+    // 5. EAC - Apport Denfert - traité comme RE (poste reserve)
+    if (groupe.startsWith('EAC ') || groupe.includes('EAC -') || groupe.includes('APPORT')) return 'RE';
     
-    // 6. Autres groupes spéciaux
+    // 6. Groupes de réserve - vérification par mots-clés combinés
+    if (groupe.includes('RESERVE') && groupe.includes('PN')) return 'RE'; // RESERVE PN traité comme RE
+    if (groupe.includes('RESERVE') && groupe.includes('DR')) return 'RE'; // RESERVE DR traité comme RE
+    if (groupe.includes('RESERVE') && groupe.includes('PCD')) return 'RE'; // RESERVE PCD traité comme RE
+    
+    // 7. Autres groupes spéciaux
     if (groupe.includes('SOUFF') || groupe.includes('SOUFFLEUR')) return 'SOUFF';
     
-    // 7. Fallback: anciennes vérifications pour compatibilité avec formats non standard
+    // 8. Fallback: anciennes vérifications pour compatibilité avec formats non standard
     if (groupe.includes('CRC')) return 'CRC';
     if (groupe.includes('ACR')) return 'ACR';
     if (groupe.includes('CCU')) return 'CCU';
@@ -185,10 +251,17 @@ const ModalPrevisionnelJour = ({
       const serviceJ = agentPlanning[selectedDay];
       const serviceCodeJ = typeof serviceJ === 'object' ? serviceJ?.service : serviceJ;
       const posteCodeJ = typeof serviceJ === 'object' ? serviceJ?.poste : null;
+      // Récupérer les postes supplémentaires (affichés en italique dans le planning)
+      const postesSupplementairesJ = typeof serviceJ === 'object' 
+        ? (serviceJ?.postesSupplementaires || (serviceJ?.posteSupplementaire ? [serviceJ.posteSupplementaire] : []))
+        : [];
 
       // Récupérer le service du jour J+1 (pour nuit J→J+1)
       const serviceJ1 = nextDay ? agentPlanning[nextDay] : null;
       const serviceCodeJ1 = typeof serviceJ1 === 'object' ? serviceJ1?.service : serviceJ1;
+      const postesSupplementairesJ1 = typeof serviceJ1 === 'object'
+        ? (serviceJ1?.postesSupplementaires || (serviceJ1?.posteSupplementaire ? [serviceJ1.posteSupplementaire] : []))
+        : [];
 
       // Déterminer le poste effectif (poste affecté ou groupe par défaut)
       const posteEffectif = posteCodeJ || posteAgent;
@@ -197,7 +270,19 @@ const ModalPrevisionnelJour = ({
         ...agent,
         posteEffectif,
         serviceCode: serviceCodeJ,
-        posteCode: posteCodeJ
+        posteCode: posteCodeJ,
+        postesSupplementaires: postesSupplementairesJ
+      };
+
+      /**
+       * Fonction helper pour normaliser un code de poste supplémentaire
+       * Gère les cas: +SOUF, SOUF, +RC, RC, etc.
+       */
+      const normalizePosteSupp = (posteSupp) => {
+        const cleaned = posteSupp.toUpperCase().replace(/^\+/, '').trim();
+        // SOUF → SOUFF (le poste s'appelle SOUFF dans CRENEAUX)
+        if (cleaned === 'SOUF') return 'SOUFF';
+        return cleaned;
       };
 
       // Nuit J-1 → J : X dans colonne J
@@ -205,6 +290,13 @@ const ModalPrevisionnelJour = ({
         if (CRENEAUX.nuitAvant.postes.includes(posteEffectif)) {
           result.nuitAvant[posteEffectif].push(agentInfo);
         }
+        // Ajouter aussi dans les postes supplémentaires pour ce créneau
+        postesSupplementairesJ.forEach(posteSupp => {
+          const posteNorm = normalizePosteSupp(posteSupp);
+          if (CRENEAUX.nuitAvant.postes.includes(posteNorm) && result.nuitAvant[posteNorm]) {
+            result.nuitAvant[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
+          }
+        });
       }
 
       // Matin : - dans colonne J
@@ -212,6 +304,13 @@ const ModalPrevisionnelJour = ({
         if (CRENEAUX.matin.postes.includes(posteEffectif)) {
           result.matin[posteEffectif].push(agentInfo);
         }
+        // Ajouter aussi dans les postes supplémentaires pour ce créneau
+        postesSupplementairesJ.forEach(posteSupp => {
+          const posteNorm = normalizePosteSupp(posteSupp);
+          if (CRENEAUX.matin.postes.includes(posteNorm) && result.matin[posteNorm]) {
+            result.matin[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
+          }
+        });
       }
 
       // Soirée : O dans colonne J
@@ -219,17 +318,33 @@ const ModalPrevisionnelJour = ({
         if (CRENEAUX.soir.postes.includes(posteEffectif)) {
           result.soir[posteEffectif].push(agentInfo);
         }
+        // Ajouter aussi dans les postes supplémentaires pour ce créneau (ex: SOUF)
+        postesSupplementairesJ.forEach(posteSupp => {
+          const posteNorm = normalizePosteSupp(posteSupp);
+          if (CRENEAUX.soir.postes.includes(posteNorm) && result.soir[posteNorm]) {
+            result.soir[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
+          }
+        });
       }
 
       // Nuit J → J+1 : X dans colonne J+1
       if (serviceCodeJ1 === 'X') {
+        const agentInfoJ1 = {
+          ...agent,
+          posteEffectif,
+          serviceCode: serviceCodeJ1,
+          postesSupplementaires: postesSupplementairesJ1
+        };
         if (CRENEAUX.nuitApres.postes.includes(posteEffectif)) {
-          result.nuitApres[posteEffectif].push({
-            ...agent,
-            posteEffectif,
-            serviceCode: serviceCodeJ1
-          });
+          result.nuitApres[posteEffectif].push(agentInfoJ1);
         }
+        // Ajouter aussi dans les postes supplémentaires pour ce créneau
+        postesSupplementairesJ1.forEach(posteSupp => {
+          const posteNorm = normalizePosteSupp(posteSupp);
+          if (CRENEAUX.nuitApres.postes.includes(posteNorm) && result.nuitApres[posteNorm]) {
+            result.nuitApres[posteNorm].push({ ...agentInfoJ1, fromPosteSupp: posteSupp });
+          }
+        });
       }
     });
 
@@ -244,27 +359,37 @@ const ModalPrevisionnelJour = ({
       setOpenDropdown(prev => prev === key ? null : key);
     } else {
       // Toggle simple FIGÉ
-      setPostesStatus(prev => ({
-        ...prev,
-        [creneauId]: {
-          ...prev[creneauId],
-          [poste]: prev[creneauId]?.[poste] === 'fige' ? null : 'fige'
-        }
-      }));
+      setPostesStatus(prev => {
+        const newStatus = {
+          ...prev,
+          [creneauId]: {
+            ...prev[creneauId],
+            [poste]: prev[creneauId]?.[poste] === 'fige' ? null : 'fige'
+          }
+        };
+        // Sauvegarder dans Supabase
+        savePostesStatus(newStatus);
+        return newStatus;
+      });
     }
-  }, [POSTES_AVEC_MENU]);
+  }, [POSTES_AVEC_MENU, savePostesStatus]);
 
   // Gestion de la sélection dans le menu déroulant
   const handleMenuSelect = useCallback((creneauId, poste, status) => {
-    setPostesStatus(prev => ({
-      ...prev,
-      [creneauId]: {
-        ...prev[creneauId],
-        [poste]: prev[creneauId]?.[poste] === status ? null : status
-      }
-    }));
+    setPostesStatus(prev => {
+      const newStatus = {
+        ...prev,
+        [creneauId]: {
+          ...prev[creneauId],
+          [poste]: prev[creneauId]?.[poste] === status ? null : status
+        }
+      };
+      // Sauvegarder dans Supabase
+      savePostesStatus(newStatus);
+      return newStatus;
+    });
     setOpenDropdown(null);
-  }, []);
+  }, [savePostesStatus]);
 
   // Fermer le dropdown quand on clique ailleurs
   useEffect(() => {
@@ -351,17 +476,42 @@ const ModalPrevisionnelJour = ({
       statusBadge = <span className="ml-2 text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">[RAPATRIÉ PN]</span>;
     }
 
+    // Afficher le poste principal si différent
     let additionalInfo = null;
     if (agent.posteCode && agent.posteCode !== poste) {
       additionalInfo = <span className="ml-1 text-xs text-blue-500">({agent.posteCode})</span>;
     }
 
+    // Afficher les postes supplémentaires en italique violet (comme dans PlanningTable)
+    let postesSupp = null;
+    if (agent.fromPosteSupp) {
+      // L'agent est affiché ici via un poste supplémentaire
+      postesSupp = (
+        <span className="ml-1 text-xs italic text-purple-600 font-medium">
+          (+{agent.fromPosteSupp.replace(/^\+/, '')})
+        </span>
+      );
+    } else if (agent.postesSupplementaires && agent.postesSupplementaires.length > 0) {
+      // Afficher tous les postes supplémentaires
+      postesSupp = (
+        <span className="ml-1 text-xs italic text-purple-600 font-medium">
+          (+{agent.postesSupplementaires.map(p => p.replace(/^\+/, '')).join(' +')})
+        </span>
+      );
+    }
+
+    // Clé unique pour éviter les duplications de clés React
+    const uniqueKey = agent.fromPosteSupp 
+      ? `${agent.id}-${agent.fromPosteSupp}` 
+      : agent.id;
+
     return (
-      <div key={agent.id} className="flex items-center text-sm py-0.5">
+      <div key={uniqueKey} className="flex items-center text-sm py-0.5">
         <span className={`font-medium ${posteStatus === 'fige' ? 'text-red-700' : posteStatus === 'rapatrie' ? 'text-orange-700' : 'text-gray-800'}`}>
           {agent.nom} {agent.prenom}
         </span>
         {additionalInfo}
+        {postesSupp}
         {statusBadge}
       </div>
     );
@@ -537,13 +687,19 @@ const ModalPrevisionnelJour = ({
 
         {/* Footer */}
         <div className="bg-gray-50 px-6 py-3 border-t flex justify-between items-center">
-          <div className="text-xs text-gray-500">
-            <span className="inline-flex items-center gap-1 mr-4">
+          <div className="text-xs text-gray-500 flex items-center gap-4">
+            <span className="inline-flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-red-500"></span> FIGÉ
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-orange-500"></span> RAPATRIÉ PN
             </span>
+            {(loadingStatus || savingStatus) && (
+              <span className="inline-flex items-center gap-1 text-blue-600">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {loadingStatus ? 'Chargement...' : 'Sauvegarde...'}
+              </span>
+            )}
           </div>
           <button
             onClick={onClose}

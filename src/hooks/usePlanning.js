@@ -84,15 +84,19 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
             const agentName = `${agent.nom} ${agent.prenom}`;
             const day = new Date(entry.date).getDate();
             
-            // Construire l'objet de données de cellule avec note
+            // Construire l'objet de données de cellule avec note et postes supplémentaires
             const cellData = {
               service: entry.service_code,
               ...(entry.poste_code && { poste: entry.poste_code }),
-              ...(entry.commentaire && { note: entry.commentaire })
+              ...(entry.commentaire && { note: entry.commentaire }),
+              ...(entry.postes_supplementaires && entry.postes_supplementaires.length > 0 && { 
+                postesSupplementaires: entry.postes_supplementaires 
+              })
             };
             
-            // Si pas de poste ni de note, garder le format simple
-            if (!entry.poste_code && !entry.commentaire) {
+            // Si pas de poste, note, ni postes supplémentaires, garder le format simple
+            if (!entry.poste_code && !entry.commentaire && 
+                (!entry.postes_supplementaires || entry.postes_supplementaires.length === 0)) {
               planningData[agentName][day] = entry.service_code;
             } else {
               planningData[agentName][day] = cellData;
@@ -124,13 +128,14 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
     if (!cellValue) return null;
     
     if (typeof cellValue === 'string') {
-      return { service: cellValue, poste: null, note: null };
+      return { service: cellValue, poste: null, note: null, postesSupplementaires: null };
     }
     
     return {
       service: cellValue.service || null,
       poste: cellValue.poste || null,
-      note: cellValue.note || null
+      note: cellValue.note || null,
+      postesSupplementaires: cellValue.postesSupplementaires || null
     };
   }, [planning]);
 
@@ -158,9 +163,19 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
         const serviceCode = typeof value === 'object' ? value.service : value;
         const posteCode = typeof value === 'object' ? (value.poste || null) : null;
         const note = typeof value === 'object' ? (value.note || null) : null;
+        const postesSupplementaires = typeof value === 'object' 
+          ? (value.postesSupplementaires || null) 
+          : null;
         
-        // Sauvegarde avec note
-        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note);
+        // Sauvegarde avec note et postes supplémentaires
+        await supabaseService.savePlanning(
+          agent.id, 
+          date, 
+          serviceCode, 
+          posteCode, 
+          note, 
+          postesSupplementaires
+        );
       }
       
       // Mise à jour optimiste du state local
