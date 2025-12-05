@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type } from 'lucide-react';
-import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES } from '../../constants/config';
+import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, POSTES_PAR_GROUPE, GROUPES_AVEC_POSTE } from '../../constants/config';
 
 // Couleurs UNIQUEMENT pour la modal d'édition 
 // CORRIGÉES selon spécifications utilisateur :
@@ -22,7 +22,7 @@ const MODAL_COLORS = {
   'D': 'bg-blue-200 text-blue-800',                        // Disponible = BLEU 🔵
   'I': 'bg-pink-100 text-pink-700',                        // Inactif
   'NU': 'bg-gray-200 text-gray-600',                       // Non Utilisé
-  'VT': 'bg-yellow-100 text-yellow-800',                   // Visite Technique = JAUNE CLAIR 🟨
+  'VT': 'bg-yellow-100 text-yellow-800',                   // Temps partiel = JAUNE CLAIR 🟨
   'D2I': 'bg-gray-300 text-gray-700',                      // D2I = GRIS ⬜
   // Les autres codes (-, O, X) n'ont pas de couleur (gris par défaut)
 };
@@ -30,7 +30,7 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 1.1.0 - Support des postes supplémentaires persistés
+ * @version 1.2.0 - Support des postes par groupe (RC, EAC)
  * @param {Object} selectedCell - {agent: string, day: number}
  * @param {Object|null} cellData - Données existantes {service, poste, note, texteLibre, postesSupplementaires}
  * @param {Object} agentsData - Données des agents par groupe
@@ -74,6 +74,46 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
   }, [cellData, selectedCell]);
 
   if (!selectedCell) return null;
+
+  // Trouver le groupe de l'agent sélectionné
+  const findAgentGroup = () => {
+    for (const [groupe, agents] of Object.entries(agentsData)) {
+      if (agents.some(agent => `${agent.nom} ${agent.prenom}` === selectedCell.agent)) {
+        return groupe;
+      }
+    }
+    return null;
+  };
+
+  const agentGroup = findAgentGroup();
+
+  // Vérifier si l'agent a accès au sélecteur de poste
+  const hasPosteSelector = GROUPES_AVEC_POSTE.some(g => agentGroup?.includes(g) || agentGroup === g);
+
+  // Déterminer les postes disponibles pour cet agent
+  const getAvailablePostes = () => {
+    // Vérifier si le groupe a des postes spécifiques définis
+    for (const [groupeKey, postes] of Object.entries(POSTES_PAR_GROUPE)) {
+      if (agentGroup?.includes(groupeKey) || agentGroup === groupeKey) {
+        return postes;
+      }
+    }
+    // Sinon, tous les postes pour les réserves
+    return POSTES_CODES;
+  };
+
+  const availablePostes = getAvailablePostes();
+
+  // Générer le label de la section Poste selon le groupe
+  const getPosteLabel = () => {
+    if (agentGroup?.includes('RC - ROULEMENT REGULATEUR CENTRE')) {
+      return 'Poste (RC)';
+    }
+    if (agentGroup?.includes('EAC - APPORT DENFERT')) {
+      return 'Poste (EAC)';
+    }
+    return 'Poste (Réserve)';
+  };
 
   // Fonction pour obtenir la couleur d'un code service dans la modal
   const getModalColor = (code, isSelected) => {
@@ -200,11 +240,6 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
     onClose();
   };
 
-  const isReserveAgent = Object.entries(agentsData).some(([groupe, agents]) => 
-    groupe.includes('RESERVE') && 
-    agents.some(agent => `${agent.nom} ${agent.prenom}` === selectedCell.agent)
-  );
-
   const hasExistingNote = Boolean(tempNote);
   const hasExistingTexteLibre = Boolean(tempTexteLibre);
   const hasExistingPostesSupp = tempPostesSupplementaires.length > 0;
@@ -218,6 +253,9 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             <div>
               <h3 className="text-lg font-semibold">{selectedCell.agent}</h3>
               <p className="text-sm text-gray-600">Jour {selectedCell.day}</p>
+              {agentGroup && (
+                <p className="text-xs text-gray-400">{agentGroup}</p>
+              )}
               {hasExistingNote && (
                 <div className="flex items-center gap-1 mt-1">
                   <StickyNote className="w-3 h-3 text-amber-500" />
@@ -303,12 +341,12 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             )}
           </div>
 
-          {/* Section Poste (uniquement pour agents réserve) - SANS COULEUR */}
-          {isReserveAgent && (
+          {/* Section Poste (pour agents avec sélecteur de poste) - SANS COULEUR */}
+          {hasPosteSelector && (
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Poste (Réserve)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{getPosteLabel()}</label>
               <div className="grid grid-cols-4 gap-2">
-                {POSTES_CODES.map(poste => (
+                {availablePostes.map(poste => (
                   <button
                     key={poste}
                     onClick={() => setTempPoste(tempPoste === poste ? '' : poste)}
