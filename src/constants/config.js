@@ -5,7 +5,26 @@ export const MONTHS = [
   'JUILLET', 'AOÛT', 'SEPTEMBRE', 'OCTOBRE', 'NOVEMBRE', 'DECEMBRE'
 ];
 
-// Jours fériés français 2025
+// Année courante du planning
+export const CURRENT_YEAR = 2026;
+
+// Jours fériés français 2026
+export const JOURS_FERIES_2026 = {
+  JANVIER: [1],           // Nouvel An (Jeudi)
+  FEVRIER: [],
+  MARS: [],
+  AVRIL: [6],            // Lundi de Pâques
+  MAI: [1, 8, 14, 25],   // Fête du Travail, Victoire 1945, Ascension, Lundi de Pentecôte
+  JUIN: [],
+  JUILLET: [14],         // Fête Nationale (Mardi)
+  AOÛT: [15],            // Assomption (Samedi)
+  SEPTEMBRE: [],
+  OCTOBRE: [],
+  NOVEMBRE: [1, 11],     // Toussaint (Dimanche), Armistice (Mercredi)
+  DECEMBRE: [25]         // Noël (Vendredi)
+};
+
+// Jours fériés français 2025 (conservé pour compatibilité)
 export const JOURS_FERIES_2025 = {
   JANVIER: [1],           // Nouvel An
   FEVRIER: [],
@@ -20,6 +39,9 @@ export const JOURS_FERIES_2025 = {
   NOVEMBRE: [1, 11],     // Toussaint, Armistice
   DECEMBRE: [25]         // Noël
 };
+
+// Export par défaut : jours fériés de l'année courante
+export const JOURS_FERIES = JOURS_FERIES_2026;
 
 export const CODE_COLORS = {
   // === SERVICES (-, O, X) : PAS DE COULEUR ===
