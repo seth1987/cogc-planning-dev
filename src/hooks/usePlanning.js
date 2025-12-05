@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import supabaseService from '../services/supabaseService';
 import planningService from '../services/planningService';
-import { MONTHS, DEFAULT_YEAR } from '../constants/config';
+import { MONTHS, CURRENT_YEAR } from '../constants/config';
 
 /**
  * Hook personnalisé pour la gestion du planning
@@ -12,7 +12,7 @@ import { MONTHS, DEFAULT_YEAR } from '../constants/config';
  * @param {number} currentYear - L'année actuellement sélectionnée
  * @returns {Object} État et fonctions de gestion du planning
  */
-export function usePlanning(user, currentMonth, currentYear = DEFAULT_YEAR) {
+export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
   // États des données
   const [agents, setAgents] = useState([]);
   const [agentsData, setAgentsData] = useState({});
