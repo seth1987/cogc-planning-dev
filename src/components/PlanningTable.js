@@ -1,9 +1,19 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, StickyNote } from 'lucide-react';
+import { ChevronDown, ChevronUp, StickyNote, Users } from 'lucide-react';
 import { CODE_COLORS } from '../constants/config';
 import planningService from '../services/planningService';
 
-const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgentClick }) => {
+/**
+ * PlanningTable - Tableau de planning principal
+ * 
+ * @param {string} currentMonth - Mois courant
+ * @param {object} planning - Données du planning
+ * @param {object} agentsData - Données des agents par groupe
+ * @param {function} onCellClick - Handler clic sur cellule
+ * @param {function} onAgentClick - Handler clic sur agent
+ * @param {function} onDayHeaderClick - Handler clic sur en-tête de jour (nouveau)
+ */
+const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgentClick, onDayHeaderClick }) => {
   const daysInMonth = planningService.getDaysInMonth(currentMonth);
   const [collapsedGroups, setCollapsedGroups] = useState({});
   
@@ -28,12 +38,27 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
       className += 'bg-gray-50 text-gray-700';
     }
     
+    // Ajouter cursor-pointer et hover si onDayHeaderClick est fourni
+    const isClickable = typeof onDayHeaderClick === 'function';
+    if (isClickable) {
+      className += ' cursor-pointer hover:bg-blue-100 hover:text-blue-800 transition-colors group';
+    }
+    
     return (
-      <th key={day} className={className}>
-        <div className="flex flex-col">
+      <th 
+        key={day} 
+        className={className}
+        onClick={isClickable ? () => onDayHeaderClick(day) : undefined}
+        title={isClickable ? `Voir les équipes du ${day}` : undefined}
+      >
+        <div className="flex flex-col items-center">
           <span className="text-xs uppercase">{dayName}</span>
           <span className="font-bold text-sm">{day}</span>
           {isFerier && <span className="text-xs">Férié</span>}
+          {/* Indicateur visuel pour clic équipes */}
+          {isClickable && (
+            <Users className="w-3 h-3 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-blue-600" />
+          )}
         </div>
       </th>
     );
@@ -191,7 +216,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
       {/* Légende mise à jour - Couleurs corrigées */}
       <div className="p-4 bg-gray-50 border-t">
         <h4 className="font-semibold text-sm mb-2">Légende des codes</h4>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-xs">
           <div>
             <p className="font-medium mb-1">Services :</p>
             <div className="space-y-1">
@@ -258,6 +283,17 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
               </div>
               <p className="text-gray-500 text-xs">Icône en haut à droite</p>
               <p className="text-gray-500 text-xs">Cliquer pour voir/modifier</p>
+            </div>
+          </div>
+          <div>
+            <p className="font-medium mb-1">Équipes du jour :</p>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-blue-600" />
+                <span>Clic sur en-tête jour</span>
+              </div>
+              <p className="text-gray-500 text-xs">Voir qui travaille</p>
+              <p className="text-gray-500 text-xs">Par créneaux horaires</p>
             </div>
           </div>
         </div>
