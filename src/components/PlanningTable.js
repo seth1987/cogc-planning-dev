@@ -157,18 +157,13 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                           {agents.map((agent) => (
                             <tr key={agent.id || `${agent.nom}_${agent.prenom}`} className="hover:bg-gray-50">
                               <td className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r">
-                                <div className="flex items-center justify-between">
-                                  <button
-                                    onClick={() => onAgentClick && onAgentClick(agent)}
-                                    className="text-left hover:text-blue-600 hover:underline transition-colors"
-                                    title="Cliquer pour voir les détails"
-                                  >
-                                    <span>{agent.nom} {agent.prenom}</span>
-                                  </button>
-                                  {agent.site === 'Denfert-Rochereau' && (
-                                    <span className="text-xs text-purple-600 ml-2">DR</span>
-                                  )}
-                                </div>
+                                <button
+                                  onClick={() => onAgentClick && onAgentClick(agent)}
+                                  className="text-left hover:text-blue-600 hover:underline transition-colors"
+                                  title="Cliquer pour voir les détails"
+                                >
+                                  <span>{agent.nom} {agent.prenom}</span>
+                                </button>
                               </td>
                               {Array.from({ length: daysInMonth }, (_, dayIndex) => 
                                 renderPlanningCell(agent, dayIndex + 1)
