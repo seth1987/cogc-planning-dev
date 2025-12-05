@@ -1,5 +1,5 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 2.0 - Utilise PDFServiceWrapper avec fallback automatique
+// Version 2.1 - Split-screen avec prévisualisation PDF
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info, Zap, AlertTriangle } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
@@ -387,12 +387,17 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   if (!isOpen) return null;
 
+  // Taille du modal adaptée à l'étape (plus grande pour l'étape 2 avec split-view)
+  const modalSizeClass = currentStep === 2 
+    ? 'max-w-[95vw] w-full' // Plus large pour le split-view
+    : 'max-w-6xl w-full';
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
+      <div className={`bg-white rounded-lg shadow-xl ${modalSizeClass} max-h-[95vh] overflow-hidden flex flex-col`}>
         
         {/* Header avec étapes */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -430,12 +435,12 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           </div>
         </div>
 
-        {/* Contenu principal */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+        {/* Contenu principal - flex-1 pour prendre tout l'espace disponible */}
+        <div className={`p-4 flex-1 overflow-hidden ${currentStep === 2 ? '' : 'overflow-y-auto'}`}>
           
           {/* Étape 1: Upload */}
           {currentStep === 1 && (
-            <div>
+            <div className="overflow-y-auto max-h-full">
               {/* Information sur le nouveau système */}
               <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
                 <div className="flex">
@@ -453,7 +458,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                 </div>
               </div>
 
-              {/* ⚠️ AVERTISSEMENT VÉRIFICATION - NOUVEAU BLOC */}
+              {/* ⚠️ AVERTISSEMENT VÉRIFICATION */}
               <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-4">
                 <div className="flex">
                   <AlertTriangle className="text-amber-600 mr-2 flex-shrink-0" size={20} />
@@ -464,7 +469,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                       mais <strong>il est vivement recommandé de vérifier l'exactitude des données extraites</strong> avant de valider l'import.
                     </p>
                     <p className="text-amber-700 text-xs mt-2">
-                      L'étape de validation (étape 2) vous permet de corriger les éventuelles erreurs d'extraction.
+                      L'étape de validation (étape 2) affiche le PDF original en regard pour faciliter la vérification.
                     </p>
                   </div>
                 </div>
@@ -497,7 +502,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
             </div>
           )}
 
-          {/* Étape 2: Validation */}
+          {/* Étape 2: Validation avec split-screen PDF */}
           {currentStep === 2 && extractedData && (
             <PDFValidationStep
               data={editedData}
@@ -506,23 +511,26 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
               onValidate={handleValidate}
               onCancel={goBackToUpload}
               loading={loading}
+              pdfFile={file}
             />
           )}
 
           {/* Étape 3: Résultats */}
           {currentStep === 3 && importResult && (
-            <PDFImportResult
-              importReport={importResult}
-              onClose={handleClose}
-              onRollback={null}
-              onBackToValidation={() => setCurrentStep(2)}
-            />
+            <div className="overflow-y-auto max-h-full">
+              <PDFImportResult
+                importReport={importResult}
+                onClose={handleClose}
+                onRollback={null}
+                onBackToValidation={() => setCurrentStep(2)}
+              />
+            </div>
           )}
         </div>
 
         {/* Loading overlay */}
         {loading && (
-          <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center z-10">
             <div className="bg-white p-6 rounded-lg shadow-lg text-center">
               <Loader className="animate-spin mx-auto mb-4 text-blue-600" size={32} />
               <p className="text-gray-700">
