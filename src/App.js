@@ -22,6 +22,7 @@ import ModalGestionAgents from './components/modals/ModalGestionAgents';
 import ModalEditAgent from './components/modals/ModalEditAgent';
 import ModalHabilitations from './components/modals/ModalHabilitations';
 import ModalUploadPDF from './components/modals/ModalUploadPDF';
+import ModalPrevisionnelJour from './components/modals/ModalPrevisionnelJour';
 
 // Constants
 import { MONTHS } from './constants/config';
@@ -37,6 +38,7 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
+ * v2.1 - Ajout modal Équipes du Jour
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -72,11 +74,13 @@ const App = () => {
     modals,
     selectedCell,
     selectedAgent,
+    selectedDate,
     openCellEdit,
     openGestionAgents,
     openEditAgent,
     openHabilitations,
     openUploadPDF,
+    openPrevisionnelJour,
     closeModal,
     setSelectedAgent
   } = useModals();
@@ -127,6 +131,20 @@ const App = () => {
   // Gestion des cellules du planning
   const handleCellClick = (agentName, day) => {
     openCellEdit(agentName, day);
+  };
+
+  /**
+   * Handler pour le clic sur un en-tête de jour (header)
+   * Ouvre le modal Équipes du Jour pour cette date
+   */
+  const handleDayHeaderClick = (day) => {
+    // Construire la date complète à partir du mois courant et du jour
+    const monthIndex = MONTHS.indexOf(currentMonth);
+    const year = new Date().getFullYear();
+    const date = new Date(year, monthIndex, day);
+    
+    // Ouvrir le modal avec cette date
+    openPrevisionnelJour(date.toISOString().split('T')[0]);
   };
 
   const handleUpdateCell = async (agentName, day, value) => {
@@ -311,6 +329,7 @@ const App = () => {
           agentsData={agentsData}
           onCellClick={handleCellClick}
           onAgentClick={handleAgentClick}
+          onDayHeaderClick={handleDayHeaderClick}
         />
         
         {/* Debug (dev only) */}
@@ -378,6 +397,15 @@ const App = () => {
         isOpen={modals.uploadPDF}
         onClose={() => closeModal('uploadPDF')}
         onSuccess={handleUploadSuccess}
+      />
+
+      {/* Modal Équipes du Jour */}
+      <ModalPrevisionnelJour
+        isOpen={modals.previsionnelJour}
+        selectedDate={selectedDate}
+        agents={agents}
+        planningData={planning}
+        onClose={() => closeModal('previsionnelJour')}
       />
     </div>
   );
