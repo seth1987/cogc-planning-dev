@@ -5,7 +5,7 @@ import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle } from
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée) et par poste
  * 
- * @version 1.2.0 - Fix: getGroupeSimple order to prevent "ROULEMENT" matching "RO"
+ * @version 1.3.0 - Fix: EAC/RESERVE → RE, SOUFF from postesSupplementaires, display postes supp
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -115,6 +115,8 @@ const ModalPrevisionnelJour = ({
    * des sous-chaînes d'autres groupes:
    * - "RE - ROULEMENT..." contient "RO" dans "ROULEMENT" 
    * - On doit vérifier TABLE EST/RE AVANT TABLE OUEST/RO
+   * 
+   * FIX v1.3: EAC et RESERVE (PCD/PN/DR) traités comme RE (poste réserve)
    */
   const getGroupeSimple = useCallback((agent) => {
     if (!agent?.groupe) return null;
@@ -135,20 +137,35 @@ const ModalPrevisionnelJour = ({
     // 4. RC - vérifié après car "REGULATEUR CENTRE" est explicite
     if (groupe.includes('REGULATEUR CENTRE') || groupe.startsWith('RC ') || groupe.startsWith('RC-')) return 'RC';
     
-    // 5. Groupes de réserve - vérification par mots-clés combinés
-    if (groupe.includes('RESERVE') && groupe.includes('PN')) return 'RESERVE_PN';
-    if (groupe.includes('RESERVE') && groupe.includes('DR')) return 'RESERVE_DR';
-    if (groupe.includes('RESERVE') && groupe.includes('PCD')) return 'RESERVE_PCD';
+    // 5. EAC - Apport Denfert - traité comme RE (poste réserve)
+    if (groupe.startsWith('EAC ') || groupe.includes('EAC -') || groupe.includes('APPORT')) return 'RE';
     
-    // 6. Autres groupes spéciaux
+    // 6. Groupes de réserve - TOUS traités comme RE (poste réserve)
+    if (groupe.includes('RESERVE') && groupe.includes('PN')) return 'RE';
+    if (groupe.includes('RESERVE') && groupe.includes('DR')) return 'RE';
+    if (groupe.includes('RESERVE') && groupe.includes('PCD')) return 'RE';
+    if (groupe.includes('RESERVE')) return 'RE'; // Fallback pour tout autre type de réserve
+    
+    // 7. Autres groupes spéciaux
     if (groupe.includes('SOUFF') || groupe.includes('SOUFFLEUR')) return 'SOUFF';
     
-    // 7. Fallback: anciennes vérifications pour compatibilité avec formats non standard
+    // 8. Fallback: anciennes vérifications pour compatibilité avec formats non standard
     if (groupe.includes('CRC')) return 'CRC';
     if (groupe.includes('ACR')) return 'ACR';
     if (groupe.includes('CCU')) return 'CCU';
     
     return null;
+  }, []);
+
+  /**
+   * Fonction helper pour normaliser un code de poste supplémentaire
+   * Gère les cas: +SOUF, SOUF, +RC, RC, etc.
+   */
+  const normalizePosteSupp = useCallback((posteSupp) => {
+    const cleaned = posteSupp.toUpperCase().replace(/^\+/, '').trim();
+    // SOUF → SOUFF (le poste s'appelle SOUFF dans CRENEAUX)
+    if (cleaned === 'SOUF') return 'SOUFF';
+    return cleaned;
   }, []);
 
   // Calculer les équipes pour chaque créneau
@@ -185,10 +202,17 @@ const ModalPrevisionnelJour = ({
       const serviceJ = agentPlanning[selectedDay];
       const serviceCodeJ = typeof serviceJ === 'object' ? serviceJ?.service : serviceJ;
       const posteCodeJ = typeof serviceJ === 'object' ? serviceJ?.poste : null;
+      // Récupérer les postes supplémentaires (affichés en italique dans le planning)
+      const postesSupplementairesJ = typeof serviceJ === 'object' 
+        ? (serviceJ?.postesSupplementaires || (serviceJ?.posteSupplementaire ? [serviceJ.posteSupplementaire] : []))
+        : [];
 
       // Récupérer le service du jour J+1 (pour nuit J→J+1)
       const serviceJ1 = nextDay ? agentPlanning[nextDay] : null;
       const serviceCodeJ1 = typeof serviceJ1 === 'object' ? serviceJ1?.service : serviceJ1;
+      const postesSupplementairesJ1 = typeof serviceJ1 === 'object'
+        ? (serviceJ1?.postesSupplementaires || (serviceJ1?.posteSupplementaire ? [serviceJ1.posteSupplementaire] : []))
+        : [];
 
       // Déterminer le poste effectif (poste affecté ou groupe par défaut)
       const posteEffectif = posteCodeJ || posteAgent;
@@ -197,7 +221,8 @@ const ModalPrevisionnelJour = ({
         ...agent,
         posteEffectif,
         serviceCode: serviceCodeJ,
-        posteCode: posteCodeJ
+        posteCode: posteCodeJ,
+        postesSupplementaires: postesSupplementairesJ
       };
 
       // Nuit J-1 → J : X dans colonne J
@@ -205,6 +230,13 @@ const ModalPrevisionnelJour = ({
         if (CRENEAUX.nuitAvant.postes.includes(posteEffectif)) {
           result.nuitAvant[posteEffectif].push(agentInfo);
         }
+        // Ajouter aussi dans les postes supplémentaires pour ce créneau
+        postesSupplementairesJ.forEach(posteSupp => {
+          const posteNorm = normalizePosteSupp(posteSupp);
+          if (CRENEAUX.nuitAvant.postes.includes(posteNorm) && result.nuitAvant[posteNorm]) {
+            result.nuitAvant[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
+          }
+        });
       }
 
       // Matin : - dans colonne J
@@ -212,6 +244,13 @@ const ModalPrevisionnelJour = ({
         if (CRENEAUX.matin.postes.includes(posteEffectif)) {
           result.matin[posteEffectif].push(agentInfo);
         }
+        // Ajouter aussi dans les postes supplémentaires pour ce créneau
+        postesSupplementairesJ.forEach(posteSupp => {
+          const posteNorm = normalizePosteSupp(posteSupp);
+          if (CRENEAUX.matin.postes.includes(posteNorm) && result.matin[posteNorm]) {
+            result.matin[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
+          }
+        });
       }
 
       // Soirée : O dans colonne J
@@ -219,22 +258,38 @@ const ModalPrevisionnelJour = ({
         if (CRENEAUX.soir.postes.includes(posteEffectif)) {
           result.soir[posteEffectif].push(agentInfo);
         }
+        // Ajouter aussi dans les postes supplémentaires pour ce créneau (ex: SOUF)
+        postesSupplementairesJ.forEach(posteSupp => {
+          const posteNorm = normalizePosteSupp(posteSupp);
+          if (CRENEAUX.soir.postes.includes(posteNorm) && result.soir[posteNorm]) {
+            result.soir[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
+          }
+        });
       }
 
       // Nuit J → J+1 : X dans colonne J+1
       if (serviceCodeJ1 === 'X') {
+        const agentInfoJ1 = {
+          ...agent,
+          posteEffectif,
+          serviceCode: serviceCodeJ1,
+          postesSupplementaires: postesSupplementairesJ1
+        };
         if (CRENEAUX.nuitApres.postes.includes(posteEffectif)) {
-          result.nuitApres[posteEffectif].push({
-            ...agent,
-            posteEffectif,
-            serviceCode: serviceCodeJ1
-          });
+          result.nuitApres[posteEffectif].push(agentInfoJ1);
         }
+        // Ajouter aussi dans les postes supplémentaires pour ce créneau
+        postesSupplementairesJ1.forEach(posteSupp => {
+          const posteNorm = normalizePosteSupp(posteSupp);
+          if (CRENEAUX.nuitApres.postes.includes(posteNorm) && result.nuitApres[posteNorm]) {
+            result.nuitApres[posteNorm].push({ ...agentInfoJ1, fromPosteSupp: posteSupp });
+          }
+        });
       }
     });
 
     return result;
-  }, [selectedDate, selectedDay, nextDay, agents, planningData, CRENEAUX, getGroupeSimple]);
+  }, [selectedDate, selectedDay, nextDay, agents, planningData, CRENEAUX, getGroupeSimple, normalizePosteSupp]);
 
   // Gestion du clic sur un bouton de poste
   const handlePosteClick = useCallback((creneauId, poste) => {
@@ -351,17 +406,42 @@ const ModalPrevisionnelJour = ({
       statusBadge = <span className="ml-2 text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">[RAPATRIÉ PN]</span>;
     }
 
+    // Afficher le poste principal si différent
     let additionalInfo = null;
     if (agent.posteCode && agent.posteCode !== poste) {
       additionalInfo = <span className="ml-1 text-xs text-blue-500">({agent.posteCode})</span>;
     }
 
+    // Afficher les postes supplémentaires en italique violet (comme dans PlanningTable)
+    let postesSupp = null;
+    if (agent.fromPosteSupp) {
+      // L'agent est affiché ici via un poste supplémentaire
+      postesSupp = (
+        <span className="ml-1 text-xs italic text-purple-600 font-medium">
+          (+{agent.fromPosteSupp.replace(/^\+/, '')})
+        </span>
+      );
+    } else if (agent.postesSupplementaires && agent.postesSupplementaires.length > 0) {
+      // Afficher tous les postes supplémentaires
+      postesSupp = (
+        <span className="ml-1 text-xs italic text-purple-600 font-medium">
+          (+{agent.postesSupplementaires.map(p => p.replace(/^\+/, '')).join(' +')})
+        </span>
+      );
+    }
+
+    // Clé unique pour éviter les duplications de clés React
+    const uniqueKey = agent.fromPosteSupp 
+      ? `${agent.id}-${agent.fromPosteSupp}` 
+      : agent.id;
+
     return (
-      <div key={agent.id} className="flex items-center text-sm py-0.5">
+      <div key={uniqueKey} className="flex items-center text-sm py-0.5">
         <span className={`font-medium ${posteStatus === 'fige' ? 'text-red-700' : posteStatus === 'rapatrie' ? 'text-orange-700' : 'text-gray-800'}`}>
           {agent.nom} {agent.prenom}
         </span>
         {additionalInfo}
+        {postesSupp}
         {statusBadge}
       </div>
     );
@@ -541,8 +621,11 @@ const ModalPrevisionnelJour = ({
             <span className="inline-flex items-center gap-1 mr-4">
               <span className="w-2 h-2 rounded-full bg-red-500"></span> FIGÉ
             </span>
-            <span className="inline-flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 mr-4">
               <span className="w-2 h-2 rounded-full bg-orange-500"></span> RAPATRIÉ PN
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="italic text-purple-600">(+SOUF)</span> Poste supplémentaire
             </span>
           </div>
           <button
