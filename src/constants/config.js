@@ -135,12 +135,29 @@ export const SERVICE_CODES = [
   { code: 'I', desc: 'Inactif/Visite' },
   { code: 'HAB', desc: 'Habilitation/Formation' },
   { code: 'FO', desc: 'Formation' },
-  { code: 'VT', desc: 'Visite Technique' },
+  { code: 'VT', desc: 'Temps partiel' },
   { code: 'D2I', desc: 'D2I' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)
 export const POSTES_CODES = ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'SOUF'];
+
+// Postes spécifiques par groupe (pour les agents avec choix de poste limité)
+export const POSTES_PAR_GROUPE = {
+  // Agents RC - ROULEMENT REGULATEUR CENTRE → choix RC ou SOUFF
+  'RC - ROULEMENT REGULATEUR CENTRE': ['RC', 'SOUF'],
+  // Agents EAC - APPORT DENFERT → choix CCU ou RE
+  'EAC - APPORT DENFERT': ['CCU', 'RE']
+};
+
+// Groupes qui ont accès au sélecteur de poste (réserves + groupes spéciaux)
+export const GROUPES_AVEC_POSTE = [
+  'RESERVE REGULATEUR PN',
+  'RESERVE REGULATEUR DR',
+  'RESERVE PCD - DENFERT',
+  'RC - ROULEMENT REGULATEUR CENTRE',
+  'EAC - APPORT DENFERT'
+];
 
 // Postes figés / Postes supplémentaires (disponibles pour réserve ET roulement)
 export const POSTES_SUPPLEMENTAIRES = [
