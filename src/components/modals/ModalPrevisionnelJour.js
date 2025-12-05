@@ -1,23 +1,22 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle } from 'lucide-react';
-import supabaseService from '../../services/supabaseService';
 
 /**
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée) et par poste
  * 
- * @version 1.0.0
+ * @version 1.1.0 - Fix: planningData structure handling
  * @param {boolean} isOpen - État d'ouverture du modal
- * @param {Date|string} selectedDate - Date sélectionnée
+ * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
- * @param {Array} planningData - Données du planning pour le mois
+ * @param {Object} planningData - Données du planning {agentName: {day: service}}
  * @param {function} onClose - Callback de fermeture
  */
 const ModalPrevisionnelJour = ({ 
   isOpen, 
   selectedDate, 
   agents = [], 
-  planningData = [], 
+  planningData = {}, 
   onClose 
 }) => {
   // États pour les postes figés/rapatriés par créneau
@@ -30,9 +29,6 @@ const ModalPrevisionnelJour = ({
   
   // Menu déroulant ouvert
   const [openDropdown, setOpenDropdown] = useState(null);
-  
-  // Chargement
-  const [loading, setLoading] = useState(false);
 
   // Configuration des créneaux
   const CRENEAUX = useMemo(() => ({
@@ -75,7 +71,7 @@ const ModalPrevisionnelJour = ({
   }), []);
 
   // Postes avec menu déroulant (FIGÉ ou RAPATRIÉ PN)
-  const POSTES_AVEC_MENU = ['CCU', 'RE'];
+  const POSTES_AVEC_MENU = useMemo(() => ['CCU', 'RE'], []);
 
   // Reset status quand la date change
   useEffect(() => {
@@ -98,12 +94,19 @@ const ModalPrevisionnelJour = ({
     return date.toLocaleDateString('fr-FR', options);
   }, [selectedDate]);
 
-  // Calcul de J+1 pour le créneau Nuit J→J+1
-  const getNextDay = useCallback((date) => {
-    const d = new Date(date);
+  // Extraire le jour du mois depuis la date sélectionnée
+  const selectedDay = useMemo(() => {
+    if (!selectedDate) return null;
+    return new Date(selectedDate).getDate();
+  }, [selectedDate]);
+
+  // Calculer J+1 (jour suivant)
+  const nextDay = useMemo(() => {
+    if (!selectedDate) return null;
+    const d = new Date(selectedDate);
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split('T')[0];
-  }, []);
+    return d.getDate();
+  }, [selectedDate]);
 
   // Obtenir le groupe simplifié d'un agent (CRC, CCU, RC, etc.)
   const getGroupeSimple = useCallback((agent) => {
@@ -124,24 +127,11 @@ const ModalPrevisionnelJour = ({
     return null;
   }, []);
 
-  // Déterminer le poste effectif d'un agent pour un service
-  const getPosteEffectif = useCallback((agent, planningEntry) => {
-    // Si poste_code est défini (réserve affectée), l'utiliser
-    if (planningEntry?.poste_code) {
-      return planningEntry.poste_code.toUpperCase();
-    }
-    // Sinon utiliser le groupe de l'agent
-    return getGroupeSimple(agent);
-  }, [getGroupeSimple]);
-
   // Calculer les équipes pour chaque créneau
   const equipesParCreneau = useMemo(() => {
-    if (!selectedDate || !agents.length) {
+    if (!selectedDate || !agents.length || !selectedDay) {
       return { nuitAvant: {}, matin: {}, soir: {}, nuitApres: {} };
     }
-
-    const dateJ = new Date(selectedDate).toISOString().split('T')[0];
-    const dateJ1 = getNextDay(selectedDate);
 
     const result = {
       nuitAvant: {},
@@ -157,67 +147,70 @@ const ModalPrevisionnelJour = ({
       });
     });
 
-    // Parcourir les données du planning
-    planningData.forEach(entry => {
-      const agent = agents.find(a => a.id === entry.agent_id);
-      if (!agent) return;
+    // Parcourir chaque agent
+    agents.forEach(agent => {
+      const agentName = `${agent.nom} ${agent.prenom}`;
+      const agentPlanning = planningData[agentName];
+      
+      if (!agentPlanning) return;
 
-      const entryDate = entry.date;
-      const serviceCode = entry.service_code?.toUpperCase();
-      const posteEffectif = getPosteEffectif(agent, entry);
-      const isAdditional = entry.is_additional || false;
+      const posteAgent = getGroupeSimple(agent);
+      if (!posteAgent) return;
+
+      // Récupérer le service du jour J
+      const serviceJ = agentPlanning[selectedDay];
+      const serviceCodeJ = typeof serviceJ === 'object' ? serviceJ?.service : serviceJ;
+      const posteCodeJ = typeof serviceJ === 'object' ? serviceJ?.poste : null;
+
+      // Récupérer le service du jour J+1 (pour nuit J→J+1)
+      const serviceJ1 = nextDay ? agentPlanning[nextDay] : null;
+      const serviceCodeJ1 = typeof serviceJ1 === 'object' ? serviceJ1?.service : serviceJ1;
+
+      // Déterminer le poste effectif (poste affecté ou groupe par défaut)
+      const posteEffectif = posteCodeJ || posteAgent;
+
+      const agentInfo = {
+        ...agent,
+        posteEffectif,
+        serviceCode: serviceCodeJ,
+        posteCode: posteCodeJ
+      };
 
       // Nuit J-1 → J : X dans colonne J
-      if (entryDate === dateJ && serviceCode === 'X') {
+      if (serviceCodeJ === 'X') {
         if (CRENEAUX.nuitAvant.postes.includes(posteEffectif)) {
-          result.nuitAvant[posteEffectif].push({
-            ...agent,
-            posteEffectif,
-            isAdditional,
-            entry
-          });
+          result.nuitAvant[posteEffectif].push(agentInfo);
         }
       }
 
       // Matin : - dans colonne J
-      if (entryDate === dateJ && serviceCode === '-') {
+      if (serviceCodeJ === '-') {
         if (CRENEAUX.matin.postes.includes(posteEffectif)) {
-          result.matin[posteEffectif].push({
-            ...agent,
-            posteEffectif,
-            isAdditional,
-            entry
-          });
+          result.matin[posteEffectif].push(agentInfo);
         }
       }
 
       // Soirée : O dans colonne J
-      if (entryDate === dateJ && serviceCode === 'O') {
+      if (serviceCodeJ === 'O') {
         if (CRENEAUX.soir.postes.includes(posteEffectif)) {
-          result.soir[posteEffectif].push({
-            ...agent,
-            posteEffectif,
-            isAdditional,
-            entry
-          });
+          result.soir[posteEffectif].push(agentInfo);
         }
       }
 
       // Nuit J → J+1 : X dans colonne J+1
-      if (entryDate === dateJ1 && serviceCode === 'X') {
+      if (serviceCodeJ1 === 'X') {
         if (CRENEAUX.nuitApres.postes.includes(posteEffectif)) {
           result.nuitApres[posteEffectif].push({
             ...agent,
             posteEffectif,
-            isAdditional,
-            entry
+            serviceCode: serviceCodeJ1
           });
         }
       }
     });
 
     return result;
-  }, [selectedDate, agents, planningData, CRENEAUX, getNextDay, getPosteEffectif]);
+  }, [selectedDate, selectedDay, nextDay, agents, planningData, CRENEAUX, getGroupeSimple]);
 
   // Gestion du clic sur un bouton de poste
   const handlePosteClick = useCallback((creneauId, poste) => {
@@ -235,7 +228,7 @@ const ModalPrevisionnelJour = ({
         }
       }));
     }
-  }, []);
+  }, [POSTES_AVEC_MENU]);
 
   // Gestion de la sélection dans le menu déroulant
   const handleMenuSelect = useCallback((creneauId, poste, status) => {
@@ -321,7 +314,7 @@ const ModalPrevisionnelJour = ({
         )}
       </div>
     );
-  }, [postesStatus, openDropdown, handlePosteClick, handleMenuSelect]);
+  }, [postesStatus, openDropdown, handlePosteClick, handleMenuSelect, POSTES_AVEC_MENU]);
 
   // Rendu d'un agent dans la liste
   const renderAgent = useCallback((agent, creneauId, poste) => {
@@ -335,11 +328,8 @@ const ModalPrevisionnelJour = ({
     }
 
     let additionalInfo = null;
-    if (agent.isAdditional) {
-      additionalInfo = <span className="ml-1 text-xs text-gray-500 italic">(suppl.)</span>;
-    }
-    if (agent.entry?.poste_code && agent.entry.poste_code !== poste) {
-      additionalInfo = <span className="ml-1 text-xs text-blue-500">({agent.entry.poste_code})</span>;
+    if (agent.posteCode && agent.posteCode !== poste) {
+      additionalInfo = <span className="ml-1 text-xs text-blue-500">({agent.posteCode})</span>;
     }
 
     return (
@@ -424,6 +414,23 @@ const ModalPrevisionnelJour = ({
     return stats;
   }, [equipesParCreneau]);
 
+  // Labels pour les créneaux de nuit
+  const nuitAvantLabel = useMemo(() => {
+    if (!selectedDate) return '🌙 Nuit (avant)';
+    const d = new Date(selectedDate);
+    const prevDay = new Date(d);
+    prevDay.setDate(prevDay.getDate() - 1);
+    return `🌙 Nuit (${prevDay.toLocaleDateString('fr-FR', {weekday: 'short'})} → ${d.toLocaleDateString('fr-FR', {weekday: 'short'})})`;
+  }, [selectedDate]);
+
+  const nuitApresLabel = useMemo(() => {
+    if (!selectedDate) return '🌙 Nuit (après)';
+    const d = new Date(selectedDate);
+    const nextD = new Date(d);
+    nextD.setDate(nextD.getDate() + 1);
+    return `🌙 Nuit (${d.toLocaleDateString('fr-FR', {weekday: 'short'})} → ${nextD.toLocaleDateString('fr-FR', {weekday: 'short'})})`;
+  }, [selectedDate]);
+
   if (!isOpen) return null;
 
   return (
@@ -461,32 +468,28 @@ const ModalPrevisionnelJour = ({
           <div className="flex items-center gap-2">
             <Moon className="w-4 h-4 text-indigo-500" />
             <span className="text-gray-600">Nuit (avant):</span>
-            <span className="font-bold text-indigo-700">{statsCreneaux.nuitAvant}</span>
+            <span className="font-bold text-indigo-700">{statsCreneaux.nuitAvant || 0}</span>
           </div>
           <div className="flex items-center gap-2">
             <Sun className="w-4 h-4 text-yellow-500" />
             <span className="text-gray-600">Matin:</span>
-            <span className="font-bold text-yellow-700">{statsCreneaux.matin}</span>
+            <span className="font-bold text-yellow-700">{statsCreneaux.matin || 0}</span>
           </div>
           <div className="flex items-center gap-2">
             <Sunset className="w-4 h-4 text-orange-500" />
             <span className="text-gray-600">Soir:</span>
-            <span className="font-bold text-orange-700">{statsCreneaux.soir}</span>
+            <span className="font-bold text-orange-700">{statsCreneaux.soir || 0}</span>
           </div>
           <div className="flex items-center gap-2">
             <Moon className="w-4 h-4 text-indigo-500" />
             <span className="text-gray-600">Nuit (après):</span>
-            <span className="font-bold text-indigo-700">{statsCreneaux.nuitApres}</span>
+            <span className="font-bold text-indigo-700">{statsCreneaux.nuitApres || 0}</span>
           </div>
         </div>
 
         {/* Contenu principal */}
         <div className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="flex items-center justify-center h-48">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          ) : !selectedDate ? (
+          {!selectedDate ? (
             <div className="flex flex-col items-center justify-center h-48 text-gray-500">
               <AlertCircle className="w-12 h-12 mb-2 text-gray-400" />
               <p>Sélectionnez une date pour voir les équipes</p>
@@ -494,9 +497,7 @@ const ModalPrevisionnelJour = ({
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Nuit J-1 → J */}
-              {renderCreneau(CRENEAUX.nuitAvant, 
-                `🌙 Nuit (${new Date(new Date(selectedDate).getTime() - 86400000).toLocaleDateString('fr-FR', {weekday: 'short'})} → ${new Date(selectedDate).toLocaleDateString('fr-FR', {weekday: 'short'})})`
-              )}
+              {renderCreneau(CRENEAUX.nuitAvant, nuitAvantLabel)}
               
               {/* Matin */}
               {renderCreneau(CRENEAUX.matin, '☀️ Matin')}
@@ -505,9 +506,7 @@ const ModalPrevisionnelJour = ({
               {renderCreneau(CRENEAUX.soir, '🌆 Soirée')}
               
               {/* Nuit J → J+1 */}
-              {renderCreneau(CRENEAUX.nuitApres,
-                `🌙 Nuit (${new Date(selectedDate).toLocaleDateString('fr-FR', {weekday: 'short'})} → ${new Date(getNextDay(selectedDate)).toLocaleDateString('fr-FR', {weekday: 'short'})})`
-              )}
+              {renderCreneau(CRENEAUX.nuitApres, nuitApresLabel)}
             </div>
           )}
         </div>
