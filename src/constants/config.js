@@ -54,8 +54,13 @@ export const CODE_COLORS = {
   'VM': 'bg-orange-200 text-orange-800',
   'HAB': 'bg-orange-200 text-orange-800',
   'HAB-QF': 'bg-orange-200 text-orange-800',
-  'VT': 'bg-orange-200 text-orange-800',
   'EIA': 'bg-orange-200 text-orange-800',
+  
+  // === VT : JAUNE CLAIR ===
+  'VT': 'bg-yellow-100 text-yellow-800',
+  
+  // === D2I : GRIS ===
+  'D2I': 'bg-gray-300 text-gray-700',
   
   // === SPECIAL ===
   'TQ': 'bg-pink-500 text-white',
@@ -118,7 +123,9 @@ export const SERVICE_CODES = [
   { code: 'NU', desc: 'Non Utilisé' },
   { code: 'I', desc: 'Inactif/Visite' },
   { code: 'HAB', desc: 'Habilitation/Formation' },
-  { code: 'FO', desc: 'Formation' }
+  { code: 'FO', desc: 'Formation' },
+  { code: 'VT', desc: 'Visite Technique' },
+  { code: 'D2I', desc: 'D2I' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)
