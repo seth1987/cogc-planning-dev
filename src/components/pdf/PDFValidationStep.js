@@ -1,7 +1,30 @@
 // Composant pour l'étape de validation des données extraites
-// Version 2.0 - Vue split-screen avec PDF en regard
+// Version 2.1 - Vue split-screen avec PDF en regard + scrollbar visible
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
+
+// Styles pour la scrollbar personnalisée
+const scrollbarStyles = `
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 5px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 5px;
+    border: 2px solid #f1f5f9;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #94a3b8 #f1f5f9;
+  }
+`;
 
 const PDFValidationStep = ({ 
   data,  // Données extraites
@@ -139,7 +162,7 @@ const PDFValidationStep = ({
   const PDFViewer = () => (
     <div className="h-full flex flex-col bg-gray-800 rounded-lg overflow-hidden">
       {/* Toolbar PDF */}
-      <div className="bg-gray-700 px-3 py-2 flex items-center justify-between">
+      <div className="bg-gray-700 px-3 py-2 flex items-center justify-between flex-shrink-0">
         <span className="text-white text-sm font-medium flex items-center gap-2">
           📄 Bulletin original
         </span>
@@ -197,10 +220,15 @@ const PDFValidationStep = ({
 
   // Composant des données extraites
   const DataEditor = () => (
-    <div className="h-full flex flex-col overflow-hidden">
-      {/* Header avec toggle PDF */}
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-gray-800">📋 Données extraites</h3>
+    <div className="h-full flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* Header fixe */}
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
+        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+          📋 Données extraites
+          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+            {data.planning ? data.planning.length : 0} entrées
+          </span>
+        </h3>
         {pdfFile && !showPDF && (
           <button
             onClick={() => setShowPDF(true)}
@@ -212,8 +240,8 @@ const PDFValidationStep = ({
         )}
       </div>
 
-      {/* Contenu scrollable */}
-      <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+      {/* Contenu scrollable avec scrollbar visible */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
         {/* Agent détecté */}
         <div className="bg-blue-50 p-4 rounded-lg">
           <div className="flex items-center gap-2 mb-2">
@@ -291,7 +319,7 @@ const PDFValidationStep = ({
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold flex items-center gap-2">
               <Calendar size={20} />
-              Planning ({data.planning ? data.planning.length : 0} entrées)
+              Planning
             </h3>
             <button
               onClick={handleAddEntry}
@@ -305,14 +333,14 @@ const PDFValidationStep = ({
             <div className="border rounded-lg overflow-hidden">
               {Object.entries(groupedByDate).map(([date, entries]) => (
                 <div key={date} className="border-b last:border-b-0">
-                  <div className="bg-gray-50 px-3 py-2 sticky top-0 z-10">
+                  <div className="bg-gray-100 px-3 py-2 sticky top-0 z-10 border-b">
                     <span className="font-medium text-sm">{formatDate(date)}</span>
                     <span className="text-xs text-gray-600 ml-2">({entries.length} service{entries.length > 1 ? 's' : ''})</span>
                   </div>
                   
-                  <div className="p-2 space-y-1">
+                  <div className="p-2 space-y-1 bg-white">
                     {entries.map((entry) => (
-                      <div key={entry.index} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded text-sm">
+                      <div key={entry.index} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded text-sm border border-transparent hover:border-gray-200">
                         {/* Service */}
                         <select
                           value={entry.service_code}
@@ -412,7 +440,7 @@ const PDFValidationStep = ({
       </div>
 
       {/* Boutons d'action - fixés en bas */}
-      <div className="flex justify-between pt-4 border-t mt-4 bg-white">
+      <div className="flex justify-between p-4 border-t bg-gray-50 flex-shrink-0">
         <button
           onClick={onCancel}
           className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
@@ -446,65 +474,72 @@ const PDFValidationStep = ({
 
   // Rendu principal - Split View ou Vue simple
   return (
-    <div className="h-full">
-      {/* Message d'aide */}
-      {pdfFile && showPDF && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-          <p className="text-sm text-blue-800">
-            💡 <strong>Astuce :</strong> Comparez le bulletin original (à gauche) avec les données extraites (à droite). 
-            Vous pouvez modifier chaque entrée si nécessaire.
-          </p>
-        </div>
-      )}
-
-      {/* Layout Split ou Simple */}
-      {pdfFile && showPDF ? (
-        // Vue Split-Screen
-        <div className="flex gap-4 h-[calc(100%-60px)]" style={{ minHeight: '500px' }}>
-          {/* Panneau PDF - Gauche */}
-          <div 
-            className="flex-shrink-0 transition-all duration-300"
-            style={{ width: `${splitRatio}%`, minWidth: '300px', maxWidth: '60%' }}
-          >
-            <PDFViewer />
+    <>
+      {/* Injection des styles de scrollbar */}
+      <style>{scrollbarStyles}</style>
+      
+      <div className="h-full">
+        {/* Message d'aide */}
+        {pdfFile && showPDF && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+            <p className="text-sm text-blue-800">
+              💡 <strong>Astuce :</strong> Comparez le bulletin original (à gauche) avec les données extraites (à droite). 
+              Utilisez la barre de défilement pour parcourir toutes les entrées.
+            </p>
           </div>
+        )}
 
-          {/* Séparateur redimensionnable */}
-          <div 
-            className="w-2 bg-gray-200 hover:bg-blue-400 cursor-col-resize rounded flex-shrink-0 flex items-center justify-center"
-            onMouseDown={(e) => {
-              const startX = e.clientX;
-              const startRatio = splitRatio;
-              
-              const onMouseMove = (moveEvent) => {
-                const delta = moveEvent.clientX - startX;
-                const containerWidth = e.target.parentElement.offsetWidth;
-                const newRatio = startRatio + (delta / containerWidth) * 100;
-                setSplitRatio(Math.min(60, Math.max(30, newRatio)));
-              };
-              
-              const onMouseUp = () => {
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-              };
-              
-              document.addEventListener('mousemove', onMouseMove);
-              document.addEventListener('mouseup', onMouseUp);
-            }}
-          >
-            <div className="w-1 h-8 bg-gray-400 rounded" />
+        {/* Layout Split ou Simple */}
+        {pdfFile && showPDF ? (
+          // Vue Split-Screen
+          <div className="flex gap-4 h-[calc(100%-60px)]" style={{ minHeight: '500px' }}>
+            {/* Panneau PDF - Gauche */}
+            <div 
+              className="flex-shrink-0 transition-all duration-300"
+              style={{ width: `${splitRatio}%`, minWidth: '300px', maxWidth: '60%' }}
+            >
+              <PDFViewer />
+            </div>
+
+            {/* Séparateur redimensionnable */}
+            <div 
+              className="w-2 bg-gray-300 hover:bg-blue-400 cursor-col-resize rounded flex-shrink-0 flex items-center justify-center transition-colors"
+              onMouseDown={(e) => {
+                const startX = e.clientX;
+                const startRatio = splitRatio;
+                
+                const onMouseMove = (moveEvent) => {
+                  const delta = moveEvent.clientX - startX;
+                  const containerWidth = e.target.parentElement.offsetWidth;
+                  const newRatio = startRatio + (delta / containerWidth) * 100;
+                  setSplitRatio(Math.min(60, Math.max(30, newRatio)));
+                };
+                
+                const onMouseUp = () => {
+                  document.removeEventListener('mousemove', onMouseMove);
+                  document.removeEventListener('mouseup', onMouseUp);
+                };
+                
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+              }}
+            >
+              <div className="w-1 h-12 bg-gray-500 rounded" />
+            </div>
+
+            {/* Panneau Données - Droite */}
+            <div className="flex-1 min-w-[350px]">
+              <DataEditor />
+            </div>
           </div>
-
-          {/* Panneau Données - Droite */}
-          <div className="flex-1 min-w-[350px]">
+        ) : (
+          // Vue Simple (sans PDF)
+          <div className="h-full">
             <DataEditor />
           </div>
-        </div>
-      ) : (
-        // Vue Simple (sans PDF)
-        <DataEditor />
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 };
 
