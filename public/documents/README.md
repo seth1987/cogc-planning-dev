@@ -1,34 +1,29 @@
-# Documents COGC Planning
+# Documents COGC
 
-Ce dossier contient les documents téléchargeables pour les agents COGC.
+⚠️ **Les documents sont maintenant stockés dans Supabase Storage**
 
-## Structure des fichiers
+Ce dossier n'est plus utilisé pour stocker les fichiers.
 
-### Accidents du travail
-- `PDF_accident_de_travail.pdf` - Guide de déclaration AT/trajet (CPR)
-- `Impression_CERFA.pdf` - Tutoriel remplissage CERFA 14463*03
-- `Declaration_premiere_personne_avisee.pdf` - Formulaire CPR VGR 3278
-- `Declaration_de_temoin.pdf` - Formulaire CPR VGR 3066
-- `Declaration_maladie_professionnelle.pdf` - Formulaire CPR ATOG/VGV 2761
+## Architecture actuelle
 
-### Compte Épargne Temps (CET)
-- `CET_EPARGNE_CONGE.pdf` - RH0930 Intention d'épargne congés annuels
-- `CET_EPARGNE_RQ_RN_ETC_HORS_CONGE.pdf` - RH0930 Épargne hors congés
-- `CET_MONETISATION.pdf` - RH0930 Demande de monétisation
-- `00012023_demande_d_utilisation_en_temps_des_jours_du_sous_compte_courant.docx` - Utilisation CET
+- **Stockage** : Bucket Supabase `documents`
+- **Métadonnées** : Table PostgreSQL `documents`
+- **Gestion** : Via le modal Documents dans l'application
 
-### Mouvements sociaux
-- `Imprime_D2I.pdf` - Déclaration Individuelle d'Intention
+## Fonctionnalités
 
-### Rémunération
-- `PAIEMENT_FERIE.pdf` - Demande paiement jours fériés
+- ✅ Upload de documents (PDF/DOCX)
+- ✅ Téléchargement
+- ✅ Suppression
+- ✅ Catégorisation (accidents, cet, greve, remuneration, autre)
+- ✅ Recherche
 
-## Instructions
+## Catégories disponibles
 
-1. Placez les fichiers PDF/DOCX directement dans ce dossier
-2. Les noms de fichiers doivent correspondre à ceux définis dans `ModalDocuments.js`
-3. Les fichiers seront accessibles via l'interface Documents de l'application
-
-## Note
-
-Les fichiers sont servis statiquement par React via le dossier `public`.
+| ID | Nom | Description |
+|----|-----|-------------|
+| accidents | Accidents du travail | AT/MP, déclarations |
+| cet | Compte Épargne Temps | Épargne, monétisation |
+| greve | Mouvements sociaux | Déclarations intention |
+| remuneration | Rémunération | Paiements fériés, etc. |
+| autre | Autres documents | Documents divers |
