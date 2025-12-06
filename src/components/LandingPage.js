@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './LandingPage.css';
 import ModalAnnuaire from './modals/ModalAnnuaire';
 import ModalDocuments from './modals/ModalDocuments';
+import ModalAide from './modals/ModalAide';
 
 /**
  * LandingPage - Page d'accueil avec design Nexaverse
@@ -9,13 +10,14 @@ import ModalDocuments from './modals/ModalDocuments';
  * Design inspiré du template Nexaverse avec adaptations pour COGC Planning.
  * Affiche un menu moderne avec accès au planning et autres fonctionnalités.
  * 
- * v2.8 - Remplacement Statistiques par Cellule RH (SharePoint)
+ * v2.9 - Ajout modal d'aide intégré
  */
 const LandingPage = ({ onNavigate, user }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showAnnuaire, setShowAnnuaire] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
+  const [showAide, setShowAide] = useState(false);
 
   // Simulate loading and trigger animations
   useEffect(() => {
@@ -76,7 +78,7 @@ const LandingPage = ({ onNavigate, user }) => {
       badge: '❓',
       title: 'Aide',
       subtitle: 'Documentation',
-      action: () => window.open('https://github.com/seth1987/cogc-planning-dev#readme', '_blank')
+      action: () => setShowAide(true)
     }
   ];
 
@@ -206,17 +208,23 @@ const LandingPage = ({ onNavigate, user }) => {
         </footer>
       </div>
 
-      {/* Modal Annuaire - avec user pour permettre édition des propres coordonnées */}
+      {/* Modal Annuaire */}
       <ModalAnnuaire 
         isOpen={showAnnuaire} 
         onClose={() => setShowAnnuaire(false)}
         currentUser={user}
       />
 
-      {/* Modal Documents - téléchargement formulaires RH */}
+      {/* Modal Documents */}
       <ModalDocuments
         isOpen={showDocuments}
         onClose={() => setShowDocuments(false)}
+      />
+
+      {/* Modal Aide */}
+      <ModalAide
+        isOpen={showAide}
+        onClose={() => setShowAide(false)}
       />
     </div>
   );
