@@ -1,7 +1,53 @@
 import { supabase } from '../lib/supabaseClient';
 
 class SupabaseService {
-  // Agents
+  // Exposer le client Supabase pour accès direct si nécessaire
+  get client() {
+    return supabase;
+  }
+
+  // ============================================
+  // ANNÉES DISPONIBLES
+  // ============================================
+
+  /**
+   * Récupère les années distinctes disponibles dans la table planning
+   * @returns {Promise<number[]>} Liste des années triées (récent d'abord)
+   */
+  async getAvailableYears() {
+    try {
+      const { data, error } = await supabase
+        .from('planning')
+        .select('date')
+        .order('date', { ascending: false });
+      
+      if (error) {
+        console.error('Erreur getAvailableYears:', error);
+        return [new Date().getFullYear()];
+      }
+      
+      if (!data || data.length === 0) {
+        return [new Date().getFullYear()];
+      }
+      
+      // Extraire les années uniques - parse direct pour éviter timezone issues
+      const years = [...new Set(data.map(row => {
+        // Parse YYYY-MM-DD directement sans Date object
+        return parseInt(row.date.split('-')[0], 10);
+      }))];
+      
+      console.log('📅 Années disponibles:', years);
+      return years.sort((a, b) => b - a); // Tri descendant (récent d'abord)
+    } catch (err) {
+      console.error('Exception getAvailableYears:', err);
+      return [new Date().getFullYear()];
+    }
+  }
+
+  // ============================================
+  // AGENTS
+  // ============================================
+
   async getAgents() {
     const { data, error } = await supabase
       .from('agents')
@@ -102,7 +148,10 @@ class SupabaseService {
     return data[0];
   }
 
-  // Habilitations
+  // ============================================
+  // HABILITATIONS
+  // ============================================
+
   async getHabilitations() {
     const { data, error } = await supabase
       .from('habilitations')
@@ -146,7 +195,10 @@ class SupabaseService {
     return true;
   }
 
-  // Planning
+  // ============================================
+  // PLANNING
+  // ============================================
+
   async getPlanningForMonth(startDate, endDate) {
     const { data, error } = await supabase
       .from('planning')
@@ -169,7 +221,7 @@ class SupabaseService {
    * @param {string} serviceCode - Code du service (-, O, X, RP, etc.)
    * @param {string|null} posteCode - Code du poste pour les réserves (CRC, CCU, etc.)
    * @param {string|null} note - Note/commentaire associé à cette cellule
-   * @param {Array|null} postesSupplementaires - Liste des postes supplémentaires ["+SOUF", "+RC"]
+   * @param {string[]|null} postesSupplementaires - Liste des postes supplémentaires (italique)
    */
   async savePlanning(agentId, date, serviceCode, posteCode = null, note = null, postesSupplementaires = null) {
     // Chercher si une entrée existe déjà
@@ -254,6 +306,41 @@ class SupabaseService {
     return null;
   }
 
+  /**
+   * Met à jour les postes supplémentaires d'une cellule de planning
+   * @param {string} agentId - ID de l'agent
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @param {string[]|null} postesSupplementaires - Liste des postes (null pour supprimer)
+   */
+  async updatePostesSupplementaires(agentId, date, postesSupplementaires) {
+    const { data: existing } = await supabase
+      .from('planning')
+      .select('id')
+      .eq('agent_id', agentId)
+      .eq('date', date)
+      .single();
+
+    if (existing) {
+      const { data, error } = await supabase
+        .from('planning')
+        .update({ 
+          postes_supplementaires: postesSupplementaires && postesSupplementaires.length > 0 
+            ? postesSupplementaires 
+            : null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existing.id)
+        .select();
+      
+      if (error) {
+        console.error('Erreur update postes supplémentaires:', error);
+        throw error;
+      }
+      return data;
+    }
+    return null;
+  }
+
   async deletePlanning(agentId, date) {
     const { error } = await supabase
       .from('planning')
@@ -268,7 +355,102 @@ class SupabaseService {
     return true;
   }
 
-  // Upload PDF
+  // ============================================
+  // POSTES FIGÉS
+  // ============================================
+
+  /**
+   * Récupère les postes figés pour une date donnée
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @returns {Object} - Objet {creneau: {poste: status}}
+   */
+  async getPostesFiges(date) {
+    const { data, error } = await supabase
+      .from('postes_figes')
+      .select('*')
+      .eq('date', date);
+    
+    if (error) {
+      console.error('Erreur getPostesFiges:', error);
+      throw error;
+    }
+
+    // Reconstruire l'objet par créneau
+    const result = {
+      nuitAvant: {},
+      matin: {},
+      soir: {},
+      nuitApres: {}
+    };
+
+    if (data) {
+      data.forEach(row => {
+        if (result[row.creneau]) {
+          result[row.creneau][row.poste] = row.status;
+        }
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Sauvegarde ou met à jour un poste figé
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @param {string} creneau - ID du créneau (nuitAvant, matin, soir, nuitApres)
+   * @param {string} poste - Code du poste (CRC, CCU, etc.)
+   * @param {string} status - Statut (fige ou rapatrie)
+   */
+  async savePosteFige(date, creneau, poste, status) {
+    const { data, error } = await supabase
+      .from('postes_figes')
+      .upsert({
+        date: date,
+        creneau: creneau,
+        poste: poste,
+        status: status,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'date,creneau,poste'
+      })
+      .select();
+    
+    if (error) {
+      console.error('Erreur savePosteFige:', error);
+      throw error;
+    }
+    
+    console.log(`✅ Poste figé sauvegardé: ${poste} ${status} (${creneau}) pour ${date}`);
+    return data;
+  }
+
+  /**
+   * Supprime un poste figé
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @param {string} creneau - ID du créneau
+   * @param {string} poste - Code du poste
+   */
+  async deletePosteFige(date, creneau, poste) {
+    const { error } = await supabase
+      .from('postes_figes')
+      .delete()
+      .eq('date', date)
+      .eq('creneau', creneau)
+      .eq('poste', poste);
+    
+    if (error) {
+      console.error('Erreur deletePosteFige:', error);
+      throw error;
+    }
+    
+    console.log(`🗑️ Poste figé supprimé: ${poste} (${creneau}) pour ${date}`);
+    return true;
+  }
+
+  // ============================================
+  // UPLOAD PDF
+  // ============================================
+
   async saveUploadRecord(uploadData) {
     const { data, error } = await supabase
       .from('uploads_pdf')
@@ -293,139 +475,6 @@ class SupabaseService {
       throw error;
     }
     return data || [];
-  }
-
-  // ============================================
-  // POSTES STATUS (Figé / Rapatrié)
-  // ============================================
-
-  /**
-   * Récupère les statuts des postes pour une date donnée
-   * @param {string} date - Date au format YYYY-MM-DD
-   * @returns {Object} Statuts par créneau {nuitAvant: {CRC: 'fige'}, matin: {}, ...}
-   */
-  async getPostesStatusForDate(date) {
-    const { data, error } = await supabase
-      .from('postes_status')
-      .select('*')
-      .eq('date', date);
-    
-    if (error) {
-      console.error('Erreur getPostesStatusForDate:', error);
-      // Retourner un objet vide si la table n'existe pas encore
-      return { nuitAvant: {}, matin: {}, soir: {}, nuitApres: {} };
-    }
-    
-    // Organiser les données par créneau
-    const result = {
-      nuitAvant: {},
-      matin: {},
-      soir: {},
-      nuitApres: {}
-    };
-    
-    (data || []).forEach(entry => {
-      if (result[entry.creneau]) {
-        result[entry.creneau][entry.poste] = entry.status;
-      }
-    });
-    
-    return result;
-  }
-
-  /**
-   * Sauvegarde ou supprime le statut d'un poste pour une date/créneau
-   * @param {string} date - Date au format YYYY-MM-DD
-   * @param {string} creneau - Créneau: nuitAvant, matin, soir, nuitApres
-   * @param {string} poste - Code du poste: CRC, ACR, RC, etc.
-   * @param {string|null} status - Statut: 'fige', 'rapatrie', ou null pour supprimer
-   */
-  async savePosteStatus(date, creneau, poste, status) {
-    if (!status) {
-      // Supprimer l'entrée
-      const { error } = await supabase
-        .from('postes_status')
-        .delete()
-        .eq('date', date)
-        .eq('creneau', creneau)
-        .eq('poste', poste);
-      
-      if (error && error.code !== 'PGRST116') { // Ignorer "no rows returned"
-        console.error('Erreur delete poste status:', error);
-      }
-      return null;
-    }
-    
-    // Upsert (insert ou update)
-    const { data, error } = await supabase
-      .from('postes_status')
-      .upsert({
-        date,
-        creneau,
-        poste,
-        status,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'date,creneau,poste'
-      })
-      .select();
-    
-    if (error) {
-      console.error('Erreur upsert poste status:', error);
-      throw error;
-    }
-    
-    return data;
-  }
-
-  /**
-   * Sauvegarde tous les statuts des postes pour une date (batch)
-   * @param {string} date - Date au format YYYY-MM-DD
-   * @param {Object} postesStatus - {nuitAvant: {CRC: 'fige'}, matin: {CCU: 'rapatrie'}, ...}
-   */
-  async saveAllPostesStatus(date, postesStatus) {
-    const upsertData = [];
-    const deleteConditions = [];
-    
-    Object.entries(postesStatus).forEach(([creneau, postes]) => {
-      Object.entries(postes).forEach(([poste, status]) => {
-        if (status) {
-          upsertData.push({
-            date,
-            creneau,
-            poste,
-            status,
-            updated_at: new Date().toISOString()
-          });
-        } else {
-          deleteConditions.push({ creneau, poste });
-        }
-      });
-    });
-    
-    // Supprimer les entrées nulles
-    for (const condition of deleteConditions) {
-      await supabase
-        .from('postes_status')
-        .delete()
-        .eq('date', date)
-        .eq('creneau', condition.creneau)
-        .eq('poste', condition.poste);
-    }
-    
-    // Upsert les nouvelles valeurs
-    if (upsertData.length > 0) {
-      const { error } = await supabase
-        .from('postes_status')
-        .upsert(upsertData, { onConflict: 'date,creneau,poste' });
-      
-      if (error) {
-        console.error('Erreur batch upsert postes status:', error);
-        throw error;
-      }
-    }
-    
-    console.log(`✅ Postes status sauvegardés pour ${date}:`, upsertData.length, 'entrées');
   }
 }
 

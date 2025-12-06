@@ -80,10 +80,21 @@ class PlanningService {
     };
   }
 
+  /**
+   * Formate une date en string YYYY-MM-DD
+   * IMPORTANT: Ne PAS utiliser toISOString() car il convertit en UTC et décale la date
+   * @param {number} day - Jour du mois (1-31)
+   * @param {string} month - Nom du mois (Janvier, Février, etc.)
+   * @param {number} year - Année
+   * @returns {string} Date au format YYYY-MM-DD
+   */
   formatDate(day, month, year = CURRENT_YEAR) {
     const monthIndex = MONTHS.indexOf(month);
-    const date = new Date(year, monthIndex, day);
-    return date.toISOString().split('T')[0];
+    // FIX: Construire la date directement en string pour éviter les problèmes de timezone
+    // Ne PAS utiliser new Date().toISOString() car il convertit en UTC (décalage J-1)
+    const monthStr = String(monthIndex + 1).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    return `${year}-${monthStr}-${dayStr}`;
   }
 
   getDayName(day, month) {
