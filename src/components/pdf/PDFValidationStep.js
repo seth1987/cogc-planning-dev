@@ -109,9 +109,27 @@ const PDFValidationStep = ({
   };
 
   const handleAddEntry = () => {
-    const today = new Date().toISOString().split('T')[0];
+    // Calculer une date intelligente par défaut
+    let defaultDate;
+    
+    // Si on a des dates manquantes détectées, prendre la première
+    if (data.stats?.missingDates && data.stats.missingDates.length > 0) {
+      defaultDate = data.stats.missingDates[0];
+    } 
+    // Sinon, si on a des entrées existantes, prendre le jour suivant la dernière entrée
+    else if (data.planning && data.planning.length > 0) {
+      const lastEntry = [...data.planning].sort((a, b) => a.date.localeCompare(b.date)).pop();
+      const lastDate = new Date(lastEntry.date + 'T12:00:00');
+      lastDate.setDate(lastDate.getDate() + 1);
+      defaultDate = lastDate.toISOString().split('T')[0];
+    }
+    // Fallback sur aujourd'hui
+    else {
+      defaultDate = new Date().toISOString().split('T')[0];
+    }
+    
     const newEntry = {
-      date: today,
+      date: defaultDate,
       service_code: 'RP',
       poste_code: null,
       original_code: 'MANUEL',
@@ -319,6 +337,14 @@ const PDFValidationStep = ({
                   <div className="p-2 space-y-1 bg-white">
                     {entries.map((entry) => (
                       <div key={entry.index} className="flex items-center gap-2 p-2 hover:bg-blue-50 rounded text-sm border border-transparent hover:border-blue-200 transition-colors">
+                        {/* Sélecteur de date */}
+                        <input
+                          type="date"
+                          value={entry.date}
+                          onChange={(e) => handleCellEdit(entry.index, 'date', e.target.value)}
+                          className="p-1 border rounded text-xs w-32"
+                        />
+                        
                         <select
                           value={entry.service_code}
                           onChange={(e) => handleCellEdit(entry.index, 'service_code', e.target.value)}
