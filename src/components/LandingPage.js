@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './LandingPage.css';
 import ModalAnnuaire from './modals/ModalAnnuaire';
+import ModalDocuments from './modals/ModalDocuments';
 
 /**
  * LandingPage - Page d'accueil avec design Nexaverse
@@ -8,12 +9,13 @@ import ModalAnnuaire from './modals/ModalAnnuaire';
  * Design inspiré du template Nexaverse avec adaptations pour COGC Planning.
  * Affiche un menu moderne avec accès au planning et autres fonctionnalités.
  * 
- * v2.6 - Transmission user au ModalAnnuaire pour édition contacts
+ * v2.7 - Ajout section Documents en remplacement de Paramètres
  */
 const LandingPage = ({ onNavigate, user }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showAnnuaire, setShowAnnuaire] = useState(false);
+  const [showDocuments, setShowDocuments] = useState(false);
 
   // Simulate loading and trigger animations
   useEffect(() => {
@@ -63,11 +65,11 @@ const LandingPage = ({ onNavigate, user }) => {
       action: () => onNavigate('planning', { view: 'stats' })
     },
     {
-      id: 'settings',
-      badge: '⚙️',
-      title: 'Paramètres',
-      subtitle: 'Configuration',
-      action: () => onNavigate('planning', { openModal: 'settings' })
+      id: 'documents',
+      badge: '📄',
+      title: 'Documents',
+      subtitle: 'Formulaires RH',
+      action: () => setShowDocuments(true)
     },
     {
       id: 'help',
@@ -209,6 +211,12 @@ const LandingPage = ({ onNavigate, user }) => {
         isOpen={showAnnuaire} 
         onClose={() => setShowAnnuaire(false)}
         currentUser={user}
+      />
+
+      {/* Modal Documents - téléchargement formulaires RH */}
+      <ModalDocuments
+        isOpen={showDocuments}
+        onClose={() => setShowDocuments(false)}
       />
     </div>
   );
