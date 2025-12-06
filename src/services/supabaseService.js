@@ -448,6 +448,103 @@ class SupabaseService {
   }
 
   // ============================================
+  // ANNUAIRE
+  // ============================================
+
+  /**
+   * Récupère tous les contacts de l'annuaire
+   * @returns {Promise<Array>} Liste des contacts groupés
+   */
+  async getAnnuaire() {
+    const { data, error } = await supabase
+      .from('annuaire')
+      .select('*')
+      .order('groupe, ordre_affichage, nom');
+    
+    if (error) {
+      console.error('Erreur getAnnuaire:', error);
+      throw error;
+    }
+    return data || [];
+  }
+
+  /**
+   * Met à jour un contact de l'annuaire
+   * @param {string} id - ID du contact
+   * @param {Object} contactData - Données à mettre à jour (telephone, email)
+   */
+  async updateAnnuaireContact(id, contactData) {
+    const updateData = {};
+    
+    // Ne mettre à jour que les champs fournis
+    if (contactData.telephone !== undefined) {
+      updateData.telephone = contactData.telephone || '';
+    }
+    if (contactData.email !== undefined) {
+      updateData.email = contactData.email || '';
+    }
+
+    console.log('📇 Mise à jour annuaire:', id, updateData);
+
+    const { data, error } = await supabase
+      .from('annuaire')
+      .update(updateData)
+      .eq('id', id)
+      .select();
+    
+    if (error) {
+      console.error('Erreur updateAnnuaireContact:', error);
+      throw error;
+    }
+    
+    console.log('✅ Contact annuaire mis à jour:', data);
+    return data[0];
+  }
+
+  /**
+   * Ajoute un nouveau contact à l'annuaire
+   * @param {Object} contactData - Données du contact
+   */
+  async createAnnuaireContact(contactData) {
+    const { data, error } = await supabase
+      .from('annuaire')
+      .insert({
+        groupe: contactData.groupe,
+        nom: contactData.nom,
+        telephone: contactData.telephone || '',
+        email: contactData.email || '',
+        contact_groupe: contactData.contact_groupe || '',
+        telephone_groupe: contactData.telephone_groupe || '',
+        email_groupe: contactData.email_groupe || '',
+        ordre_affichage: contactData.ordre_affichage || 0
+      })
+      .select();
+    
+    if (error) {
+      console.error('Erreur createAnnuaireContact:', error);
+      throw error;
+    }
+    return data[0];
+  }
+
+  /**
+   * Supprime un contact de l'annuaire
+   * @param {string} id - ID du contact
+   */
+  async deleteAnnuaireContact(id) {
+    const { error } = await supabase
+      .from('annuaire')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error('Erreur deleteAnnuaireContact:', error);
+      throw error;
+    }
+    return true;
+  }
+
+  // ============================================
   // UPLOAD PDF
   // ============================================
 
