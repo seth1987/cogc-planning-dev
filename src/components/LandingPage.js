@@ -8,7 +8,7 @@ import ModalAnnuaire from './modals/ModalAnnuaire';
  * Design inspiré du template Nexaverse avec adaptations pour COGC Planning.
  * Affiche un menu moderne avec accès au planning et autres fonctionnalités.
  * 
- * v2.5 - Remplacement Agents par Annuaire, Import PDF par Durandal
+ * v2.6 - Transmission user au ModalAnnuaire pour édition contacts
  */
 const LandingPage = ({ onNavigate, user }) => {
   const [isLoading, setIsLoading] = useState(true);
@@ -204,10 +204,11 @@ const LandingPage = ({ onNavigate, user }) => {
         </footer>
       </div>
 
-      {/* Modal Annuaire */}
+      {/* Modal Annuaire - avec user pour permettre édition des propres coordonnées */}
       <ModalAnnuaire 
         isOpen={showAnnuaire} 
-        onClose={() => setShowAnnuaire(false)} 
+        onClose={() => setShowAnnuaire(false)}
+        currentUser={user}
       />
     </div>
   );
