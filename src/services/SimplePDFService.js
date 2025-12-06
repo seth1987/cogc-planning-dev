@@ -81,10 +81,19 @@ const STRUCTURATION_PROMPT = `Tu es un expert en extraction de données de bulle
 À partir du texte OCR ci-dessous, extrais et structure les données en JSON.
 
 RÈGLES CRITIQUES:
-1. Extrais TOUTES les affectations de service avec leur date et code
-2. IGNORE les lignes contenant METRO, RS, TRACTION, N1100010CO72 (ce sont des trajets)
-3. Les codes valides incluent: CCU001-006, CRC001-003, ACR001-003, CENT001-003, etc.
-4. Pour les absences: RP (repos), NU (non utilisé), DISPO, INACTIN, CONGE, etc.
+1. Extrais TOUTES les dates entre la période de début et fin, SANS EXCEPTION
+2. CHAQUE DATE doit avoir une entrée, même pour les repos (RP) ou non utilisé (NU)
+3. IGNORE les lignes METRO, RS, TRACTION, N1100010CO72, NPT, RPP (ce sont des trajets/annotations)
+4. ATTENTION aux formats condensés comme "Sam RP Repos périodique" → date + code RP
+5. ATTENTION: Si une date a 2 services (ex: NU puis ACR003), garde les DEUX
+6. Les codes valides: CCU001-006, CRC001-003, ACR001-003, CENT001-003, REO001-008, etc.
+7. Absences: RP (repos périodique), NU (non utilisé), DISPO, INACTIN, CONGE, CA, RTT, etc.
+
+FORMATS DE DATE À RECONNAÎTRE:
+- "19/04/2025" suivi du service
+- "Sam RP Repos périodique" = samedi avec code RP
+- "Dim RP Repos périodique" = dimanche avec code RP
+- "NU Utilisable non utilisé" = code NU
 
 FORMAT JSON EXACT (retourne UNIQUEMENT ce JSON, rien d'autre):
 {
@@ -197,6 +206,25 @@ async function structureToJSON(ocrText) {
 }
 
 /**
+ * Génère toutes les dates entre deux dates ISO
+ */
+function getAllDatesBetween(startISO, endISO) {
+  const dates = [];
+  const current = new Date(startISO + 'T12:00:00');
+  const end = new Date(endISO + 'T12:00:00');
+  
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = String(current.getMonth() + 1).padStart(2, '0');
+    const day = String(current.getDate()).padStart(2, '0');
+    dates.push(`${year}-${month}-${day}`);
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return dates;
+}
+
+/**
  * Convertit une date JJ/MM/AAAA en AAAA-MM-JJ
  */
 function convertToISO(dateStr) {
@@ -296,10 +324,27 @@ function transformData(parsed) {
   // Trier par date
   result.services.sort((a, b) => a.dateISO.localeCompare(b.dateISO));
   
+  // Détecter les dates manquantes
+  let missingDates = [];
+  if (result.periode.debut && result.periode.fin) {
+    const startISO = convertToISO(result.periode.debut);
+    const endISO = convertToISO(result.periode.fin);
+    const allExpectedDates = getAllDatesBetween(startISO, endISO);
+    const extractedDates = new Set(result.services.map(s => s.dateISO));
+    
+    missingDates = allExpectedDates.filter(d => !extractedDates.has(d));
+    
+    if (missingDates.length > 0) {
+      console.warn(`⚠️ Dates manquantes détectées (${missingDates.length}):`, missingDates);
+    }
+  }
+  
   result.stats = {
     total: result.services.length,
     valid: result.services.filter(s => s.codeValide).length,
-    nightShifted: nightShiftedCount
+    nightShifted: nightShiftedCount,
+    missingDates: missingDates,
+    missingCount: missingDates.length
   };
 
   return result;
