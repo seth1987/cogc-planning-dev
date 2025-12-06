@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import './LandingPage.css';
+import ModalAnnuaire from './modals/ModalAnnuaire';
 
 /**
  * LandingPage - Page d'accueil avec design Nexaverse
  * 
  * Design inspiré du template Nexaverse avec adaptations pour COGC Planning.
  * Affiche un menu moderne avec accès au planning et autres fonctionnalités.
+ * 
+ * v2.5 - Remplacement Agents par Annuaire, Import PDF par Durandal
  */
 const LandingPage = ({ onNavigate, user }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [showAnnuaire, setShowAnnuaire] = useState(false);
 
   // Simulate loading and trigger animations
   useEffect(() => {
@@ -38,18 +42,18 @@ const LandingPage = ({ onNavigate, user }) => {
       action: () => onNavigate('planning')
     },
     {
-      id: 'agents',
-      badge: '👥',
-      title: 'Agents',
-      subtitle: 'Liste des agents',
-      action: () => onNavigate('planning', { openModal: 'gestionAgents' })
+      id: 'annuaire',
+      badge: '📇',
+      title: 'Annuaire',
+      subtitle: 'Contacts COGC',
+      action: () => setShowAnnuaire(true)
     },
     {
-      id: 'import',
-      badge: '📄',
-      title: 'Import PDF',
-      subtitle: 'Bulletins de commande',
-      action: () => onNavigate('planning', { openModal: 'uploadPDF' })
+      id: 'durandal',
+      badge: '🚨',
+      title: 'Durandal',
+      subtitle: 'Gestion des incidents',
+      action: () => window.open('https://durandal2.sso.reseau.sncf.fr/incidents/index', '_blank')
     },
     {
       id: 'stats',
@@ -199,6 +203,12 @@ const LandingPage = ({ onNavigate, user }) => {
           </p>
         </footer>
       </div>
+
+      {/* Modal Annuaire */}
+      <ModalAnnuaire 
+        isOpen={showAnnuaire} 
+        onClose={() => setShowAnnuaire(false)} 
+      />
     </div>
   );
 };
