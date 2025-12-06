@@ -4,7 +4,7 @@ import {
   Clock, Euro, Flag, Upload, Trash2, Plus, Loader2, CheckCircle,
   AlertCircle, FolderPlus
 } from 'lucide-react';
-import { supabase } from '../../services/supabaseService';
+import { supabase } from '../../lib/supabaseClient';
 
 /**
  * ModalDocuments - Centre de documents RH/Admin avec Supabase Storage
