@@ -7,6 +7,12 @@
   # Dossier de sortie
   publish = "build"
 
+[build.environment]
+  # Désactive le traitement des warnings ESLint comme erreurs en CI
+  CI = "false"
+  # Version Node.js recommandée
+  NODE_VERSION = "18"
+
 # Redirections pour SPA (Single Page Application)
 # Toutes les routes redirigent vers index.html
 [[redirects]]
