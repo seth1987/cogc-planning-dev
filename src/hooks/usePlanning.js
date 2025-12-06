@@ -7,6 +7,7 @@ import { MONTHS, CURRENT_YEAR } from '../constants/config';
  * Hook personnalisé pour la gestion du planning
  * Centralise le chargement, la mise à jour et la suppression des données de planning
  * 
+ * @version 1.2.0 - Fix timezone bug for date parsing
  * @param {Object} user - L'utilisateur authentifié
  * @param {string} currentMonth - Le mois actuellement sélectionné
  * @param {number} currentYear - L'année actuellement sélectionnée
@@ -23,6 +24,18 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('⏳ Connexion...');
+
+  /**
+   * Extrait le jour d'une date string au format YYYY-MM-DD
+   * Évite les problèmes de fuseau horaire avec new Date()
+   * @param {string} dateString - Date au format "2025-12-05"
+   * @returns {number} Le jour du mois (1-31)
+   */
+  const parseDayFromDateString = (dateString) => {
+    // Parse direct de la chaîne pour éviter les problèmes de timezone
+    // "2025-12-05" → split('-') → ['2025', '12', '05'] → parseInt('05') → 5
+    return parseInt(dateString.split('-')[2], 10);
+  };
 
   /**
    * Charge les données du planning pour le mois spécifié
@@ -70,7 +83,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       
       const planningFromDB = await supabaseService.getPlanningForMonth(startDate, endDate);
       
-      // Organiser les données de planning AVEC les notes
+      // Organiser les données de planning AVEC les notes et postes supplémentaires
       const planningData = {};
       agentsResult.forEach(agent => {
         const agentName = `${agent.nom} ${agent.prenom}`;
@@ -82,9 +95,11 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
           const agent = agentsResult.find(a => a.id === entry.agent_id);
           if (agent) {
             const agentName = `${agent.nom} ${agent.prenom}`;
-            const day = new Date(entry.date).getDate();
+            // FIX: Parse la date directement sans passer par Date object
+            // Évite le bug de fuseau horaire (UTC → heure locale = J-1)
+            const day = parseDayFromDateString(entry.date);
             
-            // Construire l'objet de données de cellule avec note et postes supplémentaires
+            // Construire l'objet de données de cellule avec note ET postes supplémentaires
             const cellData = {
               service: entry.service_code,
               ...(entry.poste_code && { poste: entry.poste_code }),
@@ -94,7 +109,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
               })
             };
             
-            // Si pas de poste, note, ni postes supplémentaires, garder le format simple
+            // Si pas de données supplémentaires, garder le format simple
             if (!entry.poste_code && !entry.commentaire && 
                 (!entry.postes_supplementaires || entry.postes_supplementaires.length === 0)) {
               planningData[agentName][day] = entry.service_code;
@@ -120,7 +135,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
    * Récupère les données d'une cellule spécifique
    * @param {string} agentName - Nom complet de l'agent
    * @param {number} day - Jour du mois
-   * @returns {Object|null} Données de la cellule {service, poste, note} ou null
+   * @returns {Object|null} Données de la cellule {service, poste, note, postesSupplementaires} ou null
    */
   const getCellData = useCallback((agentName, day) => {
     const cellValue = planning[agentName]?.[day];
@@ -140,10 +155,10 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
   }, [planning]);
 
   /**
-   * Met à jour une cellule du planning avec support des notes
+   * Met à jour une cellule du planning avec support des notes et postes supplémentaires
    * @param {string} agentName - Nom complet de l'agent
    * @param {number} day - Jour du mois
-   * @param {string|Object} value - Valeur: string (service simple), object {service, poste?, note?}, ou '' pour supprimer
+   * @param {string|Object} value - Valeur: string (service simple), object {service, poste?, note?, postesSupplementaires?}, ou '' pour supprimer
    */
   const updateCell = useCallback(async (agentName, day, value) => {
     try {
@@ -167,15 +182,8 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
           ? (value.postesSupplementaires || null) 
           : null;
         
-        // Sauvegarde avec note et postes supplémentaires
-        await supabaseService.savePlanning(
-          agent.id, 
-          date, 
-          serviceCode, 
-          posteCode, 
-          note, 
-          postesSupplementaires
-        );
+        // Sauvegarde avec note ET postes supplémentaires
+        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires);
       }
       
       // Mise à jour optimiste du state local
