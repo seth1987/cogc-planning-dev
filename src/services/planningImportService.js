@@ -170,7 +170,7 @@ class PlanningImportService {
         service_code: entry.service_code,
         poste_code: entry.poste_code,
         statut: 'actif',
-        commentaire: entry.original_code ? `Import PDF: ${entry.original_code}` : null
+        commentaire: null
       };
 
       if (existing) {
@@ -180,7 +180,6 @@ class PlanningImportService {
           .update({
             service_code: entry.service_code,
             poste_code: entry.poste_code,
-            commentaire: entry.original_code ? `Import PDF: ${entry.original_code}` : existing.commentaire,
             updated_at: new Date().toISOString()
           })
           .eq('id', existing.id);
