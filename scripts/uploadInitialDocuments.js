@@ -17,35 +17,35 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY_HERE';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Documents à uploader avec leurs métadonnées
+// Documents à uploader avec leurs métadonnées (noms exacts des fichiers)
 const documentsToUpload = [
   // Catégorie: Accidents du travail
   {
-    localFile: 'PDF_accident_de_travail.pdf',
+    localFile: 'PDF accident de travail.pdf',
     name: 'Guide - Accident du travail',
     description: 'Procédure complète de déclaration AT/trajet (CPR)',
     category: 'accidents'
   },
   {
-    localFile: 'Impression_CERFA.pdf',
+    localFile: 'Impression CERFA.pdf',
     name: 'Impression CERFA',
     description: 'Tutoriel remplissage automatique CERFA 14463*03',
     category: 'accidents'
   },
   {
-    localFile: 'Déclaration_première_personne_avisée.pdf',
+    localFile: 'Déclaration première personne avisée.pdf',
     name: 'Déclaration 1ère personne avisée',
     description: 'Formulaire CPR VGR 3278',
     category: 'accidents'
   },
   {
-    localFile: 'Déclaration_de_témoin.pdf',
+    localFile: 'Déclaration de témoin.pdf',
     name: 'Déclaration de témoin',
     description: 'Formulaire CPR VGR 3066',
     category: 'accidents'
   },
   {
-    localFile: 'Déclaration_maladie_professionnelle.pdf',
+    localFile: 'Déclaration maladie professionnelle.pdf',
     name: 'Déclaration maladie professionnelle',
     description: 'Formulaire CPR ATOG/VGV 2761',
     category: 'accidents'
@@ -53,19 +53,19 @@ const documentsToUpload = [
   
   // Catégorie: CET
   {
-    localFile: 'CET_EPARGNE_CONGE.pdf',
+    localFile: 'CET EPARGNE CONGE.pdf',
     name: 'RH0930 - Épargne congés annuels',
     description: 'Intention d\'épargne de congés annuels sur CET',
     category: 'cet'
   },
   {
-    localFile: 'CET_EPARGNE_RQ_RN_ETC_HORS_CONGE.pdf',
+    localFile: 'CET EPARGNE RQ RN ETC HORS CONGE.pdf',
     name: 'RH0930 - Épargne hors congés',
     description: 'Épargne RQ, RS, RN, TC, TY, RG, RCF, Médaille',
     category: 'cet'
   },
   {
-    localFile: 'CET_MONETISATION.pdf',
+    localFile: 'CET MONETISATION.pdf',
     name: 'RH0930 - Monétisation CET',
     description: 'Demande de monétisation des jours CET',
     category: 'cet'
@@ -79,7 +79,7 @@ const documentsToUpload = [
   
   // Catégorie: Grève
   {
-    localFile: 'Imprimé_D2I.pdf',
+    localFile: 'Imprimé D2I.pdf',
     name: 'Imprimé D2I',
     description: 'Déclaration Individuelle d\'Intention (participation grève)',
     category: 'greve'
@@ -87,7 +87,7 @@ const documentsToUpload = [
   
   // Catégorie: Rémunération
   {
-    localFile: 'PAIEMENT_FERIE.pdf',
+    localFile: 'PAIEMENT FERIE.pdf',
     name: 'Paiement jours fériés',
     description: 'Demande de paiement des fêtes sur solde',
     category: 'remuneration'
