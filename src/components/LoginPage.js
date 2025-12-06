@@ -100,7 +100,8 @@ const LoginPage = ({ onLogin }) => {
   // Generate email when agent is selected
   useEffect(() => {
     if (selectedAgent) {
-      const agent = agents.find(a => a.id === parseInt(selectedAgent));
+      // Note: agent.id est un UUID (string), pas un entier
+      const agent = agents.find(a => a.id === selectedAgent);
       if (agent) {
         setGeneratedEmail(generateEmail(agent.nom, agent.prenom));
       }
