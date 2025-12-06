@@ -98,26 +98,31 @@ const App = () => {
   const [showAdminUserSetup, setShowAdminUserSetup] = React.useState(false);
 
   // === CHARGEMENT DES ANNÉES DISPONIBLES ===
+  // Configuration: années à toujours afficher (même sans données)
+  const FORCED_YEARS = [2025, 2026];
+  
   React.useEffect(() => {
     const loadAvailableYears = async () => {
       try {
         setYearsLoading(true);
-        const years = await supabaseService.getAvailableYears();
-        console.log('📅 Années chargées:', years);
+        const yearsFromDB = await supabaseService.getAvailableYears();
+        console.log('📅 Années depuis DB:', yearsFromDB);
         
-        if (years && years.length > 0) {
-          setAvailableYears(years);
-          // Si l'année courante n'est pas dans la liste, prendre la plus récente
-          if (!years.includes(currentYear)) {
-            setCurrentYear(years[0]);
-          }
-        } else {
-          // Fallback: année actuelle
-          setAvailableYears([new Date().getFullYear()]);
+        // Fusionner les années forcées avec celles de la DB
+        const allYears = [...new Set([...FORCED_YEARS, ...(yearsFromDB || [])])];
+        const sortedYears = allYears.sort((a, b) => a - b); // Tri croissant (2025, 2026)
+        
+        console.log('📅 Années disponibles (avec forcées):', sortedYears);
+        setAvailableYears(sortedYears);
+        
+        // Si l'année courante n'est pas dans la liste, prendre la première
+        if (!sortedYears.includes(currentYear)) {
+          setCurrentYear(sortedYears[0]);
         }
       } catch (err) {
         console.error('Erreur chargement années:', err);
-        setAvailableYears([new Date().getFullYear()]);
+        // Fallback: années forcées uniquement
+        setAvailableYears(FORCED_YEARS);
       } finally {
         setYearsLoading(false);
       }
