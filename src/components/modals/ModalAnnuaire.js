@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { X, Search, Phone, Mail, Users, Edit2, Save, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
-import { supabaseService } from '../../services/supabaseService';
+import supabaseService from '../../services/supabaseService';
 
 /**
  * ModalAnnuaire - Annuaire téléphonique du COGC
@@ -31,7 +31,7 @@ const ModalAnnuaire = ({ isOpen, onClose, currentUser }) => {
       setLoading(true);
       setError(null);
       
-      const supabase = supabaseService.getClient();
+      const supabase = supabaseService.client;
       const { data, error: fetchError } = await supabase
         .from('agents')
         .select('id, nom, prenom, telephone, email, groupe_travail, groupe, site')
@@ -104,7 +104,7 @@ const ModalAnnuaire = ({ isOpen, onClose, currentUser }) => {
       setSaving(true);
       setSaveMessage(null);
       
-      const supabase = supabaseService.getClient();
+      const supabase = supabaseService.client;
       const { error: updateError } = await supabase
         .from('agents')
         .update({
