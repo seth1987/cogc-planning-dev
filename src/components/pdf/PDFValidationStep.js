@@ -2,6 +2,7 @@
 // Version 2.2 - Vue split-screen avec PDF en regard + scrollbar forcée
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ZoomIn, ZoomOut } from 'lucide-react';
+import { SERVICE_CODES } from '../../constants/config';
 
 const PDFValidationStep = ({ 
   data,  // Données extraites
@@ -350,17 +351,9 @@ const PDFValidationStep = ({
                           onChange={(e) => handleCellEdit(entry.index, 'service_code', e.target.value)}
                           className="flex-1 p-1 border rounded text-sm min-w-[100px]"
                         >
-                          <option value="-">Matin (06h-14h)</option>
-                          <option value="O">Soir (14h-22h)</option>
-                          <option value="X">Nuit (22h-06h)</option>
-                          <option value="RP">Repos</option>
-                          <option value="C">Congé</option>
-                          <option value="D">Disponible</option>
-                          <option value="NU">Non Utilisé</option>
-                          <option value="HAB">Formation</option>
-                          <option value="MA">Maladie</option>
-                          <option value="I">Inactif</option>
-                          <option value="VISIMED">Visite Médicale</option>
+                          {SERVICE_CODES.map(({ code, desc }) => (
+                            <option key={code} value={code}>{desc}</option>
+                          ))}
                         </select>
 
                         <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${getServiceColor(entry.service_code)}`}>
