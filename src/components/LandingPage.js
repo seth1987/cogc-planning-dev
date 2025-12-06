@@ -9,7 +9,7 @@ import ModalDocuments from './modals/ModalDocuments';
  * Design inspiré du template Nexaverse avec adaptations pour COGC Planning.
  * Affiche un menu moderne avec accès au planning et autres fonctionnalités.
  * 
- * v2.7 - Ajout section Documents en remplacement de Paramètres
+ * v2.8 - Remplacement Statistiques par Cellule RH (SharePoint)
  */
 const LandingPage = ({ onNavigate, user }) => {
   const [isLoading, setIsLoading] = useState(true);
@@ -58,11 +58,11 @@ const LandingPage = ({ onNavigate, user }) => {
       action: () => window.open('https://durandal2.sso.reseau.sncf.fr/incidents/index', '_blank')
     },
     {
-      id: 'stats',
-      badge: '📊',
-      title: 'Statistiques',
-      subtitle: 'Analyses',
-      action: () => onNavigate('planning', { view: 'stats' })
+      id: 'cellule-rh',
+      badge: '👔',
+      title: 'Cellule RH',
+      subtitle: 'Congés & demandes',
+      action: () => window.open('https://sncf.sharepoint.com/sites/EICPNCelluleRHUOPNPetPARCCOGCGrpO365/SitePages/crisisCommunicationHome.aspx', '_blank')
     },
     {
       id: 'documents',
