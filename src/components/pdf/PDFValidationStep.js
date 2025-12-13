@@ -1,9 +1,13 @@
 // Composant pour l'étape de validation des données extraites
-// Version 3.2 - STABILISÉ avec React.memo et useCallback
+// Version 3.3 - Ajout option "Texte Libre" pour services et postes
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ZoomIn, ZoomOut, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
-import { SERVICE_CODES } from '../../constants/config';
+import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ZoomIn, ZoomOut, ChevronDown, ChevronUp, Trash2, Edit3 } from 'lucide-react';
+import { SERVICE_CODES, POSTES_CODES_WITH_LIBRE, LIBRE_MARKER } from '../../constants/config';
 import useIsMobile from '../../hooks/useIsMobile';
+
+// Codes standards pour détection texte libre
+const STANDARD_SERVICE_CODES = SERVICE_CODES.filter(s => s.code !== LIBRE_MARKER).map(s => s.code);
+const STANDARD_POSTE_CODES = POSTES_CODES_WITH_LIBRE.filter(p => p.code !== LIBRE_MARKER && p.code !== '').map(p => p.code);
 
 const PDFValidationStep = React.memo(({ 
   data,  // Données extraites
@@ -29,6 +33,9 @@ const PDFValidationStep = React.memo(({
   // État mobile : card en cours d'édition
   const [editingIndex, setEditingIndex] = useState(null);
   const [showAgentEdit, setShowAgentEdit] = useState(false);
+  
+  // État pour les champs en mode texte libre
+  const [freeTextMode, setFreeTextMode] = useState({}); // { `${index}_service`: true, `${index}_poste`: true }
 
   // Debug render
   const renderCount = useRef(0);
@@ -74,13 +81,31 @@ const PDFValidationStep = React.memo(({
 
   // === FONCTIONS UTILITAIRES MÉMORISÉES ===
   
+  // Vérifie si une valeur est du texte libre (pas dans les codes standards)
+  const isServiceFreeText = useCallback((code) => {
+    if (!code) return false;
+    return !STANDARD_SERVICE_CODES.includes(code);
+  }, []);
+
+  const isPosteFreeText = useCallback((code) => {
+    if (!code) return false;
+    return !STANDARD_POSTE_CODES.includes(code);
+  }, []);
+  
   const getServiceLabel = useCallback((code) => {
-    const labels = {
-      '-': 'Matin', 'O': 'Soir', 'X': 'Nuit', 'RP': 'Repos',
-      'C': 'Congé', 'D': 'Dispo', 'NU': 'Non Utilisé',
-      'HAB': 'Formation', 'MA': 'Maladie', 'I': 'Inactif', 'VISIMED': 'Visite Méd.'
-    };
-    return labels[code] || code;
+    if (!code) return '';
+    const found = SERVICE_CODES.find(s => s.code === code);
+    if (found) {
+      const labels = {
+        '-': 'Matin', 'O': 'Soir', 'X': 'Nuit', 'RP': 'Repos',
+        'C': 'Congé', 'D': 'Dispo', 'NU': 'Non Utilisé',
+        'HAB': 'Formation', 'MA': 'Maladie', 'I': 'Inactif', 'VISIMED': 'Visite Méd.',
+        'FO': 'Formation', 'VT': 'Temps partiel', 'D2I': 'D2I'
+      };
+      return labels[code] || code;
+    }
+    // C'est du texte libre
+    return code;
   }, []);
 
   const getServiceColor = useCallback((code) => {
@@ -95,9 +120,16 @@ const PDFValidationStep = React.memo(({
       'HAB': 'bg-indigo-100 text-indigo-700 border-indigo-300',
       'MA': 'bg-red-100 text-red-700 border-red-300',
       'I': 'bg-pink-100 text-pink-700 border-pink-300',
-      'VISIMED': 'bg-cyan-100 text-cyan-700 border-cyan-300'
+      'VISIMED': 'bg-cyan-100 text-cyan-700 border-cyan-300',
+      'FO': 'bg-indigo-100 text-indigo-700 border-indigo-300',
+      'VT': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+      'D2I': 'bg-gray-200 text-gray-700 border-gray-300'
     };
-    return colors[code] || 'bg-gray-100 text-gray-700 border-gray-300';
+    // Pour texte libre, utiliser un style distinctif
+    if (!colors[code]) {
+      return 'bg-teal-100 text-teal-700 border-teal-300';
+    }
+    return colors[code];
   }, []);
 
   const formatDate = useCallback((dateStr) => {
@@ -170,6 +202,40 @@ const PDFValidationStep = React.memo(({
     });
   }, [onChange]);
 
+  // Handler pour basculer en mode texte libre
+  const toggleFreeTextMode = useCallback((index, field) => {
+    const key = `${index}_${field}`;
+    setFreeTextMode(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  // Handler pour le changement de service (gère le switch vers texte libre)
+  const handleServiceChange = useCallback((index, value) => {
+    if (value === LIBRE_MARKER) {
+      // Basculer en mode texte libre
+      setFreeTextMode(prev => ({ ...prev, [`${index}_service`]: true }));
+      // Mettre une valeur vide pour commencer
+      handleCellEdit(index, 'service_code', '');
+    } else {
+      // Sortir du mode texte libre si on sélectionne un code standard
+      setFreeTextMode(prev => ({ ...prev, [`${index}_service`]: false }));
+      handleCellEdit(index, 'service_code', value);
+    }
+  }, [handleCellEdit]);
+
+  // Handler pour le changement de poste (gère le switch vers texte libre)
+  const handlePosteChange = useCallback((index, value) => {
+    if (value === LIBRE_MARKER) {
+      // Basculer en mode texte libre
+      setFreeTextMode(prev => ({ ...prev, [`${index}_poste`]: true }));
+      // Mettre une valeur vide pour commencer
+      handleCellEdit(index, 'poste_code', '');
+    } else {
+      // Sortir du mode texte libre si on sélectionne un code standard
+      setFreeTextMode(prev => ({ ...prev, [`${index}_poste`]: false }));
+      handleCellEdit(index, 'poste_code', value || null);
+    }
+  }, [handleCellEdit]);
+
   // === DONNÉES MÉMORISÉES ===
 
   const groupedByDate = useMemo(() => {
@@ -202,6 +268,92 @@ const PDFValidationStep = React.memo(({
       </div>
     );
   }
+
+  // === COMPOSANTS RÉUTILISABLES ===
+
+  // Composant pour le sélecteur de service avec option texte libre
+  const ServiceSelector = ({ index, value }) => {
+    const isFreeText = freeTextMode[`${index}_service`] || isServiceFreeText(value);
+    
+    if (isFreeText) {
+      return (
+        <div className="flex gap-1 items-center">
+          <input
+            type="text"
+            value={value || ''}
+            onChange={(e) => handleCellEdit(index, 'service_code', e.target.value)}
+            placeholder="Texte libre..."
+            className="flex-1 px-2 py-1 border rounded text-sm bg-teal-50 border-teal-300 focus:ring-2 focus:ring-teal-500"
+            autoFocus
+          />
+          <button
+            onClick={() => {
+              setFreeTextMode(prev => ({ ...prev, [`${index}_service`]: false }));
+              handleCellEdit(index, 'service_code', 'RP'); // Valeur par défaut
+            }}
+            className="p-1 text-gray-400 hover:text-gray-600"
+            title="Revenir à la liste"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      );
+    }
+    
+    return (
+      <select
+        value={value || ''}
+        onChange={(e) => handleServiceChange(index, e.target.value)}
+        className="w-full px-2 py-1 border rounded text-sm bg-white"
+      >
+        {SERVICE_CODES.map(({ code, desc }) => (
+          <option key={code} value={code}>{desc}</option>
+        ))}
+      </select>
+    );
+  };
+
+  // Composant pour le sélecteur de poste avec option texte libre
+  const PosteSelector = ({ index, value, compact = false }) => {
+    const isFreeText = freeTextMode[`${index}_poste`] || isPosteFreeText(value);
+    
+    if (isFreeText) {
+      return (
+        <div className="flex gap-1 items-center">
+          <input
+            type="text"
+            value={value || ''}
+            onChange={(e) => handleCellEdit(index, 'poste_code', e.target.value || null)}
+            placeholder="Poste libre..."
+            className={`flex-1 px-2 py-1 border rounded text-sm bg-teal-50 border-teal-300 focus:ring-2 focus:ring-teal-500 ${compact ? 'w-20' : ''}`}
+            autoFocus
+          />
+          <button
+            onClick={() => {
+              setFreeTextMode(prev => ({ ...prev, [`${index}_poste`]: false }));
+              handleCellEdit(index, 'poste_code', null);
+            }}
+            className="p-1 text-gray-400 hover:text-gray-600"
+            title="Revenir à la liste"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      );
+    }
+    
+    return (
+      <select
+        value={value || ''}
+        onChange={(e) => handlePosteChange(index, e.target.value)}
+        className={`px-2 py-1 border rounded text-sm bg-white ${compact ? 'w-28' : 'w-full'}`}
+      >
+        {POSTES_CODES_WITH_LIBRE.map(({ code, desc }) => (
+          <option key={code} value={code}>{desc}</option>
+        ))}
+      </select>
+    );
+  };
 
   // ========== VERSION MOBILE - CARDS ==========
   if (isMobile) {
@@ -260,6 +412,8 @@ const PDFValidationStep = React.memo(({
         <div className="flex-1 overflow-y-auto p-3 space-y-2 pb-24">
           {data.planning.map((entry, index) => {
             const isEditing = editingIndex === index;
+            const serviceIsFree = isServiceFreeText(entry.service_code) || freeTextMode[`${index}_service`];
+            const posteIsFree = isPosteFreeText(entry.poste_code) || freeTextMode[`${index}_poste`];
             
             return (
               <div 
@@ -275,11 +429,17 @@ const PDFValidationStep = React.memo(({
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={`px-3 py-1 rounded-lg font-bold text-sm ${getServiceColor(entry.service_code)}`}>
+                      {serviceIsFree && <Edit3 size={12} className="inline mr-1" />}
                       {getServiceLabel(entry.service_code)}
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-gray-900">{formatDateShort(entry.date)}</p>
-                      {entry.poste_code && <p className="text-xs text-gray-500">{entry.poste_code}</p>}
+                      {entry.poste_code && (
+                        <p className="text-xs text-gray-500">
+                          {posteIsFree && '✏️ '}
+                          {entry.poste_code}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -305,34 +465,12 @@ const PDFValidationStep = React.memo(({
                     
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">Service</label>
-                      <select
-                        value={entry.service_code}
-                        onChange={(e) => handleCellEdit(index, 'service_code', e.target.value)}
-                        className="w-full px-3 py-2 border rounded-lg text-base bg-white"
-                      >
-                        {SERVICE_CODES.map(({ code, desc }) => (
-                          <option key={code} value={code}>{desc}</option>
-                        ))}
-                      </select>
+                      <ServiceSelector index={index} value={entry.service_code} />
                     </div>
 
                     <div>
                       <label className="text-xs text-gray-500 mb-1 block">Poste (optionnel)</label>
-                      <select
-                        value={entry.poste_code || ''}
-                        onChange={(e) => handleCellEdit(index, 'poste_code', e.target.value || null)}
-                        className="w-full px-3 py-2 border rounded-lg text-base bg-white"
-                      >
-                        <option value="">— Aucun —</option>
-                        <option value="CRC">CRC</option>
-                        <option value="ACR">ACR</option>
-                        <option value="CCU">CCU</option>
-                        <option value="RE">RE</option>
-                        <option value="RC">RC</option>
-                        <option value="RO">RO</option>
-                        <option value="CAC">CAC</option>
-                        <option value="SOUF">SOUF</option>
-                      </select>
+                      <PosteSelector index={index} value={entry.poste_code} />
                     </div>
 
                     <div className="flex gap-2 pt-2">
@@ -517,60 +655,47 @@ const PDFValidationStep = React.memo(({
                   </div>
                   
                   <div className="p-2 space-y-1 bg-white">
-                    {entries.map((entry) => (
-                      <div key={`${entry.date}-${entry.index}`} className="flex items-center gap-2 p-2 hover:bg-blue-50 rounded text-sm border border-transparent hover:border-blue-200 transition-colors">
-                        <input
-                          type="date"
-                          value={entry.date}
-                          onChange={(e) => handleCellEdit(entry.index, 'date', e.target.value)}
-                          className="p-1 border rounded text-xs w-32"
-                        />
-                        
-                        <select
-                          value={entry.service_code}
-                          onChange={(e) => handleCellEdit(entry.index, 'service_code', e.target.value)}
-                          className="flex-1 p-1 border rounded text-sm min-w-[100px]"
-                        >
-                          {SERVICE_CODES.map(({ code, desc }) => (
-                            <option key={code} value={code}>{desc}</option>
-                          ))}
-                        </select>
+                    {entries.map((entry) => {
+                      const serviceIsFree = isServiceFreeText(entry.service_code) || freeTextMode[`${entry.index}_service`];
+                      
+                      return (
+                        <div key={`${entry.date}-${entry.index}`} className="flex items-center gap-2 p-2 hover:bg-blue-50 rounded text-sm border border-transparent hover:border-blue-200 transition-colors">
+                          <input
+                            type="date"
+                            value={entry.date}
+                            onChange={(e) => handleCellEdit(entry.index, 'date', e.target.value)}
+                            className="p-1 border rounded text-xs w-32"
+                          />
+                          
+                          <div className="flex-1 min-w-[120px]">
+                            <ServiceSelector index={entry.index} value={entry.service_code} />
+                          </div>
 
-                        <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${getServiceColor(entry.service_code)}`}>
-                          {getServiceLabel(entry.service_code)}
-                        </span>
-
-                        <select
-                          value={entry.poste_code || ''}
-                          onChange={(e) => handleCellEdit(entry.index, 'poste_code', e.target.value || null)}
-                          className="w-24 p-1 border rounded text-xs"
-                        >
-                          <option value="">— Poste —</option>
-                          <option value="CRC">CRC</option>
-                          <option value="ACR">ACR</option>
-                          <option value="CCU">CCU</option>
-                          <option value="RE">RE</option>
-                          <option value="RC">RC</option>
-                          <option value="RO">RO</option>
-                          <option value="CAC">CAC</option>
-                          <option value="SOUF">SOUF</option>
-                        </select>
-
-                        {entry.original_code && (
-                          <span className="text-xs text-gray-400 truncate max-w-[80px]" title={entry.original_code}>
-                            ({entry.original_code})
+                          <span className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${getServiceColor(entry.service_code)}`}>
+                            {serviceIsFree && <Edit3 size={10} className="inline mr-1" />}
+                            {getServiceLabel(entry.service_code)}
                           </span>
-                        )}
 
-                        <button
-                          onClick={() => handleDeleteEntry(entry.index)}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded flex-shrink-0"
-                          title="Supprimer cette entrée"
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
-                    ))}
+                          <div className="w-32">
+                            <PosteSelector index={entry.index} value={entry.poste_code} compact={true} />
+                          </div>
+
+                          {entry.original_code && (
+                            <span className="text-xs text-gray-400 truncate max-w-[80px]" title={entry.original_code}>
+                              ({entry.original_code})
+                            </span>
+                          )}
+
+                          <button
+                            onClick={() => handleDeleteEntry(entry.index)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded flex-shrink-0"
+                            title="Supprimer cette entrée"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
