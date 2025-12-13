@@ -1,25 +1,25 @@
 import React from 'react';
-import { Calendar, Users, Upload, ArrowLeft, Home, Settings } from 'lucide-react';
+import { Calendar, Users, Upload, ArrowLeft, Home } from 'lucide-react';
 
 /**
  * Header - En-tête de l'application Planning
+ * 
+ * v2.5: Bouton Admin supprimé (création compte intégrée dans ModalEditAgent)
  * 
  * Props:
  * - user: Utilisateur connecté
  * - connectionStatus: Statut de connexion Supabase
  * - onOpenGestionAgents: Ouvrir modal gestion agents
  * - onOpenUploadPDF: Ouvrir modal upload PDF
- * - onOpenAdminUserSetup: Ouvrir modal gestion comptes (admin)
  * - onSignOut: Déconnexion
- * - onBackToLanding: Retour page d'accueil (nouveau)
- * - showBackButton: Afficher le bouton retour (nouveau)
+ * - onBackToLanding: Retour page d'accueil
+ * - showBackButton: Afficher le bouton retour
  */
 const Header = ({ 
   user, 
   connectionStatus, 
   onOpenGestionAgents, 
   onOpenUploadPDF, 
-  onOpenAdminUserSetup,
   onSignOut,
   onBackToLanding,
   showBackButton = false
@@ -74,18 +74,6 @@ const Header = ({
           <Upload className="w-4 h-4" />
           <span className="hidden sm:inline">Upload PDF</span>
         </button>
-        
-        {/* Bouton Admin - Gestion des comptes utilisateurs */}
-        {onOpenAdminUserSetup && (
-          <button 
-            onClick={onOpenAdminUserSetup}
-            className="flex items-center space-x-1 px-3 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors"
-            title="Gestion des comptes utilisateurs"
-          >
-            <Settings className="w-4 h-4" />
-            <span className="hidden sm:inline">Admin</span>
-          </button>
-        )}
         
         {/* Bouton Déconnexion */}
         <button 
