@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ZoomIn, ZoomOut, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react';
 import { SERVICE_CODES } from '../../constants/config';
-import { useIsMobile } from '../../hooks/useIsMobile';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const PDFValidationStep = ({ 
   data,  // Données extraites
