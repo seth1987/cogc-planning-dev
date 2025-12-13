@@ -1,6 +1,8 @@
 // Composant pour l'étape d'upload du PDF
-import React from 'react';
-import { Upload, Key, Database, Lock } from 'lucide-react';
+// Version 2.4 - SANS ALERTES - flux simplifié
+import React, { useState, useRef } from 'react';
+import { Upload, Database, Lock, FileText, Loader, CheckCircle } from 'lucide-react';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const PDFUploadStep = ({ 
   file, 
@@ -9,24 +11,185 @@ const PDFUploadStep = ({
   isApiConfigured,
   stats
 }) => {
+  const isMobile = useIsMobile();
+  const [localLoading, setLocalLoading] = useState(false);
+  const [localFile, setLocalFile] = useState(null);
+  const processingRef = useRef(false);
   
-  // Gestion de la sélection de fichier
-  const handleFileSelect = (event) => {
-    if (!isApiConfigured) {
-      alert('Le module PDF nécessite une clé API Mistral pour fonctionner.');
-      event.target.value = ''; // Reset input
+  // Gestion de la sélection de fichier - VERSION SIMPLIFIÉE
+  const handleFileSelect = async (event) => {
+    console.log('📁 handleFileSelect déclenché');
+    
+    // Protection contre double appel
+    if (processingRef.current) {
+      console.log('⚠️ Déjà en cours de traitement');
       return;
     }
+    
+    try {
+      processingRef.current = true;
+      
+      if (!isApiConfigured) {
+        console.log('❌ API non configurée');
+        return;
+      }
 
-    const selectedFile = event.target.files[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      console.log('📁 Fichier sélectionné:', selectedFile.name);
-      onFileUpload(selectedFile);
-    } else {
-      alert('Veuillez sélectionner un fichier PDF valide.');
+      const files = event.target.files;
+      console.log('📁 Fichiers:', files?.length || 0);
+      
+      if (!files || files.length === 0) {
+        console.log('❌ Aucun fichier');
+        processingRef.current = false;
+        return;
+      }
+
+      const selectedFile = files[0];
+      console.log('📄 Fichier:', selectedFile.name, 'Type:', selectedFile.type, 'Taille:', selectedFile.size);
+
+      // Validation très permissive
+      const fileName = selectedFile.name.toLowerCase();
+      const fileType = selectedFile.type.toLowerCase();
+      const isPDF = fileType.includes('pdf') || fileType === '' || fileName.endsWith('.pdf');
+      
+      if (!isPDF) {
+        console.log('❌ Pas un PDF');
+        processingRef.current = false;
+        return;
+      }
+
+      console.log('✅ PDF validé, mise à jour UI...');
+      setLocalFile(selectedFile);
+      setLocalLoading(true);
+
+      // Appel immédiat du callback parent
+      console.log('🚀 Appel onFileUpload...');
+      if (typeof onFileUpload === 'function') {
+        // Utiliser setTimeout pour éviter les problèmes de synchronisation
+        setTimeout(() => {
+          onFileUpload(selectedFile);
+        }, 100);
+      } else {
+        console.log('❌ onFileUpload non défini');
+        setLocalLoading(false);
+        processingRef.current = false;
+      }
+      
+    } catch (err) {
+      console.log('❌ Erreur:', err.message);
+      setLocalLoading(false);
+      setLocalFile(null);
+      processingRef.current = false;
     }
   };
 
+  // Reset quand le fichier parent change
+  React.useEffect(() => {
+    if (!file) {
+      setLocalLoading(false);
+      setLocalFile(null);
+      processingRef.current = false;
+    }
+  }, [file]);
+
+  // ========== VERSION MOBILE ==========
+  if (isMobile) {
+    return (
+      <div className="space-y-4">
+        {/* Alerte si API non configurée */}
+        {!isApiConfigured && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-start gap-2">
+              <Lock className="text-red-600 mt-1 flex-shrink-0" size={20} />
+              <div className="flex-1">
+                <p className="font-medium text-red-900">Module PDF désactivé</p>
+                <p className="text-sm text-red-800 mt-1">Clé API Mistral requise.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats condensées */}
+        {stats && isApiConfigured && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <Database className="text-blue-600" size={18} />
+              <span className="text-sm font-medium text-blue-900">
+                Base connectée • {stats.totalCodes || stats.total || 0} codes
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ÉTAT: En cours de traitement */}
+        {localLoading && (
+          <div className="bg-blue-50 border-2 border-blue-400 rounded-xl p-6 text-center">
+            <Loader className="animate-spin mx-auto mb-3 text-blue-600" size={48} />
+            <p className="text-lg font-bold text-blue-900">Analyse en cours...</p>
+            <p className="text-blue-700 text-sm mt-1 truncate px-4">
+              {localFile?.name || file?.name || 'PDF'}
+            </p>
+            <p className="text-blue-500 text-xs mt-2">
+              Extraction OCR avec Mistral AI
+            </p>
+          </div>
+        )}
+
+        {/* ÉTAT: Fichier sélectionné (depuis le parent) */}
+        {!localLoading && file && (
+          <div className="bg-green-50 border-2 border-green-400 rounded-xl p-6 text-center">
+            <CheckCircle className="mx-auto mb-3 text-green-600" size={48} />
+            <p className="text-lg font-bold text-green-900">PDF sélectionné</p>
+            <p className="text-green-700 text-sm mt-1 truncate px-4">
+              {file.name}
+            </p>
+          </div>
+        )}
+
+        {/* BOUTONS D'UPLOAD */}
+        {!localLoading && !file && isApiConfigured && (
+          <div className="space-y-3">
+            {/* Méthode 1: Input visible dans bouton bleu */}
+            <div className="bg-blue-600 text-white rounded-xl p-4">
+              <p className="text-center font-bold mb-3">📄 Sélectionner un PDF</p>
+              <input
+                type="file"
+                accept=".pdf,application/pdf,*/*"
+                onChange={handleFileSelect}
+                className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-white file:text-blue-700 hover:file:bg-blue-50"
+              />
+            </div>
+            
+            {/* Méthode 2: Label classique */}
+            <label className="block bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded-xl p-4 text-center transition-colors shadow-lg cursor-pointer">
+              <input
+                type="file"
+                accept="*/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <FileText className="mx-auto mb-2" size={32} />
+              <p className="font-bold">Méthode alternative</p>
+              <p className="text-green-200 text-xs">Si le bouton bleu ne marche pas</p>
+            </label>
+          </div>
+        )}
+
+        {/* Instructions condensées mobile */}
+        {isApiConfigured && !localLoading && !file && (
+          <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
+            <p className="font-medium mb-2">Format accepté :</p>
+            <ul className="space-y-1">
+              <li>✓ Bulletin de commande SNCF (PDF)</li>
+              <li>✓ Détection automatique agent & services</li>
+              <li>✓ Services de nuit décalés J+1</li>
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ========== VERSION DESKTOP ==========
   return (
     <div className="space-y-4">
       {/* Alerte si API non configurée */}
@@ -38,10 +201,6 @@ const PDFUploadStep = ({
               <p className="font-medium text-red-900">Module PDF désactivé</p>
               <p className="text-sm text-red-800 mt-1">
                 Ce module nécessite une clé API Mistral pour fonctionner.
-                Configurez REACT_APP_MISTRAL_API_KEY dans vos variables d'environnement.
-              </p>
-              <p className="text-xs text-red-700 mt-2">
-                Obtenez votre clé sur : https://console.mistral.ai/
               </p>
             </div>
           </div>
@@ -63,7 +222,7 @@ const PDFUploadStep = ({
         </div>
       )}
 
-      {/* Zone d'upload */}
+      {/* Zone d'upload desktop */}
       <div className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
         isApiConfigured 
           ? 'border-gray-300 hover:border-blue-400 cursor-pointer' 
@@ -77,7 +236,7 @@ const PDFUploadStep = ({
           <>
             <input
               type="file"
-              accept=".pdf"
+              accept=".pdf,application/pdf"
               onChange={handleFileSelect}
               className="hidden"
               id="pdf-upload"
@@ -94,54 +253,30 @@ const PDFUploadStep = ({
           </>
         ) : (
           <>
-            <p className="text-gray-500 font-medium">
-              Upload désactivé
-            </p>
+            <p className="text-gray-500 font-medium">Upload désactivé</p>
             <p className="text-sm text-gray-400 mt-2">
-              Configurez votre clé API Mistral pour activer cette fonctionnalité
+              Configurez votre clé API Mistral
             </p>
           </>
         )}
         
-        {file && isApiConfigured && (
+        {(file || localFile) && isApiConfigured && (
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-900 font-medium">
-              📄 {file.name}
-            </p>
-            <p className="text-xs text-blue-700 mt-1">
-              {(file.size / 1024).toFixed(2)} KB
+              📄 {(file || localFile).name}
             </p>
           </div>
         )}
       </div>
 
-      {/* Instructions */}
-      <div className={`rounded-lg p-4 ${
-        isApiConfigured ? 'bg-gray-50' : 'bg-gray-100'
-      }`}>
-        <h3 className="font-semibold text-gray-900 mb-2">
-          {isApiConfigured ? 'Instructions :' : 'Configuration requise :'}
-        </h3>
-        
-        {isApiConfigured ? (
-          <ul className="text-sm text-gray-700 space-y-1">
-            <li>✓ Format accepté : PDF bulletin de commande SNCF</li>
-            <li>✓ Le nom de l'agent sera détecté automatiquement</li>
-            <li>✓ Les services de nuit seront décalés au lendemain</li>
-            <li>✓ Mapping automatique via base de données</li>
-            <li>✓ Extraction par Mistral OCR avec IA</li>
-          </ul>
-        ) : (
-          <ol className="text-sm text-gray-700 space-y-2">
-            <li>1. Créez un compte sur <a href="https://console.mistral.ai/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">console.mistral.ai</a></li>
-            <li>2. Générez une clé API dans votre dashboard</li>
-            <li>3. Ajoutez la clé dans votre fichier .env :</li>
-            <li className="ml-4 font-mono text-xs bg-white p-2 rounded border">
-              REACT_APP_MISTRAL_API_KEY=votre_clé_ici
-            </li>
-            <li>4. Redémarrez l'application</li>
-          </ol>
-        )}
+      {/* Instructions desktop */}
+      <div className="bg-gray-50 rounded-lg p-4">
+        <h3 className="font-semibold text-gray-900 mb-2">Instructions :</h3>
+        <ul className="text-sm text-gray-700 space-y-1">
+          <li>✓ Format accepté : PDF bulletin de commande SNCF</li>
+          <li>✓ Le nom de l'agent sera détecté automatiquement</li>
+          <li>✓ Extraction par Mistral OCR avec IA</li>
+        </ul>
       </div>
     </div>
   );
