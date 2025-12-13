@@ -1,5 +1,5 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.0 - Responsive mobile (plein écran + simplification)
+// Version 3.1 - Fix: lock mobile detection au premier rendu
 import React, { useState, useEffect, useRef } from 'react';
 import { X, FileText, AlertCircle, Loader, Info, Zap, AlertTriangle } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
@@ -12,7 +12,24 @@ import { supabase } from '../../lib/supabaseClient';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  const isMobile = useIsMobile();
+  // Détection mobile - verrouillée au premier rendu pour éviter les bascules
+  const isMobileHook = useIsMobile();
+  const isMobileRef = useRef(null);
+  
+  // Verrouiller la valeur mobile au premier rendu quand le modal s'ouvre
+  if (isMobileRef.current === null && isOpen) {
+    isMobileRef.current = isMobileHook;
+    console.log('📱 Mode verrouillé:', isMobileRef.current ? 'MOBILE' : 'DESKTOP');
+  }
+  
+  // Réinitialiser quand le modal se ferme
+  useEffect(() => {
+    if (!isOpen) {
+      isMobileRef.current = null;
+    }
+  }, [isOpen]);
+  
+  const isMobile = isMobileRef.current ?? isMobileHook;
   
   const [currentStep, setCurrentStep] = useState(1);
   const [file, setFile] = useState(null);
@@ -160,6 +177,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   };
 
   const handleFileUpload = async (uploadedFile) => {
+    console.log('📤 handleFileUpload appelé, isMobile:', isMobile);
     setFile(uploadedFile);
     setLoading(true);
     setError(null);
@@ -295,8 +313,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
             <div className="bg-white p-6 rounded-xl shadow-xl text-center mx-4">
               <Loader className="animate-spin mx-auto mb-3 text-blue-600" size={40} />
               <p className="text-gray-700 font-medium">
-                {currentStep === 1 && 'Analyse...'}
-                {currentStep === 2 && 'Import...'}
+                {currentStep === 1 && 'Analyse du PDF...'}
+                {currentStep === 2 && 'Import en cours...'}
                 {currentStep === 3 && 'Finalisation...'}
               </p>
             </div>
