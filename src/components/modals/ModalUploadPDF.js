@@ -1,5 +1,5 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.8 - Fix remount: composant stable sans conditions externes
+// Version 3.9 - Support onChange avec fonction updater
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, FileText, AlertCircle, Loader } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
@@ -264,10 +264,22 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
-  // Handler pour les modifications de données - STABLE avec useCallback
-  const handleDataEdit = useCallback((newData) => {
+  // Handler pour les modifications de données - SUPPORTE FONCTION OU OBJET
+  const handleDataEdit = useCallback((updaterOrData) => {
     console.log(`[Modal#${instanceId.current}] handleDataEdit appelé`);
-    setEditedData(newData);
+    
+    // Si c'est une fonction, l'utiliser avec setEditedData
+    if (typeof updaterOrData === 'function') {
+      setEditedData(prevData => {
+        const newData = updaterOrData(prevData);
+        console.log(`[Modal#${instanceId.current}] Mise à jour via fonction`);
+        return newData;
+      });
+    } else {
+      // Sinon, c'est un objet direct (ancien comportement)
+      console.log(`[Modal#${instanceId.current}] Mise à jour directe`);
+      setEditedData(updaterOrData);
+    }
   }, []);
 
   const goBackToUpload = useCallback(() => { 
@@ -287,15 +299,13 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     onClose(); 
   }, [addLog, resetModalState, onClose]);
 
-  // Rendu avec display:none si fermé (pas de démontage!)
+  // Ne pas rendre si fermé
   if (!isOpen) {
-    return null; // Ne pas rendre du tout quand fermé pour économiser les ressources
+    return null;
   }
 
   return (
-    <div 
-      className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-2"
-    >
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-2">
       <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
         
         {/* Header */}
