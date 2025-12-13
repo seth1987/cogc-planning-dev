@@ -1,7 +1,7 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.4 - SANS ALERTES - Debug dans zone visible uniquement
+// Version 3.5 - Protection contre re-mount + ID unique pour debug
 import React, { useState, useEffect, useRef } from 'react';
-import { X, FileText, AlertCircle, Loader, AlertTriangle } from 'lucide-react';
+import { X, FileText, AlertCircle, Loader } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
 import mappingService from '../../services/mappingService';
 import planningImportService from '../../services/planningImportService';
@@ -11,9 +11,13 @@ import PDFImportResult from '../pdf/PDFImportResult';
 import { supabase } from '../../lib/supabaseClient';
 import useIsMobile from '../../hooks/useIsMobile';
 
+// ID unique global pour tracker les instances
+let globalInstanceCounter = 0;
+
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  const renderCount = useRef(0);
-  renderCount.current++;
+  // ID unique de cette instance
+  const instanceId = useRef(++globalInstanceCounter);
+  const mountTime = useRef(Date.now());
   
   const isMobile = useIsMobile();
   
@@ -31,16 +35,30 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   
   const codesMapping = useRef({});
   const processingRef = useRef(false);
+  const fileBeingProcessed = useRef(null);
 
   const addLog = (msg, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warn' ? '⚠️' : '📋';
-    console.log(`${prefix} ${msg}`);
-    setDebugLog(prev => [...prev.slice(-30), { time: timestamp, msg, type }]);
+    console.log(`[Modal#${instanceId.current}] ${prefix} ${msg}`);
+    setDebugLog(prev => [...prev.slice(-30), { time: timestamp, msg: `#${instanceId.current} ${msg}`, type }]);
   };
+
+  // Log mount/unmount
+  useEffect(() => {
+    addLog(`MOUNT instance #${instanceId.current}`, 'success');
+    return () => {
+      console.log(`[Modal#${instanceId.current}] ❌ UNMOUNT après ${Date.now() - mountTime.current}ms`);
+    };
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
+      // Si on a un fichier en cours de traitement, ne pas réinitialiser
+      if (processingRef.current && fileBeingProcessed.current) {
+        addLog(`Modal rouvert MAIS traitement en cours - SKIP init`, 'warn');
+        return;
+      }
       addLog('Modal ouvert');
       loadMappingStats();
       loadCodesMapping();
@@ -78,6 +96,10 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   };
 
   const resetModal = () => {
+    if (processingRef.current) {
+      addLog('Reset bloqué - traitement en cours', 'warn');
+      return;
+    }
     setCurrentStep(1);
     setFile(null);
     setExtractedData(null);
@@ -86,7 +108,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setError(null);
     setValidation({ errors: [], warnings: [] });
     setExtractionMethod(null);
-    processingRef.current = false;
+    fileBeingProcessed.current = null;
   };
 
   const determineServiceTypeFromHoraires = (horaires) => {
@@ -186,17 +208,18 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     return validation;
   };
 
-  // ============ FONCTION PRINCIPALE - SANS ALERTES ============
+  // ============ FONCTION PRINCIPALE ============
   const handleFileUpload = async (uploadedFile) => {
     // Protection contre double appel
     if (processingRef.current) {
       addLog('Traitement déjà en cours, ignoré', 'warn');
       return;
     }
-    processingRef.current = true;
     
-    addLog(`>>> FICHIER REÇU: ${uploadedFile?.name}`, 'success');
-    addLog(`Taille: ${uploadedFile?.size} bytes`);
+    processingRef.current = true;
+    fileBeingProcessed.current = uploadedFile;
+    
+    addLog(`>>> FICHIER: ${uploadedFile?.name} (${uploadedFile?.size} bytes)`, 'success');
     
     setFile(uploadedFile);
     setLoading(true);
@@ -208,7 +231,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       const parsed = await PDFServiceWrapper.readPDF(uploadedFile);
       
       addLog(`OCR terminé: ${parsed?.method}`, 'success');
-      addLog(`Succès: ${parsed?.success}, Entrées: ${parsed?.entries?.length || 0}`);
+      addLog(`Entrées: ${parsed?.entries?.length || 0}`);
       
       if (!parsed || !parsed.success) {
         throw new Error(parsed?.error || 'Extraction échouée');
@@ -228,7 +251,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       setEditedData(JSON.parse(JSON.stringify(transformedData)));
       setLoading(false);
       
-      addLog('>>> PASSAGE ÉTAPE 2 <<<', 'success');
+      addLog('>>> ÉTAPE 2 <<<', 'success');
       setCurrentStep(2);
       
     } catch (err) {
@@ -237,6 +260,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       setLoading(false);
     } finally {
       processingRef.current = false;
+      fileBeingProcessed.current = null;
     }
   };
 
@@ -257,7 +281,15 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   const handleDataEdit = (newData) => setEditedData(newData);
   const goBackToUpload = () => { setCurrentStep(1); setExtractedData(null); setEditedData(null); setError(null); };
-  const handleClose = () => { resetModal(); onClose(); };
+  
+  const handleClose = () => { 
+    if (processingRef.current) {
+      addLog('Fermeture bloquée - traitement en cours', 'warn');
+      return;
+    }
+    resetModal(); 
+    onClose(); 
+  };
 
   if (!isOpen) return null;
 
@@ -265,14 +297,14 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     <div className={`fixed inset-0 z-50 ${isMobile ? 'bg-white' : 'bg-black bg-opacity-50 flex items-center justify-center p-2'}`}>
       <div className={`${isMobile ? 'h-full flex flex-col' : 'bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col'}`}>
         
-        {/* Header */}
+        {/* Header avec ID instance */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-3 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FileText size={20} />
               <div>
-                <h2 className="text-base font-bold">Import PDF {isMobile ? '📱' : '💻'}</h2>
-                <p className="text-blue-200 text-xs">Étape {currentStep}/3</p>
+                <h2 className="text-base font-bold">Import PDF #{instanceId.current}</h2>
+                <p className="text-blue-200 text-xs">Étape {currentStep}/3 {processingRef.current ? '⏳' : ''}</p>
               </div>
             </div>
             <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-lg">
@@ -281,13 +313,13 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           </div>
         </div>
 
-        {/* Debug log - TOUJOURS VISIBLE avec scroll */}
-        <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+        {/* Debug log */}
+        <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0" style={{ maxHeight: '120px', overflowY: 'auto' }}>
           <div className="text-gray-500 mb-1">--- Console ({debugLog.length}) ---</div>
           {debugLog.length === 0 ? (
-            <div className="text-gray-600">En attente de fichier...</div>
+            <div className="text-gray-600">En attente...</div>
           ) : (
-            debugLog.map((log, i) => (
+            debugLog.slice(-10).map((log, i) => (
               <div 
                 key={i} 
                 className={
@@ -340,8 +372,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-20">
             <div className="bg-white p-4 rounded-xl shadow-xl text-center mx-4">
               <Loader className="animate-spin mx-auto mb-2 text-blue-600" size={32} />
-              <p className="text-gray-700 text-sm">Analyse OCR en cours...</p>
-              <p className="text-gray-500 text-xs mt-1">Veuillez patienter</p>
+              <p className="text-gray-700 text-sm">Analyse OCR...</p>
             </div>
           </div>
         )}
