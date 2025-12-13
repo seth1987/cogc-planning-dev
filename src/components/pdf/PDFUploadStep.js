@@ -2,7 +2,7 @@
 // Version 2.0 - Responsive mobile avec gros bouton tactile
 import React from 'react';
 import { Upload, Key, Database, Lock, FileText } from 'lucide-react';
-import { useIsMobile } from '../../hooks/useIsMobile';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const PDFUploadStep = ({ 
   file, 
