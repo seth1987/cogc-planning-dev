@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Trash2, AlertTriangle, UserPlus } from 'lucide-react';
+import { X, Save, Trash2, AlertTriangle, UserPlus, Mail, Phone, RefreshCw, CheckCircle, Loader2 } from 'lucide-react';
 import { GROUPES_PAR_STATUT } from '../../constants/config';
+import { generateSNCFEmail, createAgentAccount, DEFAULT_PASSWORD } from '../../services/userManagementService';
 
+/**
+ * ModalEditAgent - Module central de gestion des agents
+ * 
+ * Fonctionnalités:
+ * - Création/modification des informations de base (nom, prénom, groupe, site, dates)
+ * - Gestion des coordonnées (email auto-généré, téléphone)
+ * - Création automatique du compte Auth Supabase à la création
+ * 
+ * v2.0 - Fusion Option A: Module tout-en-un
+ */
 const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) => {
   const [formData, setFormData] = useState({
     nom: '',
@@ -10,15 +21,30 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
     groupe: '',
     site: 'Paris Nord',
     date_arrivee: '',
-    date_depart: ''
+    date_depart: '',
+    email: '',
+    telephone: ''
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [emailManuallyEdited, setEmailManuallyEdited] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [accountStatus, setAccountStatus] = useState(null); // null, 'creating', 'created', 'exists', 'error'
+  const [accountError, setAccountError] = useState(null);
   
   // Mode création ou édition
   const isCreation = !agent;
 
+  // Générer l'email automatiquement quand nom/prénom changent (en mode création)
+  useEffect(() => {
+    if (isCreation && !emailManuallyEdited && formData.nom && formData.prenom) {
+      const generatedEmail = generateSNCFEmail(formData.nom, formData.prenom);
+      setFormData(prev => ({ ...prev, email: generatedEmail }));
+    }
+  }, [formData.nom, formData.prenom, isCreation, emailManuallyEdited]);
+
   useEffect(() => {
     if (agent) {
+      // Mode édition : charger les données existantes
       setFormData({
         nom: agent.nom || '',
         prenom: agent.prenom || '',
@@ -26,19 +52,29 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
         groupe: agent.groupe || '',
         site: agent.site || 'Paris Nord',
         date_arrivee: agent.date_arrivee || '',
-        date_depart: agent.date_depart || ''
+        date_depart: agent.date_depart || '',
+        email: agent.email || '',
+        telephone: agent.telephone || ''
       });
+      setEmailManuallyEdited(false);
+      setAccountStatus(null);
+      setAccountError(null);
     } else {
-      // Réinitialiser pour la création
+      // Mode création : réinitialiser
       setFormData({
         nom: '',
         prenom: '',
         statut: 'roulement',
         groupe: '',
         site: 'Paris Nord',
-        date_arrivee: new Date().toISOString().split('T')[0], // Date du jour par défaut
-        date_depart: ''
+        date_arrivee: new Date().toISOString().split('T')[0],
+        date_depart: '',
+        email: '',
+        telephone: ''
       });
+      setEmailManuallyEdited(false);
+      setAccountStatus(null);
+      setAccountError(null);
     }
   }, [agent]);
 
@@ -54,7 +90,20 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
     });
   };
 
-  const handleSave = () => {
+  const handleEmailChange = (value) => {
+    setFormData(prev => ({ ...prev, email: value }));
+    setEmailManuallyEdited(true);
+  };
+
+  const handleRegenerateEmail = () => {
+    if (formData.nom && formData.prenom) {
+      const generatedEmail = generateSNCFEmail(formData.nom, formData.prenom);
+      setFormData(prev => ({ ...prev, email: generatedEmail }));
+      setEmailManuallyEdited(false);
+    }
+  };
+
+  const handleSave = async () => {
     // Validation basique
     if (!formData.nom || !formData.prenom || !formData.groupe) {
       alert('Veuillez remplir tous les champs obligatoires');
@@ -62,17 +111,58 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
     }
     
     if (isCreation) {
-      // Appeler onCreate pour la création
-      if (onCreate) {
-        onCreate(formData);
+      // MODE CRÉATION : créer agent + compte Auth automatiquement
+      setCreatingAccount(true);
+      setAccountStatus('creating');
+      
+      try {
+        // 1. Créer l'agent en BDD (via onCreate qui appelle supabaseService.createAgent)
+        // Le formData inclut maintenant email et telephone
+        if (onCreate) {
+          const createdAgent = await onCreate(formData);
+          
+          // 2. Créer le compte Auth automatiquement
+          if (createdAgent && createdAgent.id) {
+            const accountResult = await createAgentAccount({
+              id: createdAgent.id,
+              nom: formData.nom,
+              prenom: formData.prenom,
+              email: formData.email
+            });
+            
+            if (accountResult.success) {
+              setAccountStatus('created');
+              console.log(`✅ Compte créé pour ${formData.nom} ${formData.prenom}`);
+            } else if (accountResult.exists) {
+              setAccountStatus('exists');
+              console.log(`ℹ️ Compte existant pour ${formData.email}`);
+            } else {
+              setAccountStatus('error');
+              setAccountError(accountResult.error);
+              console.error(`❌ Erreur création compte: ${accountResult.error}`);
+            }
+          }
+        }
+        
+        // Fermer après un court délai pour montrer le statut
+        setTimeout(() => {
+          onClose();
+        }, 500);
+        
+      } catch (err) {
+        setAccountStatus('error');
+        setAccountError(err.message);
+        console.error('Erreur création agent:', err);
+      } finally {
+        setCreatingAccount(false);
       }
     } else {
-      // Appeler onSave pour la mise à jour
+      // MODE ÉDITION : mettre à jour l'agent
       if (onSave) {
         onSave(agent.id, formData);
       }
+      onClose();
     }
-    onClose();
   };
 
   const handleDelete = () => {
@@ -87,7 +177,7 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
           <div>
             <h3 className="text-lg font-semibold">
@@ -110,95 +200,201 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
         </div>
         
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nom <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.nom}
-                onChange={(e) => handleInputChange('nom', e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                placeholder="NOM"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Prénom <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.prenom}
-                onChange={(e) => handleInputChange('prenom', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                placeholder="Prénom"
-              />
+          {/* === SECTION IDENTITÉ === */}
+          <div className="pb-3 border-b border-gray-200">
+            <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">Identité</h4>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nom <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.nom}
+                  onChange={(e) => handleInputChange('nom', e.target.value.toUpperCase())}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  placeholder="NOM"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Prénom <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.prenom}
+                  onChange={(e) => handleInputChange('prenom', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  placeholder="Prénom"
+                />
+              </div>
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
-            <select
-              value={formData.statut}
-              onChange={(e) => handleInputChange('statut', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-            >
-              <option value="roulement">Roulement</option>
-              <option value="reserve">Réserve</option>
-            </select>
-          </div>
+          {/* === SECTION AFFECTATION === */}
+          <div className="pb-3 border-b border-gray-200">
+            <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">Affectation</h4>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
+                <select
+                  value={formData.statut}
+                  onChange={(e) => handleInputChange('statut', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                >
+                  <option value="roulement">Roulement</option>
+                  <option value="reserve">Réserve</option>
+                </select>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Groupe <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={formData.groupe}
-              onChange={(e) => handleInputChange('groupe', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-            >
-              <option value="">Sélectionner un groupe</option>
-              {groupesDisponibles.map(groupe => (
-                <option key={groupe} value={groupe}>{groupe}</option>
-              ))}
-            </select>
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Groupe <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.groupe}
+                  onChange={(e) => handleInputChange('groupe', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                >
+                  <option value="">Sélectionner un groupe</option>
+                  {groupesDisponibles.map(groupe => (
+                    <option key={groupe} value={groupe}>{groupe}</option>
+                  ))}
+                </select>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Site</label>
-            <select
-              value={formData.site}
-              onChange={(e) => handleInputChange('site', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-            >
-              <option value="Paris Nord">Paris Nord</option>
-              <option value="Denfert-Rochereau">Denfert-Rochereau</option>
-            </select>
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Site</label>
+                <select
+                  value={formData.site}
+                  onChange={(e) => handleInputChange('site', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                >
+                  <option value="Paris Nord">Paris Nord</option>
+                  <option value="Denfert-Rochereau">Denfert-Rochereau</option>
+                </select>
+              </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date d'arrivée</label>
-              <input
-                type="date"
-                value={formData.date_arrivee}
-                onChange={(e) => handleInputChange('date_arrivee', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date d'arrivée</label>
+                  <input
+                    type="date"
+                    value={formData.date_arrivee}
+                    onChange={(e) => handleInputChange('date_arrivee', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date de départ</label>
+                  <input
+                    type="date"
+                    value={formData.date_depart}
+                    onChange={(e) => handleInputChange('date_depart', e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date de départ (optionnel)</label>
-              <input
-                type="date"
-                value={formData.date_depart}
-                onChange={(e) => handleInputChange('date_depart', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-              />
+          </div>
+
+          {/* === SECTION COORDONNÉES === */}
+          <div className="pb-3 border-b border-gray-200">
+            <h4 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-3">Coordonnées</h4>
+            
+            <div className="space-y-3">
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <Mail className="inline w-4 h-4 mr-1" />
+                  Email
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleEmailChange(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                    placeholder="prenom.nom@reseau.sncf.fr"
+                  />
+                  {emailManuallyEdited && formData.nom && formData.prenom && (
+                    <button
+                      type="button"
+                      onClick={handleRegenerateEmail}
+                      className="px-3 py-2 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                      title="Régénérer l'email automatiquement"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                {isCreation && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {emailManuallyEdited ? (
+                      <span className="text-orange-600">✏️ Email modifié manuellement</span>
+                    ) : (
+                      <span className="text-green-600">✓ Généré automatiquement</span>
+                    )}
+                  </p>
+                )}
+              </div>
+
+              {/* Téléphone */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <Phone className="inline w-4 h-4 mr-1" />
+                  Téléphone
+                </label>
+                <input
+                  type="tel"
+                  value={formData.telephone}
+                  onChange={(e) => handleInputChange('telephone', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  placeholder="06 XX XX XX XX"
+                />
+              </div>
             </div>
           </div>
+
+          {/* === INFO COMPTE (création uniquement) === */}
+          {isCreation && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <h4 className="text-sm font-medium text-blue-800 mb-2">
+                🔐 Compte utilisateur
+              </h4>
+              <p className="text-xs text-blue-700">
+                Un compte sera créé automatiquement avec le mot de passe : 
+                <code className="bg-blue-100 px-2 py-0.5 rounded ml-1">{DEFAULT_PASSWORD}</code>
+              </p>
+              {accountStatus === 'creating' && (
+                <p className="text-xs text-blue-600 mt-2 flex items-center">
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  Création du compte en cours...
+                </p>
+              )}
+              {accountStatus === 'created' && (
+                <p className="text-xs text-green-600 mt-2 flex items-center">
+                  <CheckCircle className="w-3 h-3 mr-1" />
+                  Compte créé avec succès !
+                </p>
+              )}
+              {accountStatus === 'exists' && (
+                <p className="text-xs text-orange-600 mt-2">
+                  ℹ️ Un compte existe déjà pour cet email
+                </p>
+              )}
+              {accountStatus === 'error' && (
+                <p className="text-xs text-red-600 mt-2">
+                  ❌ Erreur: {accountError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
+        {/* === BOUTONS ACTION === */}
         <div className="flex justify-between mt-6">
           {!isCreation && (
             <button
@@ -211,15 +407,24 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
           )}
           
           <div className={`flex space-x-2 ${isCreation ? 'ml-auto' : ''}`}>
-            <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50">
+            <button 
+              onClick={onClose} 
+              className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
+              disabled={creatingAccount}
+            >
               Annuler
             </button>
             <button 
               onClick={handleSave}
-              disabled={!formData.nom || !formData.prenom || !formData.groupe}
+              disabled={!formData.nom || !formData.prenom || !formData.groupe || creatingAccount}
               className="flex items-center px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300"
             >
-              {isCreation ? (
+              {creatingAccount ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  Création...
+                </>
+              ) : isCreation ? (
                 <>
                   <UserPlus className="w-4 h-4 mr-1" />
                   Créer
@@ -234,6 +439,7 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
           </div>
         </div>
 
+        {/* === MODAL CONFIRMATION SUPPRESSION === */}
         {showDeleteConfirm && !isCreation && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
