@@ -9,7 +9,7 @@ import PDFUploadStep from '../pdf/PDFUploadStep';
 import PDFValidationStep from '../pdf/PDFValidationStep';
 import PDFImportResult from '../pdf/PDFImportResult';
 import { supabase } from '../../lib/supabaseClient';
-import { useIsMobile } from '../../hooks/useIsMobile';
+import useIsMobile from '../../hooks/useIsMobile';
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const isMobile = useIsMobile();
