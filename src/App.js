@@ -5,6 +5,7 @@ import { AlertTriangle } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { usePlanning } from './hooks/usePlanning';
 import { useModals } from './hooks/useModals';
+import { useIsMobile } from './hooks/useIsMobile';
 
 // Services
 import supabaseService from './services/supabaseService';
@@ -15,6 +16,7 @@ import MonthTabs from './components/MonthTabs';
 import PlanningTable from './components/PlanningTable';
 import LoginPage from './components/LoginPage';
 import LandingPage from './components/LandingPage';
+import PageUploadPDF from './components/PageUploadPDF';
 
 // Modals
 import ModalCellEdit from './components/modals/ModalCellEdit';
@@ -38,13 +40,14 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
- * v2.5 - Fusion Option A: ModalEditAgent central (création agent + compte Auth auto)
+ * v2.6 - Hybride: Modal PDF sur desktop, Page dédiée sur mobile
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
   const { user, loading: authLoading, signOut } = useAuth();
+  const isMobile = useIsMobile();
   
-  // État de navigation : 'landing' ou 'planning'
+  // État de navigation : 'landing', 'planning', ou 'uploadPDF' (mobile uniquement)
   const [currentView, setCurrentView] = React.useState('landing');
   
   // État du mois sélectionné
@@ -84,7 +87,7 @@ const App = () => {
     openGestionAgents,
     openEditAgent,
     openHabilitations,
-    openUploadPDF,
+    openUploadPDF: openUploadPDFModal,
     openPrevisionnelJour,
     closeModal,
     setSelectedAgent
@@ -92,6 +95,18 @@ const App = () => {
 
   // État debug (dev only)
   const [showDebug, setShowDebug] = React.useState(false);
+
+  // === HANDLER HYBRIDE UPLOAD PDF ===
+  // Desktop → Modal | Mobile → Page dédiée
+  const openUploadPDF = React.useCallback(() => {
+    if (isMobile) {
+      console.log('📱 Mobile détecté → Page dédiée PDF');
+      setCurrentView('uploadPDF');
+    } else {
+      console.log('🖥️ Desktop détecté → Modal PDF');
+      openUploadPDFModal();
+    }
+  }, [isMobile, openUploadPDFModal]);
 
   // === CHARGEMENT DES ANNÉES DISPONIBLES ===
   // Configuration: années à toujours afficher (même sans données)
@@ -146,6 +161,11 @@ const App = () => {
   // Retour à la landing page
   const handleBackToLanding = () => {
     setCurrentView('landing');
+  };
+
+  // Retour au planning (depuis page PDF mobile)
+  const handleBackToPlanning = () => {
+    setCurrentView('planning');
   };
 
   // Handler pour changement d'année
@@ -288,6 +308,10 @@ const App = () => {
   const handleUploadSuccess = () => {
     loadData(currentMonth);
     setConnectionStatus('✅ Planning importé avec succès');
+    // Si on est sur la page mobile, revenir au planning
+    if (currentView === 'uploadPDF') {
+      setCurrentView('planning');
+    }
   };
 
   // === RENDU CONDITIONNEL ===
@@ -315,6 +339,16 @@ const App = () => {
       <LandingPage 
         onNavigate={handleNavigate}
         user={user}
+      />
+    );
+  }
+
+  // === PAGE UPLOAD PDF (MOBILE UNIQUEMENT) ===
+  if (currentView === 'uploadPDF') {
+    return (
+      <PageUploadPDF 
+        onBack={handleBackToPlanning}
+        onSuccess={handleUploadSuccess}
       />
     );
   }
@@ -458,11 +492,14 @@ const App = () => {
         onRemoveHabilitation={handleRemoveHabilitation}
       />
       
-      <ModalUploadPDF
-        isOpen={modals.uploadPDF}
-        onClose={() => closeModal('uploadPDF')}
-        onSuccess={handleUploadSuccess}
-      />
+      {/* Modal PDF - Desktop uniquement (mobile utilise PageUploadPDF) */}
+      {!isMobile && (
+        <ModalUploadPDF
+          isOpen={modals.uploadPDF}
+          onClose={() => closeModal('uploadPDF')}
+          onSuccess={handleUploadSuccess}
+        />
+      )}
 
       {/* Modal Équipes du Jour */}
       <ModalPrevisionnelJour
