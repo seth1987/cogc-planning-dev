@@ -5,11 +5,12 @@ import { supabase } from '../../lib/supabaseClient';
  * ModalStatistiques - Compteurs et analyses pour l'agent connecté
  * 
  * Affiche les statistiques de l'agent :
- * - Compteurs par type (Matin, Soir, Nuit, RP, CP, MA)
+ * - Compteurs par type de vacation : - (Matin), O (Soir), X (Nuit)
+ * - Compteurs RP, CP, MA
  * - Pourcentages mensuels et annuels
  * - Compteurs des positions supplémentaires (+CCU, +RO, +RC, etc.)
  * 
- * v1.0 - Création initiale
+ * v1.1 - Comptage basé sur les marqueurs -, O, X
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -31,14 +32,14 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
   ];
 
-  // Catégories de comptage
+  // Catégories de comptage - CORRIGÉES selon les marqueurs
   const categories = [
-    { key: 'matin', label: 'Matinées', color: '#FFC107' },
-    { key: 'soiree', label: 'Soirées', color: '#FF5722' },
-    { key: 'nuit', label: 'Nuits', color: '#3F51B5' },
+    { key: 'matin', label: 'Matinées (-)', color: '#FFC107', marker: '-' },
+    { key: 'soiree', label: 'Soirées (O)', color: '#FF5722', marker: 'O' },
+    { key: 'nuit', label: 'Nuits (X)', color: '#3F51B5', marker: 'X' },
     { key: 'rp', label: 'RP', color: '#4CAF50' },
-    { key: 'cp', label: 'CP', color: '#2196F3' },
-    { key: 'ma', label: 'MA', color: '#FF9800' }
+    { key: 'cp', label: 'CP/C', color: '#2196F3' },
+    { key: 'ma', label: 'MA', color: '#f44336' }
   ];
 
   // Charger les infos agent
@@ -59,7 +60,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     }
   }, [currentUser]);
 
-  // Calculer les statistiques
+  // Calculer les statistiques - LOGIQUE CORRIGÉE
   const loadStats = useCallback(async () => {
     if (!agentInfo?.id) return;
 
@@ -95,50 +96,68 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
         };
       }
 
-      // Analyser les données
+      // Analyser les données avec la BONNE logique
       (data || []).forEach(entry => {
         const month = new Date(entry.date).getMonth();
-        const code = (entry.service_code || '').toUpperCase();
-        const type = entry.type_service;
+        const code = (entry.service_code || '').toUpperCase().trim();
 
-        // Compter les types de service
-        if (code.includes('RP') || code === 'RP') {
-          byMonth[month].rp++;
-          annual.rp++;
-        } else if (code.includes('CP')) {
-          byMonth[month].cp++;
-          annual.cp++;
-        } else if (code.includes('MA') || code.includes('MALADIE')) {
-          byMonth[month].ma++;
-          annual.ma++;
-        } else if (type === 'matin' || code.match(/00[1-4]$/)) {
+        // === COMPTAGE DES VACATIONS selon les marqueurs ===
+        // Matinée = "-"
+        if (code === '-') {
           byMonth[month].matin++;
           annual.matin++;
-        } else if (type === 'soiree' || code.match(/00[5-7]$/)) {
+          byMonth[month].total++;
+          annual.total++;
+        }
+        // Soirée = "O"
+        else if (code === 'O') {
           byMonth[month].soiree++;
           annual.soiree++;
-        } else if (type === 'nuit' || code.match(/00[3]$/) && code.includes('CCU')) {
+          byMonth[month].total++;
+          annual.total++;
+        }
+        // Nuit = "X"
+        else if (code === 'X') {
           byMonth[month].nuit++;
           annual.nuit++;
+          byMonth[month].total++;
+          annual.total++;
         }
-
-        // Compter le total
-        if (code && !['RP', 'CP'].includes(code)) {
+        // === COMPTAGE DES ABSENCES ===
+        // Repos périodique
+        else if (code === 'RP' || code === 'RU') {
+          byMonth[month].rp++;
+          annual.rp++;
+        }
+        // Congés
+        else if (code === 'C' || code === 'CP') {
+          byMonth[month].cp++;
+          annual.cp++;
+        }
+        // Maladie
+        else if (code === 'MA' || code === 'MALADIE') {
+          byMonth[month].ma++;
+          annual.ma++;
+        }
+        // Autres services (D, DISPO, FO, HAB, etc.) - comptés dans total travaillé
+        else if (code && !['RP', 'RU', 'C', 'CP', 'MA', 'MALADIE', 'NU', 'VT', 'I'].includes(code)) {
           byMonth[month].total++;
           annual.total++;
         }
 
         // Compter les positions supplémentaires
-        if (entry.position_supplementaire) {
-          const sup = entry.position_supplementaire.toUpperCase();
-          if (!supplements[sup]) {
-            supplements[sup] = { count: 0, byMonth: {} };
-          }
-          supplements[sup].count++;
-          if (!supplements[sup].byMonth[month]) {
-            supplements[sup].byMonth[month] = 0;
-          }
-          supplements[sup].byMonth[month]++;
+        if (entry.postes_supplementaires && Array.isArray(entry.postes_supplementaires)) {
+          entry.postes_supplementaires.forEach(sup => {
+            const supCode = sup.toUpperCase();
+            if (!supplements[supCode]) {
+              supplements[supCode] = { count: 0, byMonth: {} };
+            }
+            supplements[supCode].count++;
+            if (!supplements[supCode].byMonth[month]) {
+              supplements[supCode].byMonth[month] = 0;
+            }
+            supplements[supCode].byMonth[month]++;
+          });
         }
       });
 
@@ -170,6 +189,9 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   };
 
   if (!isOpen) return null;
+
+  // Total des vacations (matins + soirs + nuits)
+  const totalVacations = stats.annual.matin + stats.annual.soiree + stats.annual.nuit;
 
   return (
     <div style={styles.overlay} onClick={onClose}>
@@ -209,24 +231,79 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
           <div style={styles.loading}>Chargement des statistiques...</div>
         ) : (
           <div style={styles.content}>
-            {/* Résumé annuel */}
+            {/* Résumé annuel - Vacations */}
             <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>📅 Résumé Annuel {selectedYear}</h3>
-              <div style={styles.annualGrid}>
-                {categories.map(cat => (
-                  <div key={cat.key} style={styles.statCard}>
-                    <div style={{...styles.statIcon, backgroundColor: cat.color}}>
-                      {stats.annual[cat.key] || 0}
-                    </div>
-                    <div style={styles.statLabel}>{cat.label}</div>
-                    <div style={styles.statPercent}>
-                      {getPercentage(stats.annual[cat.key], stats.annual.total)}
-                    </div>
+              <h3 style={styles.sectionTitle}>📅 Vacations {selectedYear}</h3>
+              <div style={styles.vacationsGrid}>
+                {/* Matinées */}
+                <div style={styles.statCard}>
+                  <div style={{...styles.statIcon, backgroundColor: '#FFC107'}}>
+                    {stats.annual.matin}
                   </div>
-                ))}
+                  <div style={styles.statLabel}>Matinées</div>
+                  <div style={styles.statMarker}>( - )</div>
+                  <div style={styles.statPercent}>
+                    {getPercentage(stats.annual.matin, totalVacations)}
+                  </div>
+                </div>
+                
+                {/* Soirées */}
+                <div style={styles.statCard}>
+                  <div style={{...styles.statIcon, backgroundColor: '#FF5722'}}>
+                    {stats.annual.soiree}
+                  </div>
+                  <div style={styles.statLabel}>Soirées</div>
+                  <div style={styles.statMarker}>( O )</div>
+                  <div style={styles.statPercent}>
+                    {getPercentage(stats.annual.soiree, totalVacations)}
+                  </div>
+                </div>
+                
+                {/* Nuits */}
+                <div style={styles.statCard}>
+                  <div style={{...styles.statIcon, backgroundColor: '#3F51B5'}}>
+                    {stats.annual.nuit}
+                  </div>
+                  <div style={styles.statLabel}>Nuits</div>
+                  <div style={styles.statMarker}>( X )</div>
+                  <div style={styles.statPercent}>
+                    {getPercentage(stats.annual.nuit, totalVacations)}
+                  </div>
+                </div>
               </div>
+              
               <div style={styles.totalBox}>
-                <strong>Total services :</strong> {stats.annual.total}
+                <strong>Total vacations :</strong> {totalVacations}
+              </div>
+            </div>
+
+            {/* Résumé annuel - Absences */}
+            <div style={styles.section}>
+              <h3 style={styles.sectionTitle}>🏠 Absences {selectedYear}</h3>
+              <div style={styles.absencesGrid}>
+                {/* RP */}
+                <div style={styles.statCardSmall}>
+                  <div style={{...styles.statIconSmall, backgroundColor: '#4CAF50'}}>
+                    {stats.annual.rp}
+                  </div>
+                  <div style={styles.statLabelSmall}>Repos (RP)</div>
+                </div>
+                
+                {/* CP */}
+                <div style={styles.statCardSmall}>
+                  <div style={{...styles.statIconSmall, backgroundColor: '#2196F3'}}>
+                    {stats.annual.cp}
+                  </div>
+                  <div style={styles.statLabelSmall}>Congés (C)</div>
+                </div>
+                
+                {/* MA */}
+                <div style={styles.statCardSmall}>
+                  <div style={{...styles.statIconSmall, backgroundColor: '#f44336'}}>
+                    {stats.annual.ma}
+                  </div>
+                  <div style={styles.statLabelSmall}>Maladie (MA)</div>
+                </div>
               </div>
             </div>
 
@@ -238,11 +315,12 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                   <thead>
                     <tr>
                       <th style={styles.th}>Mois</th>
-                      {categories.map(cat => (
-                        <th key={cat.key} style={{...styles.th, color: cat.color}}>
-                          {cat.label}
-                        </th>
-                      ))}
+                      <th style={{...styles.th, color: '#FFC107'}}>-</th>
+                      <th style={{...styles.th, color: '#FF5722'}}>O</th>
+                      <th style={{...styles.th, color: '#3F51B5'}}>X</th>
+                      <th style={{...styles.th, color: '#4CAF50'}}>RP</th>
+                      <th style={{...styles.th, color: '#2196F3'}}>C</th>
+                      <th style={{...styles.th, color: '#f44336'}}>MA</th>
                       <th style={styles.th}>Total</th>
                     </tr>
                   </thead>
@@ -250,16 +328,34 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                     {months.map((month, idx) => (
                       <tr key={idx} style={styles.tr}>
                         <td style={styles.td}>{month}</td>
-                        {categories.map(cat => (
-                          <td key={cat.key} style={styles.td}>
-                            {stats.byMonth[idx]?.[cat.key] || 0}
-                          </td>
-                        ))}
+                        <td style={{...styles.td, color: '#FFC107', fontWeight: 'bold'}}>
+                          {stats.byMonth[idx]?.matin || 0}
+                        </td>
+                        <td style={{...styles.td, color: '#FF5722', fontWeight: 'bold'}}>
+                          {stats.byMonth[idx]?.soiree || 0}
+                        </td>
+                        <td style={{...styles.td, color: '#3F51B5', fontWeight: 'bold'}}>
+                          {stats.byMonth[idx]?.nuit || 0}
+                        </td>
+                        <td style={styles.td}>{stats.byMonth[idx]?.rp || 0}</td>
+                        <td style={styles.td}>{stats.byMonth[idx]?.cp || 0}</td>
+                        <td style={styles.td}>{stats.byMonth[idx]?.ma || 0}</td>
                         <td style={{...styles.td, fontWeight: 'bold'}}>
                           {stats.byMonth[idx]?.total || 0}
                         </td>
                       </tr>
                     ))}
+                    {/* Ligne totaux */}
+                    <tr style={{...styles.tr, backgroundColor: 'rgba(0, 240, 255, 0.1)'}}>
+                      <td style={{...styles.td, fontWeight: 'bold'}}>TOTAL</td>
+                      <td style={{...styles.td, color: '#FFC107', fontWeight: 'bold'}}>{stats.annual.matin}</td>
+                      <td style={{...styles.td, color: '#FF5722', fontWeight: 'bold'}}>{stats.annual.soiree}</td>
+                      <td style={{...styles.td, color: '#3F51B5', fontWeight: 'bold'}}>{stats.annual.nuit}</td>
+                      <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.rp}</td>
+                      <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.cp}</td>
+                      <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.ma}</td>
+                      <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.total}</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -286,11 +382,15 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
 
             {/* Graphique visuel */}
             <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>📈 Répartition Services</h3>
+              <h3 style={styles.sectionTitle}>📈 Répartition Vacations</h3>
               <div style={styles.barChart}>
-                {categories.map(cat => {
+                {[
+                  { key: 'matin', label: 'Matinées (-)', color: '#FFC107' },
+                  { key: 'soiree', label: 'Soirées (O)', color: '#FF5722' },
+                  { key: 'nuit', label: 'Nuits (X)', color: '#3F51B5' }
+                ].map(cat => {
                   const value = stats.annual[cat.key] || 0;
-                  const max = Math.max(...categories.map(c => stats.annual[c.key] || 0), 1);
+                  const max = Math.max(stats.annual.matin, stats.annual.soiree, stats.annual.nuit, 1);
                   const width = (value / max) * 100;
                   
                   return (
@@ -321,10 +421,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
 const styles = {
   overlay: {
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
     display: 'flex',
     justifyContent: 'center',
@@ -336,7 +433,7 @@ const styles = {
     backgroundColor: '#1a1a2e',
     borderRadius: '16px',
     width: '100%',
-    maxWidth: '800px',
+    maxWidth: '700px',
     maxHeight: '90vh',
     overflow: 'auto',
     border: '1px solid rgba(0, 240, 255, 0.3)',
@@ -353,203 +450,91 @@ const styles = {
     backgroundColor: '#1a1a2e',
     zIndex: 10
   },
-  title: {
-    margin: 0,
-    color: '#00f0ff',
-    fontSize: '20px'
-  },
+  title: { margin: 0, color: '#00f0ff', fontSize: '20px' },
   closeBtn: {
-    background: 'none',
-    border: 'none',
-    color: 'white',
-    fontSize: '24px',
-    cursor: 'pointer',
-    padding: '5px 10px'
+    background: 'none', border: 'none', color: 'white',
+    fontSize: '24px', cursor: 'pointer', padding: '5px 10px'
   },
   agentInfo: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: '15px',
-    padding: '15px',
-    backgroundColor: 'rgba(0, 102, 179, 0.2)'
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    gap: '15px', padding: '15px', backgroundColor: 'rgba(0, 102, 179, 0.2)'
   },
-  agentName: {
-    color: 'white',
-    fontWeight: 'bold'
-  },
+  agentName: { color: 'white', fontWeight: 'bold' },
   agentGroup: {
-    color: '#00f0ff',
-    backgroundColor: 'rgba(0, 240, 255, 0.2)',
-    padding: '4px 12px',
-    borderRadius: '12px',
-    fontSize: '12px'
+    color: '#00f0ff', backgroundColor: 'rgba(0, 240, 255, 0.2)',
+    padding: '4px 12px', borderRadius: '12px', fontSize: '12px'
   },
   yearSelector: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: '20px',
-    padding: '15px'
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    gap: '20px', padding: '15px'
   },
   yearBtn: {
-    background: 'rgba(0, 240, 255, 0.2)',
-    border: '1px solid rgba(0, 240, 255, 0.4)',
-    color: 'white',
-    padding: '8px 15px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '16px'
+    background: 'rgba(0, 240, 255, 0.2)', border: '1px solid rgba(0, 240, 255, 0.4)',
+    color: 'white', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontSize: '16px'
   },
-  yearTitle: {
-    color: 'white',
-    fontSize: '24px',
-    fontWeight: 'bold'
-  },
-  loading: {
-    textAlign: 'center',
-    color: 'white',
-    padding: '40px'
-  },
-  content: {
-    padding: '20px'
-  },
-  section: {
-    marginBottom: '30px'
-  },
+  yearTitle: { color: 'white', fontSize: '24px', fontWeight: 'bold' },
+  loading: { textAlign: 'center', color: 'white', padding: '40px' },
+  content: { padding: '20px' },
+  section: { marginBottom: '30px' },
   sectionTitle: {
-    color: '#00f0ff',
-    fontSize: '16px',
-    marginBottom: '15px',
-    paddingBottom: '10px',
-    borderBottom: '1px solid rgba(0, 240, 255, 0.2)'
+    color: '#00f0ff', fontSize: '16px', marginBottom: '15px',
+    paddingBottom: '10px', borderBottom: '1px solid rgba(0, 240, 255, 0.2)'
   },
-  annualGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(6, 1fr)',
-    gap: '10px'
-  },
+  vacationsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' },
+  absencesGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' },
   statCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '12px',
-    padding: '15px 10px',
-    textAlign: 'center'
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px',
+    padding: '20px 15px', textAlign: 'center'
+  },
+  statCardSmall: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px',
+    padding: '12px 10px', textAlign: 'center'
   },
   statIcon: {
-    width: '50px',
-    height: '50px',
-    borderRadius: '50%',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    margin: '0 auto 10px',
-    fontSize: '18px',
-    fontWeight: 'bold',
-    color: 'white'
+    width: '60px', height: '60px', borderRadius: '50%',
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    margin: '0 auto 10px', fontSize: '22px', fontWeight: 'bold', color: 'white'
   },
-  statLabel: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: '11px',
-    marginBottom: '5px'
+  statIconSmall: {
+    width: '45px', height: '45px', borderRadius: '50%',
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    margin: '0 auto 8px', fontSize: '16px', fontWeight: 'bold', color: 'white'
   },
-  statPercent: {
-    color: '#00f0ff',
-    fontSize: '12px',
-    fontWeight: 'bold'
-  },
+  statLabel: { color: 'rgba(255, 255, 255, 0.9)', fontSize: '13px', marginBottom: '3px' },
+  statLabelSmall: { color: 'rgba(255, 255, 255, 0.7)', fontSize: '11px' },
+  statMarker: { color: 'rgba(255, 255, 255, 0.5)', fontSize: '11px', marginBottom: '5px' },
+  statPercent: { color: '#00f0ff', fontSize: '14px', fontWeight: 'bold' },
   totalBox: {
-    textAlign: 'center',
-    marginTop: '15px',
-    padding: '10px',
-    backgroundColor: 'rgba(0, 240, 255, 0.1)',
-    borderRadius: '8px',
-    color: 'white'
+    textAlign: 'center', marginTop: '15px', padding: '12px',
+    backgroundColor: 'rgba(0, 240, 255, 0.1)', borderRadius: '8px', color: 'white', fontSize: '15px'
   },
-  tableContainer: {
-    overflowX: 'auto'
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    fontSize: '12px'
-  },
+  tableContainer: { overflowX: 'auto' },
+  table: { width: '100%', borderCollapse: 'collapse', fontSize: '12px' },
   th: {
-    padding: '10px 5px',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    color: 'white',
-    textAlign: 'center',
-    fontWeight: 'bold'
+    padding: '10px 5px', backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    color: 'white', textAlign: 'center', fontWeight: 'bold'
   },
-  tr: {
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
-  },
-  td: {
-    padding: '8px 5px',
-    color: 'white',
-    textAlign: 'center'
-  },
+  tr: { borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
+  td: { padding: '8px 5px', color: 'white', textAlign: 'center' },
   supplementsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
-    gap: '10px'
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '10px'
   },
   supplementCard: {
-    backgroundColor: 'rgba(255, 215, 0, 0.2)',
-    border: '1px solid rgba(255, 215, 0, 0.4)',
-    borderRadius: '10px',
-    padding: '12px',
-    textAlign: 'center'
+    backgroundColor: 'rgba(255, 215, 0, 0.2)', border: '1px solid rgba(255, 215, 0, 0.4)',
+    borderRadius: '10px', padding: '12px', textAlign: 'center'
   },
-  supplementName: {
-    color: '#FFD700',
-    fontSize: '12px',
-    fontWeight: 'bold',
-    marginBottom: '5px'
-  },
-  supplementCount: {
-    color: 'white',
-    fontSize: '20px',
-    fontWeight: 'bold'
-  },
-  noData: {
-    color: 'rgba(255, 255, 255, 0.5)',
-    textAlign: 'center',
-    fontStyle: 'italic'
-  },
-  barChart: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '10px'
-  },
-  barRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
-  },
-  barLabel: {
-    width: '70px',
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: '12px',
-    textAlign: 'right'
-  },
+  supplementName: { color: '#FFD700', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' },
+  supplementCount: { color: 'white', fontSize: '20px', fontWeight: 'bold' },
+  noData: { color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', fontStyle: 'italic' },
+  barChart: { display: 'flex', flexDirection: 'column', gap: '12px' },
+  barRow: { display: 'flex', alignItems: 'center', gap: '10px' },
+  barLabel: { width: '100px', color: 'rgba(255, 255, 255, 0.8)', fontSize: '12px', textAlign: 'right' },
   barContainer: {
-    flex: 1,
-    height: '20px',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: '10px',
-    overflow: 'hidden'
+    flex: 1, height: '24px', backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: '12px', overflow: 'hidden'
   },
-  bar: {
-    height: '100%',
-    borderRadius: '10px',
-    transition: 'width 0.5s ease'
-  },
-  barValue: {
-    width: '40px',
-    color: 'white',
-    fontSize: '12px',
-    fontWeight: 'bold'
-  }
+  bar: { height: '100%', borderRadius: '12px', transition: 'width 0.5s ease' },
+  barValue: { width: '40px', color: 'white', fontSize: '14px', fontWeight: 'bold' }
 };
 
 export default ModalStatistiques;
