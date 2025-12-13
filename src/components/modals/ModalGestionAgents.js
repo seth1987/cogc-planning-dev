@@ -1,7 +1,46 @@
-import React from 'react';
-import { X, Edit, Info, Plus } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, Edit, Info, Plus, ChevronUp, ChevronDown } from 'lucide-react';
 
 const ModalGestionAgents = ({ isOpen, agents, onClose, onEditAgent, onViewHabilitations, onAddAgent }) => {
+  const [sortOrder, setSortOrder] = useState(null); // null, 'asc', 'desc'
+
+  const sortedAgents = useMemo(() => {
+    if (!sortOrder) return agents;
+    return [...agents].sort((a, b) => {
+      const nameA = a.nom.toUpperCase();
+      const nameB = b.nom.toUpperCase();
+      if (sortOrder === 'asc') {
+        return nameA.localeCompare(nameB, 'fr');
+      } else {
+        return nameB.localeCompare(nameA, 'fr');
+      }
+    });
+  }, [agents, sortOrder]);
+
+  const toggleSort = () => {
+    if (sortOrder === null) {
+      setSortOrder('asc');
+    } else if (sortOrder === 'asc') {
+      setSortOrder('desc');
+    } else {
+      setSortOrder(null);
+    }
+  };
+
+  const SortIcon = () => {
+    if (sortOrder === 'asc') {
+      return <ChevronUp className="w-4 h-4 text-blue-600" />;
+    } else if (sortOrder === 'desc') {
+      return <ChevronDown className="w-4 h-4 text-blue-600" />;
+    }
+    return (
+      <div className="flex flex-col -space-y-1">
+        <ChevronUp className="w-3 h-3 text-gray-400" />
+        <ChevronDown className="w-3 h-3 text-gray-400" />
+      </div>
+    );
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -18,7 +57,16 @@ const ModalGestionAgents = ({ isOpen, agents, onClose, onEditAgent, onViewHabili
           <table className="w-full">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
-                <th className="px-4 py-2 text-left text-sm font-medium">Agent</th>
+                <th className="px-4 py-2 text-left text-sm font-medium">
+                  <button 
+                    onClick={toggleSort}
+                    className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                    title="Trier par nom"
+                  >
+                    Agent
+                    <SortIcon />
+                  </button>
+                </th>
                 <th className="px-4 py-2 text-left text-sm font-medium">Statut</th>
                 <th className="px-4 py-2 text-left text-sm font-medium">Groupe</th>
                 <th className="px-4 py-2 text-left text-sm font-medium">Site</th>
@@ -26,7 +74,7 @@ const ModalGestionAgents = ({ isOpen, agents, onClose, onEditAgent, onViewHabili
               </tr>
             </thead>
             <tbody>
-              {agents.map(agent => (
+              {sortedAgents.map(agent => (
                 <tr key={agent.id} className="border-t hover:bg-gray-50">
                   <td className="px-4 py-2 text-sm">
                     <div className="font-medium">{agent.nom} {agent.prenom}</div>
