@@ -3,6 +3,8 @@ import './LandingPage.css';
 import ModalAnnuaire from './modals/ModalAnnuaire';
 import ModalDocuments from './modals/ModalDocuments';
 import ModalAide from './modals/ModalAide';
+import ModalMonPlanning from './modals/ModalMonPlanning';
+import ModalStatistiques from './modals/ModalStatistiques';
 
 /**
  * LandingPage - Page d'accueil avec design Nexaverse
@@ -10,7 +12,7 @@ import ModalAide from './modals/ModalAide';
  * Design inspiré du template Nexaverse avec adaptations pour COGC Planning.
  * Affiche un menu moderne avec accès au planning et autres fonctionnalités.
  * 
- * v2.9 - Ajout modal d'aide intégré
+ * v3.0 - Passage à 9 boutons avec Mon Planning et Statistiques
  */
 const LandingPage = ({ onNavigate, user }) => {
   const [isLoading, setIsLoading] = useState(true);
@@ -18,6 +20,8 @@ const LandingPage = ({ onNavigate, user }) => {
   const [showAnnuaire, setShowAnnuaire] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
   const [showAide, setShowAide] = useState(false);
+  const [showMonPlanning, setShowMonPlanning] = useState(false);
+  const [showStatistiques, setShowStatistiques] = useState(false);
 
   // Simulate loading and trigger animations
   useEffect(() => {
@@ -35,29 +39,29 @@ const LandingPage = ({ onNavigate, user }) => {
     };
   }, []);
 
-  // Menu items configuration
+  // Menu items configuration - 9 boutons
   const menuItems = [
     {
-      id: 'planning',
+      id: 'planning-complet',
       badge: '📅',
-      title: 'Planning',
-      subtitle: 'Gestion des services',
+      title: 'Planning complet',
+      subtitle: 'Tous les agents',
       isPlanning: true,
       action: () => onNavigate('planning')
     },
     {
-      id: 'annuaire',
-      badge: '📇',
-      title: 'Annuaire',
-      subtitle: 'Contacts COGC',
-      action: () => setShowAnnuaire(true)
+      id: 'mon-planning',
+      badge: '📆',
+      title: 'Mon Planning',
+      subtitle: 'Planning personnel',
+      action: () => setShowMonPlanning(true)
     },
     {
-      id: 'durandal',
-      badge: '🚨',
-      title: 'Durandal',
-      subtitle: 'Gestion des incidents',
-      action: () => window.open('https://durandal2.sso.reseau.sncf.fr/incidents/index', '_blank')
+      id: 'statistiques',
+      badge: '📊',
+      title: 'Statistiques',
+      subtitle: 'Compteurs & analyses',
+      action: () => setShowStatistiques(true)
     },
     {
       id: 'cellule-rh',
@@ -72,6 +76,28 @@ const LandingPage = ({ onNavigate, user }) => {
       title: 'Documents',
       subtitle: 'Formulaires RH',
       action: () => setShowDocuments(true)
+    },
+    {
+      id: 'durandal',
+      badge: '🚨',
+      title: 'Durandal',
+      subtitle: 'Gestion des incidents',
+      action: () => window.open('https://durandal2.sso.reseau.sncf.fr/incidents/index', '_blank')
+    },
+    {
+      id: 'annuaire',
+      badge: '📇',
+      title: 'Annuaire',
+      subtitle: 'Contacts COGC',
+      action: () => setShowAnnuaire(true)
+    },
+    {
+      id: 'a-venir',
+      badge: '🔧',
+      title: 'À venir',
+      subtitle: 'En construction',
+      disabled: true,
+      action: () => {}
     },
     {
       id: 'help',
@@ -169,19 +195,21 @@ const LandingPage = ({ onNavigate, user }) => {
           )}
         </header>
 
-        {/* Menu Grid */}
-        <nav className="menu-grid">
+        {/* Menu Grid - 9 boutons (3x3) */}
+        <nav className="menu-grid menu-grid-9">
           {menuItems.map((item, index) => (
             <div
               key={item.id}
-              className={`menu-item ${item.isPlanning ? 'planning-btn' : ''} ${menuVisible ? 'visible' : ''}`}
-              onClick={item.action}
+              className={`menu-item ${item.isPlanning ? 'planning-btn' : ''} ${item.disabled ? 'disabled' : ''} ${menuVisible ? 'visible' : ''}`}
+              onClick={!item.disabled ? item.action : undefined}
               style={{ 
-                transitionDelay: menuVisible ? `${index * 100}ms` : '0ms' 
+                transitionDelay: menuVisible ? `${index * 80}ms` : '0ms',
+                cursor: item.disabled ? 'not-allowed' : 'pointer',
+                opacity: item.disabled ? 0.5 : 1
               }}
               role="button"
-              tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && item.action()}
+              tabIndex={item.disabled ? -1 : 0}
+              onKeyDown={(e) => e.key === 'Enter' && !item.disabled && item.action()}
             >
               <div className="menu-badge">
                 <span className="menu-badge-icon">{item.badge}</span>
@@ -225,6 +253,20 @@ const LandingPage = ({ onNavigate, user }) => {
       <ModalAide
         isOpen={showAide}
         onClose={() => setShowAide(false)}
+      />
+
+      {/* Modal Mon Planning */}
+      <ModalMonPlanning
+        isOpen={showMonPlanning}
+        onClose={() => setShowMonPlanning(false)}
+        currentUser={user}
+      />
+
+      {/* Modal Statistiques */}
+      <ModalStatistiques
+        isOpen={showStatistiques}
+        onClose={() => setShowStatistiques(false)}
+        currentUser={user}
       />
     </div>
   );
