@@ -172,29 +172,32 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                         <>
                           {/* En-tête des jours pour chaque groupe */}
                           <tr className="bg-gray-50">
-                            <th className="w-48 px-4 py-2 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10">
+                            <th className="w-64 min-w-[200px] px-4 py-2 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10">
                               Agent
                             </th>
                             {Array.from({ length: daysInMonth }, (_, i) => getDayHeader(i + 1))}
                           </tr>
                           
                           {/* Lignes des agents */}
-                          {agents.map((agent) => (
-                            <tr key={agent.id || `${agent.nom}_${agent.prenom}`} className="hover:bg-gray-50">
-                              <td className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r">
-                                <button
-                                  onClick={() => onAgentClick && onAgentClick(agent)}
-                                  className="text-left hover:text-blue-600 hover:underline transition-colors"
-                                  title="Cliquer pour voir les détails"
-                                >
-                                  <span>{agent.nom} {agent.prenom}</span>
-                                </button>
-                              </td>
-                              {Array.from({ length: daysInMonth }, (_, dayIndex) => 
-                                renderPlanningCell(agent, dayIndex + 1)
-                              )}
-                            </tr>
-                          ))}
+                          {agents.map((agent) => {
+                            const fullName = `${agent.nom} ${agent.prenom}`;
+                            return (
+                              <tr key={agent.id || `${agent.nom}_${agent.prenom}`} className="hover:bg-gray-50">
+                                <td className="w-64 min-w-[200px] px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r">
+                                  <button
+                                    onClick={() => onAgentClick && onAgentClick(agent)}
+                                    className="text-left hover:text-blue-600 hover:underline transition-colors w-full truncate block"
+                                    title={fullName}
+                                  >
+                                    <span className="whitespace-nowrap">{fullName}</span>
+                                  </button>
+                                </td>
+                                {Array.from({ length: daysInMonth }, (_, dayIndex) => 
+                                  renderPlanningCell(agent, dayIndex + 1)
+                                )}
+                              </tr>
+                            );
+                          })}
                         </>
                       )}
                       
