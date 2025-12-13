@@ -1,6 +1,8 @@
 // Composant pour l'étape d'upload du PDF
+// Version 2.0 - Responsive mobile avec gros bouton tactile
 import React from 'react';
-import { Upload, Key, Database, Lock } from 'lucide-react';
+import { Upload, Key, Database, Lock, FileText } from 'lucide-react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 const PDFUploadStep = ({ 
   file, 
@@ -9,6 +11,7 @@ const PDFUploadStep = ({
   isApiConfigured,
   stats
 }) => {
+  const isMobile = useIsMobile();
   
   // Gestion de la sélection de fichier
   const handleFileSelect = (event) => {
@@ -27,6 +30,93 @@ const PDFUploadStep = ({
     }
   };
 
+  // ========== VERSION MOBILE ==========
+  if (isMobile) {
+    return (
+      <div className="space-y-4">
+        {/* Alerte si API non configurée */}
+        {!isApiConfigured && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-start gap-2">
+              <Lock className="text-red-600 mt-1 flex-shrink-0" size={20} />
+              <div className="flex-1">
+                <p className="font-medium text-red-900">Module PDF désactivé</p>
+                <p className="text-sm text-red-800 mt-1">
+                  Clé API Mistral requise.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats condensées */}
+        {stats && isApiConfigured && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div className="flex items-center gap-2">
+              <Database className="text-blue-600" size={18} />
+              <span className="text-sm font-medium text-blue-900">
+                Base connectée • {stats.totalCodes || stats.total || 0} codes
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* GROS BOUTON D'UPLOAD MOBILE */}
+        {isApiConfigured ? (
+          <div className="relative">
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={handleFileSelect}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              id="pdf-upload-mobile"
+            />
+            <div className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl p-6 text-center transition-colors shadow-lg">
+              <FileText className="mx-auto mb-3" size={48} />
+              <p className="text-lg font-bold">Sélectionner un PDF</p>
+              <p className="text-blue-200 text-sm mt-1">
+                Bulletin de commande SNCF
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-gray-200 rounded-xl p-6 text-center">
+            <Lock className="mx-auto mb-3 text-gray-400" size={48} />
+            <p className="text-gray-500 font-medium">Upload désactivé</p>
+          </div>
+        )}
+
+        {/* Fichier sélectionné */}
+        {file && isApiConfigured && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <FileText className="text-green-600 flex-shrink-0" size={24} />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-green-900 truncate">{file.name}</p>
+                <p className="text-xs text-green-700">
+                  {(file.size / 1024).toFixed(1)} Ko
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Instructions condensées mobile */}
+        {isApiConfigured && (
+          <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
+            <p className="font-medium mb-2">Format accepté :</p>
+            <ul className="space-y-1">
+              <li>✓ Bulletin de commande SNCF (PDF)</li>
+              <li>✓ Détection automatique agent & services</li>
+              <li>✓ Services de nuit décalés J+1</li>
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ========== VERSION DESKTOP (inchangée) ==========
   return (
     <div className="space-y-4">
       {/* Alerte si API non configurée */}
@@ -63,7 +153,7 @@ const PDFUploadStep = ({
         </div>
       )}
 
-      {/* Zone d'upload */}
+      {/* Zone d'upload desktop */}
       <div className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
         isApiConfigured 
           ? 'border-gray-300 hover:border-blue-400 cursor-pointer' 
@@ -115,7 +205,7 @@ const PDFUploadStep = ({
         )}
       </div>
 
-      {/* Instructions */}
+      {/* Instructions desktop */}
       <div className={`rounded-lg p-4 ${
         isApiConfigured ? 'bg-gray-50' : 'bg-gray-100'
       }`}>
