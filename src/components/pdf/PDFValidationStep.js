@@ -1,5 +1,5 @@
 // Composant pour l'étape de validation des données extraites
-// Version 3.0 - Responsive mobile avec cards scrollables (sans preview PDF)
+// Version 3.1 - Fix select poste toujours visible sur desktop
 import React, { useState, useEffect } from 'react';
 import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ZoomIn, ZoomOut, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react';
 import { SERVICE_CODES } from '../../constants/config';
@@ -389,7 +389,7 @@ const PDFValidationStep = ({
     );
   }
 
-  // ========== VERSION DESKTOP (inchangée) ==========
+  // ========== VERSION DESKTOP - FIX v3.1 ==========
   // Composant de visualisation du PDF
   const PDFViewer = () => (
     <div className="h-full flex flex-col bg-gray-800 rounded-lg overflow-hidden">
@@ -600,23 +600,22 @@ const PDFValidationStep = ({
                           {getServiceLabel(entry.service_code)}
                         </span>
 
-                        {entry.poste_code && (
-                          <select
-                            value={entry.poste_code || ''}
-                            onChange={(e) => handleCellEdit(entry.index, 'poste_code', e.target.value || null)}
-                            className="w-20 p-1 border rounded text-xs"
-                          >
-                            <option value="">-</option>
-                            <option value="CRC">CRC</option>
-                            <option value="ACR">ACR</option>
-                            <option value="CCU">CCU</option>
-                            <option value="RE">RE</option>
-                            <option value="RC">RC</option>
-                            <option value="RO">RO</option>
-                            <option value="CAC">CAC</option>
-                            <option value="SOUF">SOUF</option>
-                          </select>
-                        )}
+                        {/* FIX v3.1: Select poste TOUJOURS visible sur desktop */}
+                        <select
+                          value={entry.poste_code || ''}
+                          onChange={(e) => handleCellEdit(entry.index, 'poste_code', e.target.value || null)}
+                          className="w-24 p-1 border rounded text-xs"
+                        >
+                          <option value="">— Poste —</option>
+                          <option value="CRC">CRC</option>
+                          <option value="ACR">ACR</option>
+                          <option value="CCU">CCU</option>
+                          <option value="RE">RE</option>
+                          <option value="RC">RC</option>
+                          <option value="RO">RO</option>
+                          <option value="CAC">CAC</option>
+                          <option value="SOUF">SOUF</option>
+                        </select>
 
                         {entry.original_code && (
                           <span className="text-xs text-gray-400 truncate max-w-[80px]" title={entry.original_code}>
