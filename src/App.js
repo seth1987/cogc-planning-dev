@@ -23,7 +23,6 @@ import ModalEditAgent from './components/modals/ModalEditAgent';
 import ModalHabilitations from './components/modals/ModalHabilitations';
 import ModalUploadPDF from './components/modals/ModalUploadPDF';
 import ModalPrevisionnelJour from './components/modals/ModalPrevisionnelJour';
-import AdminUserSetup from './components/AdminUserSetup';
 
 // Constants
 import { MONTHS } from './constants/config';
@@ -39,7 +38,7 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
- * v2.4 - Dynamic year selection from database
+ * v2.5 - Fusion Option A: ModalEditAgent central (création agent + compte Auth auto)
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -93,9 +92,6 @@ const App = () => {
 
   // État debug (dev only)
   const [showDebug, setShowDebug] = React.useState(false);
-  
-  // État modal Admin User Setup
-  const [showAdminUserSetup, setShowAdminUserSetup] = React.useState(false);
 
   // === CHARGEMENT DES ANNÉES DISPONIBLES ===
   // Configuration: années à toujours afficher (même sans données)
@@ -225,14 +221,25 @@ const App = () => {
     closeModal('gestionAgents');
   };
 
+  /**
+   * Création d'un nouvel agent
+   * v2.5: Le ModalEditAgent gère maintenant la création du compte Auth
+   * Cette fonction crée uniquement l'agent en BDD et retourne l'objet créé
+   */
   const handleCreateAgent = async (formData) => {
     try {
-      await supabaseService.createAgent(formData);
+      // Créer l'agent en BDD (inclut maintenant email et telephone)
+      const createdAgent = await supabaseService.createAgent(formData);
+      
+      // Recharger les données
       await loadData(currentMonth);
       setConnectionStatus('✅ Nouvel agent créé avec succès');
-      closeModal('editAgent');
+      
+      // Retourner l'agent créé pour que ModalEditAgent puisse créer le compte Auth
+      return createdAgent;
     } catch (err) {
       alert(`Erreur lors de la création: ${err.message}`);
+      throw err; // Propager l'erreur pour que ModalEditAgent sache qu'il y a eu un problème
     }
   };
 
@@ -367,7 +374,6 @@ const App = () => {
         connectionStatus={connectionStatus}
         onOpenGestionAgents={openGestionAgents}
         onOpenUploadPDF={openUploadPDF}
-        onOpenAdminUserSetup={() => setShowAdminUserSetup(true)}
         onSignOut={signOut}
         onBackToLanding={handleBackToLanding}
         showBackButton={true}
@@ -466,13 +472,6 @@ const App = () => {
         planningData={planning}
         onClose={() => closeModal('previsionnelJour')}
       />
-
-      {/* Modal Admin - Gestion des comptes utilisateurs */}
-      {showAdminUserSetup && (
-        <AdminUserSetup
-          onClose={() => setShowAdminUserSetup(false)}
-        />
-      )}
     </div>
   );
 };
