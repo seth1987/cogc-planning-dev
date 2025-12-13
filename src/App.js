@@ -40,7 +40,8 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
- * v2.6 - Hybride: Modal PDF sur desktop, Page dédiée sur mobile
+ * v2.7 - Fix: Modal PDF toujours monté sur desktop (évite remount)
+ *        Mobile utilise page dédiée PageUploadPDF
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -492,14 +493,17 @@ const App = () => {
         onRemoveHabilitation={handleRemoveHabilitation}
       />
       
-      {/* Modal PDF - Desktop uniquement (mobile utilise PageUploadPDF) */}
-      {!isMobile && (
-        <ModalUploadPDF
-          isOpen={modals.uploadPDF}
-          onClose={() => closeModal('uploadPDF')}
-          onSuccess={handleUploadSuccess}
-        />
-      )}
+      {/* 
+        Modal PDF - Desktop uniquement 
+        v2.7: TOUJOURS monté pour éviter remount lors resize
+        Sur mobile: utilise PageUploadPDF (page dédiée)
+        isOpen contrôle l'affichage via display:none dans le modal
+      */}
+      <ModalUploadPDF
+        isOpen={!isMobile && modals.uploadPDF}
+        onClose={() => closeModal('uploadPDF')}
+        onSuccess={handleUploadSuccess}
+      />
 
       {/* Modal Équipes du Jour */}
       <ModalPrevisionnelJour
