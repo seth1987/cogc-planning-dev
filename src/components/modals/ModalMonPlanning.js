@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE, POSTES_PAR_GROUPE } from '../../constants/config';
 
@@ -8,14 +8,17 @@ import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE
  * Affiche un calendrier mensuel avec les services de l'agent.
  * Permet de modifier ses propres services avec le même popup que le planning général.
  * 
- * v1.1 - Intégration du popup d'édition complet
+ * v1.2 - Synchronisation avec planning général via onUpdate callback
  */
-const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
+const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [planningData, setPlanningData] = useState({});
   const [agentInfo, setAgentInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
+  
+  // Tracker si des modifications ont été faites
+  const hasChanges = useRef(false);
   
   // États pour l'édition (comme ModalCellEdit)
   const [editMode, setEditMode] = useState(false);
@@ -88,6 +91,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
   useEffect(() => {
     if (isOpen) {
       loadAgentInfo();
+      hasChanges.current = false; // Reset au moment d'ouvrir
     }
   }, [isOpen, loadAgentInfo]);
 
@@ -168,6 +172,16 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
     setTempNote('');
   };
 
+  // Fermer le modal principal et synchroniser si nécessaire
+  const handleClose = () => {
+    if (hasChanges.current && onUpdate) {
+      console.log('📡 Synchronisation avec planning général...');
+      onUpdate();
+    }
+    hasChanges.current = false;
+    onClose();
+  };
+
   // Sauvegarder modification
   const saveEdit = async () => {
     if (!selectedDay || !agentInfo) return;
@@ -189,6 +203,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
 
       if (error) throw error;
 
+      hasChanges.current = true; // Marquer qu'on a fait des modifications
       await loadPlanning();
       closeEditor();
     } catch (err) {
@@ -212,6 +227,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
 
       if (error) throw error;
 
+      hasChanges.current = true; // Marquer qu'on a fait des modifications
       await loadPlanning();
       closeEditor();
     } catch (err) {
@@ -265,12 +281,12 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
   const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
+    <div style={styles.overlay} onClick={handleClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div style={styles.header}>
           <h2 style={styles.title}>📆 Mon Planning</h2>
-          <button style={styles.closeBtn} onClick={onClose}>✕</button>
+          <button style={styles.closeBtn} onClick={handleClose}>✕</button>
         </div>
 
         {/* Info agent */}
