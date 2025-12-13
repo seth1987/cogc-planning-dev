@@ -1,7 +1,7 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.2 - DEBUG: logs + alerte au montage
+// Version 3.3 - DEBUG INTENSIF: alertes à CHAQUE étape
 import React, { useState, useEffect, useRef } from 'react';
-import { X, FileText, AlertCircle, Loader, Info, Zap, AlertTriangle } from 'lucide-react';
+import { X, FileText, AlertCircle, Loader, AlertTriangle } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
 import mappingService from '../../services/mappingService';
 import planningImportService from '../../services/planningImportService';
@@ -12,15 +12,10 @@ import { supabase } from '../../lib/supabaseClient';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  // DEBUG: compteur de renders
   const renderCount = useRef(0);
   renderCount.current++;
   
-  // Détection mobile
   const isMobile = useIsMobile();
-  
-  // DEBUG: log à chaque render
-  console.log(`🔄 ModalUploadPDF render #${renderCount.current}, isOpen=${isOpen}, isMobile=${isMobile}`);
   
   const [currentStep, setCurrentStep] = useState(1);
   const [file, setFile] = useState(null);
@@ -35,11 +30,22 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [debugLog, setDebugLog] = useState([]);
   
   const codesMapping = useRef({});
+  const isMounted = useRef(true);
 
-  // DEBUG: ajouter un log
+  // Track unmount
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      console.log('⚠️ MODAL UNMOUNTED!');
+    };
+  }, []);
+
   const addDebugLog = (msg) => {
     console.log('📋 ' + msg);
-    setDebugLog(prev => [...prev.slice(-10), `${new Date().toLocaleTimeString()}: ${msg}`]);
+    if (isMounted.current) {
+      setDebugLog(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${msg}`]);
+    }
   };
 
   useEffect(() => {
@@ -51,23 +57,20 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   }, [isOpen]);
 
   const loadMappingStats = async () => {
-    addDebugLog('Chargement stats...');
     const mappingStats = await mappingService.getStats();
-    setStats(mappingStats);
-    addDebugLog(`Stats chargées: ${mappingStats.total || mappingStats.totalCodes || 0} codes`);
+    if (isMounted.current) {
+      setStats(mappingStats);
+      addDebugLog(`Stats: ${mappingStats.total || mappingStats.totalCodes || 0} codes`);
+    }
   };
 
   const loadCodesMapping = async () => {
     try {
-      addDebugLog('Chargement mapping codes...');
       const { data, error } = await supabase
         .from('codes_services')
         .select('code, poste_code, service_code, description');
       
-      if (error) {
-        addDebugLog('Erreur mapping: ' + error.message);
-        return;
-      }
+      if (error || !isMounted.current) return;
       
       const mapping = {};
       data.forEach(row => {
@@ -79,14 +82,13 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       });
       
       codesMapping.current = mapping;
-      addDebugLog(`Mapping chargé: ${data.length} codes`);
+      addDebugLog(`Mapping: ${data.length} codes`);
     } catch (err) {
-      addDebugLog('Erreur: ' + err.message);
+      addDebugLog('Erreur mapping: ' + err.message);
     }
   };
 
   const resetModal = () => {
-    addDebugLog('Reset modal');
     setCurrentStep(1);
     setFile(null);
     setExtractedData(null);
@@ -183,44 +185,6 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     return null;
   };
 
-  // IMPORTANT: Cette fonction est passée à PDFUploadStep
-  const handleFileUpload = async (uploadedFile) => {
-    addDebugLog(`handleFileUpload appelé: ${uploadedFile?.name}`);
-    alert(`DEBUG Modal: Fichier reçu!\n${uploadedFile?.name}\nTaille: ${uploadedFile?.size}`);
-    
-    setFile(uploadedFile);
-    setLoading(true);
-    setError(null);
-    setExtractionMethod(null);
-
-    try {
-      addDebugLog('Appel PDFServiceWrapper.readPDF...');
-      const parsed = await PDFServiceWrapper.readPDF(uploadedFile);
-      addDebugLog(`Extraction terminée: ${parsed.method}`);
-      setExtractionMethod(parsed.method);
-      
-      if (!parsed.success) throw new Error(parsed.error || 'Erreur extraction');
-      
-      const transformedData = transformParsedDataForValidation(parsed);
-      const validationResult = validateTransformedData(transformedData);
-      
-      if (parsed.method === 'simple-vision') {
-        validationResult.warnings.unshift('⚡ Extraction rapide');
-      }
-      
-      setValidation(validationResult);
-      setExtractedData(transformedData);
-      setEditedData(JSON.parse(JSON.stringify(transformedData)));
-      addDebugLog('Passage à étape 2');
-      setCurrentStep(2);
-    } catch (err) {
-      addDebugLog('Erreur: ' + err.message);
-      setError(err.message || 'Erreur extraction');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const validateTransformedData = (data) => {
     const validation = { errors: [], warnings: [], isValid: true };
     if (!data.agent?.nom) validation.warnings.push('Nom non détecté');
@@ -228,21 +192,118 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     if (!data.planning || data.planning.length === 0) {
       validation.errors.push('Aucune entrée');
       validation.isValid = false;
-    } else {
-      const matin = data.planning.filter(e => e.service_code === '-').length;
-      const soir = data.planning.filter(e => e.service_code === 'O').length;
-      const nuit = data.planning.filter(e => e.service_code === 'X').length;
-      const repos = data.planning.filter(e => ['RP', 'C', 'NU', 'D'].includes(e.service_code)).length;
-      if (matin > 0) validation.warnings.push(`🌅 ${matin} Matin`);
-      if (soir > 0) validation.warnings.push(`🌇 ${soir} Soir`);
-      if (nuit > 0) validation.warnings.push(`🌙 ${nuit} Nuit`);
-      if (repos > 0) validation.warnings.push(`😴 ${repos} Repos`);
     }
     return validation;
   };
 
+  // ============ FONCTION PRINCIPALE - DEBUG INTENSIF ============
+  const handleFileUpload = async (uploadedFile) => {
+    // LOG IMMÉDIAT - avant toute autre action
+    console.log('🚀 handleFileUpload START', uploadedFile?.name);
+    addDebugLog(`>>> handleFileUpload: ${uploadedFile?.name}`);
+    
+    // ÉTAPE 1: Confirmation fichier reçu
+    alert(`ÉTAPE 1/5: Fichier reçu!\n\nNom: ${uploadedFile?.name}\nTaille: ${uploadedFile?.size} bytes\n\nCliquez OK pour continuer...`);
+    
+    // Vérifier si toujours monté après l'alerte
+    if (!isMounted.current) {
+      console.log('❌ Component unmounted après alerte 1');
+      return;
+    }
+    
+    addDebugLog('Après alerte 1 - setFile...');
+    
+    // ÉTAPE 2: Mise à jour état
+    try {
+      setFile(uploadedFile);
+      setLoading(true);
+      setError(null);
+      addDebugLog('États mis à jour');
+    } catch (e) {
+      alert('ERREUR setState: ' + e.message);
+      return;
+    }
+    
+    alert('ÉTAPE 2/5: États mis à jour\n\nLoading activé\n\nCliquez OK pour lancer OCR...');
+    
+    if (!isMounted.current) {
+      console.log('❌ Component unmounted après alerte 2');
+      return;
+    }
+    
+    // ÉTAPE 3: Appel OCR
+    addDebugLog('Avant appel PDFServiceWrapper...');
+    
+    let parsed = null;
+    try {
+      addDebugLog('Appel readPDF...');
+      alert('ÉTAPE 3/5: Lancement extraction OCR...\n\nCeci peut prendre quelques secondes.\n\nCliquez OK et patientez...');
+      
+      parsed = await PDFServiceWrapper.readPDF(uploadedFile);
+      
+      addDebugLog(`OCR terminé: ${parsed?.method || 'unknown'}`);
+      alert(`ÉTAPE 4/5: OCR terminé!\n\nMéthode: ${parsed?.method}\nSuccès: ${parsed?.success}\nEntrées: ${parsed?.entries?.length || 0}`);
+      
+    } catch (ocrError) {
+      const errMsg = ocrError?.message || String(ocrError);
+      addDebugLog('ERREUR OCR: ' + errMsg);
+      alert('ERREUR OCR:\n\n' + errMsg);
+      if (isMounted.current) {
+        setError(errMsg);
+        setLoading(false);
+      }
+      return;
+    }
+    
+    if (!isMounted.current) {
+      console.log('❌ Component unmounted après OCR');
+      return;
+    }
+    
+    // ÉTAPE 4: Vérification résultat
+    if (!parsed || !parsed.success) {
+      const errorMsg = parsed?.error || 'Extraction échouée sans message';
+      addDebugLog('Échec extraction: ' + errorMsg);
+      alert('ÉCHEC EXTRACTION:\n\n' + errorMsg);
+      if (isMounted.current) {
+        setError(errorMsg);
+        setLoading(false);
+      }
+      return;
+    }
+    
+    // ÉTAPE 5: Transformation et passage étape 2
+    try {
+      addDebugLog('Transformation données...');
+      const transformedData = transformParsedDataForValidation(parsed);
+      const validationResult = validateTransformedData(transformedData);
+      
+      addDebugLog(`Agent: ${transformedData.agent?.nom} ${transformedData.agent?.prenom}`);
+      addDebugLog(`Planning: ${transformedData.planning?.length} entrées`);
+      
+      alert(`ÉTAPE 5/5: Transformation OK!\n\nAgent: ${transformedData.agent?.nom} ${transformedData.agent?.prenom}\nEntrées: ${transformedData.planning?.length}\n\nPassage à l'étape 2...`);
+      
+      if (isMounted.current) {
+        setExtractionMethod(parsed.method);
+        setValidation(validationResult);
+        setExtractedData(transformedData);
+        setEditedData(JSON.parse(JSON.stringify(transformedData)));
+        setLoading(false);
+        addDebugLog('>>> PASSAGE ÉTAPE 2 <<<');
+        setCurrentStep(2);
+      }
+      
+    } catch (transformError) {
+      addDebugLog('ERREUR Transform: ' + transformError.message);
+      alert('ERREUR TRANSFORMATION:\n\n' + transformError.message);
+      if (isMounted.current) {
+        setError(transformError.message);
+        setLoading(false);
+      }
+    }
+  };
+
   const handleValidate = async () => {
-    addDebugLog('Validation...');
     setLoading(true);
     setError(null);
     try {
@@ -263,55 +324,49 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   if (!isOpen) return null;
 
-  // ========== RENDU ==========
   return (
     <div className={`fixed inset-0 z-50 ${isMobile ? 'bg-white' : 'bg-black bg-opacity-50 flex items-center justify-center p-2'}`}>
       <div className={`${isMobile ? 'h-full flex flex-col' : 'bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col'}`}>
         
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 flex-shrink-0">
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-3 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <FileText size={24} />
+            <div className="flex items-center gap-2">
+              <FileText size={20} />
               <div>
-                <h2 className="text-lg font-bold">Import PDF {isMobile ? '(Mobile)' : '(Desktop)'}</h2>
-                <p className="text-blue-200 text-xs">
-                  Étape {currentStep}/3 • Render #{renderCount.current}
-                </p>
+                <h2 className="text-base font-bold">Import PDF {isMobile ? '📱' : '💻'}</h2>
+                <p className="text-blue-200 text-xs">Étape {currentStep}/3 • R#{renderCount.current}</p>
               </div>
             </div>
             <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-lg">
-              <X size={24} />
+              <X size={20} />
             </button>
-          </div>
-          <div className="flex items-center justify-center mt-3 gap-2">
-            {[1, 2, 3].map((step) => (
-              <div key={step} className={`h-2 rounded-full transition-all ${currentStep >= step ? 'w-8 bg-white' : 'w-2 bg-blue-400'}`} />
-            ))}
           </div>
         </div>
 
-        {/* Debug log */}
-        {debugLog.length > 0 && (
-          <div className="bg-yellow-50 border-b border-yellow-200 p-2 text-xs font-mono max-h-24 overflow-y-auto">
-            {debugLog.map((log, i) => (
-              <div key={i} className="text-yellow-800">{log}</div>
-            ))}
-          </div>
-        )}
+        {/* Debug log - TOUJOURS VISIBLE */}
+        <div className="bg-gray-900 text-green-400 p-2 text-xs font-mono max-h-40 overflow-y-auto flex-shrink-0">
+          <div className="text-gray-500 mb-1">--- Debug ({debugLog.length} logs) ---</div>
+          {debugLog.length === 0 ? (
+            <div className="text-gray-600">En attente...</div>
+          ) : (
+            debugLog.map((log, i) => (
+              <div key={i} className={log.includes('ERREUR') ? 'text-red-400' : log.includes('>>>') ? 'text-yellow-400' : ''}>{log}</div>
+            ))
+          )}
+        </div>
 
         {/* Contenu */}
         <div className="flex-1 overflow-hidden flex flex-col">
           {currentStep === 1 && (
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+            <div className="flex-1 overflow-y-auto p-3">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">
                 <p className="text-amber-800 text-sm">
-                  <AlertTriangle className="inline mr-1" size={16} />
+                  <AlertTriangle className="inline mr-1" size={14} />
                   <strong>Vérifiez les données</strong> après extraction.
                 </p>
               </div>
               
-              {/* PDFUploadStep avec la fonction handleFileUpload */}
               <PDFUploadStep 
                 file={file} 
                 onFileUpload={handleFileUpload} 
@@ -321,8 +376,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
               />
               
               {error && (
-                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3">
-                  <p className="text-red-800 text-sm"><AlertCircle className="inline mr-1" size={16} />{error}</p>
+                <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-2">
+                  <p className="text-red-800 text-sm"><AlertCircle className="inline mr-1" size={14} />{error}</p>
                 </div>
               )}
             </div>
@@ -335,7 +390,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           )}
 
           {currentStep === 3 && importResult && (
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-3">
               <PDFImportResult importReport={importResult} onClose={handleClose} onRollback={null} onBackToValidation={() => setCurrentStep(2)} />
             </div>
           )}
@@ -343,13 +398,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
         {loading && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-20">
-            <div className="bg-white p-6 rounded-xl shadow-xl text-center mx-4">
-              <Loader className="animate-spin mx-auto mb-3 text-blue-600" size={40} />
-              <p className="text-gray-700 font-medium">
-                {currentStep === 1 && 'Analyse du PDF...'}
-                {currentStep === 2 && 'Import en cours...'}
-                {currentStep === 3 && 'Finalisation...'}
-              </p>
+            <div className="bg-white p-4 rounded-xl shadow-xl text-center mx-4">
+              <Loader className="animate-spin mx-auto mb-2 text-blue-600" size={32} />
+              <p className="text-gray-700 text-sm">Analyse en cours...</p>
             </div>
           </div>
         )}
