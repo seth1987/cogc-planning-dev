@@ -1,5 +1,5 @@
 // Composant pour l'étape d'upload du PDF
-// Version 2.0 - Responsive mobile avec gros bouton tactile
+// Version 2.1 - Fix mobile file selection + meilleure validation
 import React from 'react';
 import { Upload, Key, Database, Lock, FileText } from 'lucide-react';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -13,21 +13,45 @@ const PDFUploadStep = ({
 }) => {
   const isMobile = useIsMobile();
   
-  // Gestion de la sélection de fichier
+  // Gestion de la sélection de fichier - compatible mobile
   const handleFileSelect = (event) => {
+    console.log('📱 handleFileSelect déclenché');
+    
     if (!isApiConfigured) {
       alert('Le module PDF nécessite une clé API Mistral pour fonctionner.');
-      event.target.value = ''; // Reset input
+      event.target.value = '';
       return;
     }
 
-    const selectedFile = event.target.files[0];
-    if (selectedFile && selectedFile.type === 'application/pdf') {
-      console.log('📁 Fichier sélectionné:', selectedFile.name);
+    const selectedFile = event.target.files?.[0];
+    console.log('📁 Fichier détecté:', selectedFile);
+    
+    if (!selectedFile) {
+      console.log('❌ Aucun fichier sélectionné');
+      return;
+    }
+
+    // Log pour debug mobile
+    console.log('📄 Nom:', selectedFile.name);
+    console.log('📄 Type MIME:', selectedFile.type);
+    console.log('📄 Taille:', selectedFile.size);
+
+    // Validation plus robuste : vérifier le type MIME OU l'extension
+    const isPDF = 
+      selectedFile.type === 'application/pdf' || 
+      selectedFile.type === 'application/x-pdf' ||
+      selectedFile.name.toLowerCase().endsWith('.pdf');
+
+    if (isPDF) {
+      console.log('✅ PDF valide, appel onFileUpload');
       onFileUpload(selectedFile);
     } else {
-      alert('Veuillez sélectionner un fichier PDF valide.');
+      console.log('❌ Fichier non PDF:', selectedFile.type, selectedFile.name);
+      alert(`Veuillez sélectionner un fichier PDF valide.\n\nFichier reçu: ${selectedFile.name}\nType: ${selectedFile.type || 'non détecté'}`);
     }
+    
+    // Reset input pour permettre re-sélection du même fichier
+    event.target.value = '';
   };
 
   // ========== VERSION MOBILE ==========
@@ -61,24 +85,25 @@ const PDFUploadStep = ({
           </div>
         )}
 
-        {/* GROS BOUTON D'UPLOAD MOBILE */}
+        {/* GROS BOUTON D'UPLOAD MOBILE - Version corrigée */}
         {isApiConfigured ? (
-          <div className="relative">
+          <label 
+            htmlFor="pdf-upload-mobile"
+            className="block bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl p-6 text-center transition-colors shadow-lg cursor-pointer"
+          >
             <input
               type="file"
-              accept="application/pdf"
+              accept=".pdf,application/pdf"
               onChange={handleFileSelect}
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              className="hidden"
               id="pdf-upload-mobile"
             />
-            <div className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl p-6 text-center transition-colors shadow-lg">
-              <FileText className="mx-auto mb-3" size={48} />
-              <p className="text-lg font-bold">Sélectionner un PDF</p>
-              <p className="text-blue-200 text-sm mt-1">
-                Bulletin de commande SNCF
-              </p>
-            </div>
-          </div>
+            <FileText className="mx-auto mb-3" size={48} />
+            <p className="text-lg font-bold">Sélectionner un PDF</p>
+            <p className="text-blue-200 text-sm mt-1">
+              Bulletin de commande SNCF
+            </p>
+          </label>
         ) : (
           <div className="bg-gray-200 rounded-xl p-6 text-center">
             <Lock className="mx-auto mb-3 text-gray-400" size={48} />
@@ -167,7 +192,7 @@ const PDFUploadStep = ({
           <>
             <input
               type="file"
-              accept=".pdf"
+              accept=".pdf,application/pdf"
               onChange={handleFileSelect}
               className="hidden"
               id="pdf-upload"
