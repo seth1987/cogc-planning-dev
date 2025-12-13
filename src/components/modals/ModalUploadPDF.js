@@ -1,7 +1,7 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 2.1 - Split-screen avec prévisualisation PDF
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Upload, FileText, AlertCircle, CheckCircle, Loader, Info, Zap, AlertTriangle } from 'lucide-react';
+// Version 4.0 - TOUJOURS MONTÉ (jamais return null)
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, FileText, AlertCircle, Loader } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
 import mappingService from '../../services/mappingService';
 import planningImportService from '../../services/planningImportService';
@@ -10,9 +10,30 @@ import PDFValidationStep from '../pdf/PDFValidationStep';
 import PDFImportResult from '../pdf/PDFImportResult';
 import { supabase } from '../../lib/supabaseClient';
 
-const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  // États
-  const [currentStep, setCurrentStep] = useState(1); // 1: Upload, 2: Validation, 3: Résultat
+// Instance ID pour debug - STATIC pour éviter increment sur re-render
+const MODAL_INSTANCE_ID = 'PDF-MODAL';
+
+const ModalUploadPDF = React.memo(({ isOpen, onClose, onSuccess }) => {
+  // Compteur de render pour debug
+  const renderCount = useRef(0);
+  renderCount.current++;
+  
+  // Track open state changes
+  const prevIsOpen = useRef(isOpen);
+  
+  useEffect(() => {
+    if (prevIsOpen.current !== isOpen) {
+      console.log(`🔧 [${MODAL_INSTANCE_ID}] isOpen: ${prevIsOpen.current} → ${isOpen}`);
+      prevIsOpen.current = isOpen;
+    }
+  }, [isOpen]);
+  
+  useEffect(() => {
+    console.log(`🔧 [${MODAL_INSTANCE_ID}] MONTÉ`);
+    return () => console.log(`🔧 [${MODAL_INSTANCE_ID}] DÉMONTÉ`);
+  }, []);
+
+  const [currentStep, setCurrentStep] = useState(1);
   const [file, setFile] = useState(null);
   const [extractedData, setExtractedData] = useState(null);
   const [editedData, setEditedData] = useState(null);
@@ -21,39 +42,40 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({ total: 0, mapped: 0 });
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
-  const [extractionMethod, setExtractionMethod] = useState(null); // Pour afficher quelle méthode a été utilisée
+  const [debugLog, setDebugLog] = useState([]);
   
-  // Mapping des codes depuis la BDD
   const codesMapping = useRef({});
+  const processingRef = useRef(false);
 
-  // Charger les stats et le mapping au montage
+  const addLog = useCallback((msg, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(`[${MODAL_INSTANCE_ID}] ${msg}`);
+    setDebugLog(prev => [...prev.slice(-20), { time: timestamp, msg, type }]);
+  }, []);
+
+  // Charger les stats et mapping quand le modal s'ouvre
   useEffect(() => {
     if (isOpen) {
+      addLog('Modal ouvert, chargement mapping...');
       loadMappingStats();
       loadCodesMapping();
     }
-  }, [isOpen]);
+  }, [isOpen, addLog]);
 
-  // Charger les statistiques de mapping
   const loadMappingStats = async () => {
     const mappingStats = await mappingService.getStats();
     setStats(mappingStats);
+    addLog(`Stats: ${mappingStats.total || mappingStats.totalCodes || 0} codes`);
   };
 
-  // Charger le mapping des codes depuis la BDD
   const loadCodesMapping = async () => {
     try {
-      console.log('🔄 Chargement du mapping codes depuis la BDD...');
       const { data, error } = await supabase
         .from('codes_services')
         .select('code, poste_code, service_code, description');
       
-      if (error) {
-        console.error('❌ Erreur chargement mapping:', error);
-        return;
-      }
+      if (error) return;
       
-      // Construire le mapping { CODE: { poste, service, desc } }
       const mapping = {};
       data.forEach(row => {
         mapping[row.code.toUpperCase()] = {
@@ -64,14 +86,14 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       });
       
       codesMapping.current = mapping;
-      console.log(`✅ ${Object.keys(mapping).length} codes chargés depuis la BDD`);
+      addLog(`Mapping: ${data.length} codes`);
     } catch (err) {
-      console.error('❌ Erreur chargement mapping:', err);
+      addLog('Erreur mapping: ' + err.message, 'error');
     }
   };
 
-  // Réinitialiser le modal
-  const resetModal = () => {
+  const resetModalState = useCallback(() => {
+    addLog('Reset état modal');
     setCurrentStep(1);
     setFile(null);
     setExtractedData(null);
@@ -79,87 +101,73 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setImportResult(null);
     setError(null);
     setValidation({ errors: [], warnings: [] });
-    setExtractionMethod(null);
-  };
+    setDebugLog([]);
+  }, [addLog]);
 
-  /**
-   * Détermine le type de service (Matin/Soir/Nuit) à partir des horaires extraits
-   * UNIQUEMENT utilisé comme fallback si le code n'est pas dans la BDD
-   */
+  // Fonctions de transformation
   const determineServiceTypeFromHoraires = (horaires) => {
-    if (!horaires || horaires.length === 0) {
-      return '-'; // Par défaut Matin si pas d'horaires
-    }
-
-    // Prendre le premier horaire significatif (ignorer METRO, RS)
+    if (!horaires || horaires.length === 0) return '-';
     let mainHoraire = horaires.find(h => h.type === 'SERVICE') || horaires[0];
-    
-    if (!mainHoraire || !mainHoraire.debut) {
-      return '-';
-    }
-
-    // Extraire l'heure de début
-    const debutStr = mainHoraire.debut;
-    const [heures, minutes] = debutStr.split(':').map(Number);
+    if (!mainHoraire || !mainHoraire.debut) return '-';
+    const [heures, minutes] = mainHoraire.debut.split(':').map(Number);
     const debutMinutes = heures * 60 + (minutes || 0);
-
-    // Logique de détermination basée sur l'heure de début
-    if (debutMinutes >= 240 && debutMinutes < 600) {
-      return '-'; // 04:00 - 10:00 → Matin
-    } else if (debutMinutes >= 600 && debutMinutes < 1080) {
-      return 'O'; // 10:00 - 18:00 → Soir
-    } else {
-      return 'X'; // 18:00 - 04:00 → Nuit
-    }
+    if (debutMinutes >= 240 && debutMinutes < 600) return '-';
+    if (debutMinutes >= 600 && debutMinutes < 1080) return 'O';
+    return 'X';
   };
 
-  /**
-   * Transforme les données du PDFServiceWrapper vers le format attendu par PDFValidationStep
-   */
+  const mapServiceCodeToSimpleFallback = (code, serviceTypeFromHoraires) => {
+    if (!code) return 'RP';
+    const upperCode = code.toUpperCase();
+    if (upperCode === 'RP' || upperCode.includes('REPOS')) return 'RP';
+    if (upperCode === 'CA' || upperCode === 'C' || upperCode === 'CONGE') return 'C';
+    if (upperCode === 'NU') return 'NU';
+    if (upperCode === 'DISPO' || upperCode === 'D') return 'D';
+    if (upperCode === 'INACTIN' || upperCode === 'I') return 'I';
+    if (upperCode.includes('HAB') || upperCode.includes('FORM')) return 'HAB';
+    if (upperCode === 'RTT' || upperCode === 'RQ') return 'RP';
+    if (upperCode === 'MAL' || upperCode === 'MA') return 'MA';
+    if (upperCode === 'VISIMED' || upperCode === 'VMT') return 'VISIMED';
+    return serviceTypeFromHoraires || '-';
+  };
+
+  const extractPosteCodeFallback = (code) => {
+    if (!code) return null;
+    const upperCode = code.toUpperCase();
+    if (upperCode.startsWith('CCU')) return 'RE';
+    if (upperCode.startsWith('CRC')) return 'CRC';
+    if (upperCode.startsWith('ACR')) return 'ACR';
+    if (upperCode.startsWith('CENT') || upperCode.startsWith('SOUF')) return 'SOUF';
+    if (upperCode.startsWith('REO')) return 'REO';
+    if (upperCode.startsWith('RC')) return 'RC';
+    if (upperCode.startsWith('RO')) return 'RO';
+    return null;
+  };
+
   const transformParsedDataForValidation = (parsed) => {
-    console.log('🔄 Transformation des données pour validation...');
-    console.log('   Données reçues:', parsed);
-    
-    // Extraire nom et prénom depuis metadata.agent
-    let nom = '';
-    let prenom = '';
+    let nom = '', prenom = '';
     
     if (parsed.metadata?.agent) {
-      const agentClean = parsed.metadata.agent
-        .replace(/\n/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      
-      const parts = agentClean.split(' ').filter(p => p.length > 1);
-      if (parts.length >= 2) {
-        nom = parts[0];
-        prenom = parts[1];
-      } else if (parts.length === 1) {
-        nom = parts[0];
-      }
+      const parts = parsed.metadata.agent.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim().split(' ').filter(p => p.length > 1);
+      if (parts.length >= 2) { nom = parts[0]; prenom = parts[1]; }
+      else if (parts.length === 1) { nom = parts[0]; }
     }
     
-    // Transformer entries en planning avec le format attendu
     const planning = (parsed.entries || []).map(entry => {
-      // Récupérer le mapping depuis la BDD
       const upperCode = (entry.serviceCode || '').toUpperCase();
       const bddMapping = codesMapping.current[upperCode];
       
       let serviceCode, posteCode, description;
       
       if (bddMapping) {
-        // ✅ Code trouvé dans la BDD → utiliser les valeurs de la BDD
         serviceCode = bddMapping.service;
         posteCode = bddMapping.poste;
         description = bddMapping.description || entry.serviceLabel || entry.serviceCode;
-        console.log(`   📋 ${entry.date} ${entry.serviceCode} → ${serviceCode} (BDD: poste=${posteCode})`);
       } else {
-        // ⚠️ Code non trouvé → fallback sur la logique des horaires
         const serviceTypeFromHoraires = entry.isNightService ? 'X' : determineServiceTypeFromHoraires(entry.horaires);
         serviceCode = mapServiceCodeToSimpleFallback(entry.serviceCode, serviceTypeFromHoraires);
         posteCode = extractPosteCodeFallback(entry.serviceCode);
         description = entry.serviceLabel || entry.description || entry.serviceCode;
-        console.log(`   ⚠️ ${entry.date} ${entry.serviceCode} → ${serviceCode} (fallback horaires, poste=${posteCode})`);
       }
       
       return {
@@ -173,377 +181,232 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       };
     });
     
-    const transformed = {
-      agent: {
-        nom: nom,
-        prenom: prenom,
-        numeroCP: parsed.metadata?.numeroCP || ''
-      },
-      planning: planning,
-      periode: {
-        debut: parsed.metadata?.periodeDebut,
-        fin: parsed.metadata?.periodeFin
-      },
+    return {
+      agent: { nom, prenom, numeroCP: parsed.metadata?.numeroCP || '' },
+      planning,
+      periode: { debut: parsed.metadata?.periodeDebut, fin: parsed.metadata?.periodeFin },
       dateEdition: parsed.metadata?.dateEdition || null,
       parsing_mode: parsed.method || 'mistral-ocr',
       original_data: parsed
     };
-    
-    console.log('✅ Données transformées:', transformed);
-    console.log('   Agent:', transformed.agent);
-    console.log('   Planning:', transformed.planning.length, 'entrées');
-    
-    return transformed;
   };
 
-  /**
-   * Fallback: Mappe un code service vers un code simple SI pas trouvé dans la BDD
-   */
-  const mapServiceCodeToSimpleFallback = (code, serviceTypeFromHoraires) => {
-    if (!code) return 'RP';
-    
-    const upperCode = code.toUpperCase();
-    
-    // Codes de repos et absences - ne dépendent PAS des horaires
-    if (upperCode === 'RP' || upperCode.includes('REPOS')) return 'RP';
-    if (upperCode === 'CA' || upperCode === 'C' || upperCode === 'CONGE') return 'C';
-    if (upperCode === 'NU') return 'NU';
-    if (upperCode === 'DISPO' || upperCode === 'D') return 'D';
-    if (upperCode === 'INACTIN' || upperCode === 'I') return 'I';
-    if (upperCode.includes('HAB') || upperCode.includes('FORM')) return 'HAB';
-    if (upperCode === 'RTT' || upperCode === 'RQ') return 'RP';
-    if (upperCode === 'MAL' || upperCode === 'MA') return 'MA';
-    if (upperCode === 'VISIMED' || upperCode === 'VMT') return 'VISIMED';
-    
-    // Codes de service opérationnels → utiliser le type des horaires
-    return serviceTypeFromHoraires || '-';
-  };
-
-  /**
-   * Fallback: Extrait le code poste SI pas trouvé dans la BDD
-   */
-  const extractPosteCodeFallback = (code) => {
-    if (!code) return null;
-    
-    const upperCode = code.toUpperCase();
-    
-    if (upperCode.startsWith('CCU')) return 'RE'; // RE = Régulateur Parc
-    if (upperCode.startsWith('CRC')) return 'CRC';
-    if (upperCode.startsWith('ACR')) return 'ACR';
-    if (upperCode.startsWith('CENT') || upperCode.startsWith('SOUF')) return 'SOUF';
-    if (upperCode.startsWith('REO')) return 'REO';
-    if (upperCode.startsWith('RC')) return 'RC';
-    if (upperCode.startsWith('RO')) return 'RO';
-    
-    return null;
-  };
-
-  // Gestion de l'upload du fichier
-  const handleFileUpload = async (uploadedFile) => {
-    setFile(uploadedFile);
-    setLoading(true);
-    setError(null);
-    setExtractionMethod(null);
-
-    try {
-      console.log('📁 Fichier sélectionné:', uploadedFile.name);
-      console.log('📄 Extraction du PDF avec PDFServiceWrapper (fallback automatique)...');
-      
-      // Utiliser PDFServiceWrapper qui gère le fallback automatiquement
-      const parsed = await PDFServiceWrapper.readPDF(uploadedFile);
-      
-      // Stocker la méthode utilisée pour l'affichage
-      setExtractionMethod(parsed.method);
-      
-      // Vérifier si l'extraction a réussi
-      if (!parsed.success) {
-        throw new Error(parsed.error || 'Erreur lors de l\'extraction du PDF');
-      }
-      
-      console.log('✅ Extraction réussie avec méthode:', parsed.method);
-      console.log('   Stats:', parsed.stats);
-      
-      // Transformer les données vers le format attendu par PDFValidationStep
-      const transformedData = transformParsedDataForValidation(parsed);
-      
-      // Valider les données transformées
-      const validationResult = validateTransformedData(transformedData);
-      
-      // Ajouter info sur la méthode d'extraction
-      if (parsed.method === 'simple-vision') {
-        validationResult.warnings.unshift('⚡ Extraction rapide (SimplePDFService)');
-      } else if (parsed.method === 'legacy-ocr-parsing') {
-        validationResult.warnings.unshift('🔄 Extraction classique (MistralPDFReaderService)');
-      }
-      
-      setValidation(validationResult);
-      setExtractedData(transformedData);
-      setEditedData(JSON.parse(JSON.stringify(transformedData))); // Deep copy
-      setCurrentStep(2);
-      
-    } catch (err) {
-      console.error('Erreur extraction:', err);
-      setError(err.message || 'Erreur lors de l\'extraction du PDF');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
-   * Valide les données transformées
-   */
   const validateTransformedData = (data) => {
-    const validation = {
-      errors: [],
-      warnings: [],
-      isValid: true
-    };
-
-    // Vérifier l'agent
-    if (!data.agent?.nom) {
-      validation.warnings.push('Nom de l\'agent non détecté - à remplir manuellement');
-    }
-    if (!data.agent?.prenom) {
-      validation.warnings.push('Prénom de l\'agent non détecté - à remplir manuellement');
-    }
-
-    // Vérifier le planning
+    const validation = { errors: [], warnings: [], isValid: true };
+    if (!data.agent?.nom) validation.warnings.push('Nom non détecté');
+    if (!data.agent?.prenom) validation.warnings.push('Prénom non détecté');
     if (!data.planning || data.planning.length === 0) {
-      validation.errors.push('Aucune entrée de planning trouvée');
+      validation.errors.push('Aucune entrée');
       validation.isValid = false;
-    } else {
-      // Compter les entrées valides
-      const validEntries = data.planning.filter(e => e.date && e.service_code);
-      validation.warnings.push(`📊 ${validEntries.length}/${data.planning.length} entrées valides`);
-      
-      // Compter par type
-      const matin = data.planning.filter(e => e.service_code === '-').length;
-      const soir = data.planning.filter(e => e.service_code === 'O').length;
-      const nuit = data.planning.filter(e => e.service_code === 'X').length;
-      const repos = data.planning.filter(e => ['RP', 'C', 'NU', 'D'].includes(e.service_code)).length;
-      
-      if (matin > 0) validation.warnings.push(`🌅 ${matin} service(s) Matin`);
-      if (soir > 0) validation.warnings.push(`🌇 ${soir} service(s) Soir`);
-      if (nuit > 0) validation.warnings.push(`🌙 ${nuit} service(s) Nuit`);
-      if (repos > 0) validation.warnings.push(`😴 ${repos} jour(s) repos/congé`);
-      
-      // Vérifier les doublons de dates
-      const dates = data.planning.map(e => e.date);
-      const uniqueDates = [...new Set(dates)];
-      if (dates.length !== uniqueDates.length) {
-        validation.warnings.push('⚠️ Plusieurs services sur certaines dates (services de nuit ?)');
-      }
     }
-
-    // Info sur la période
-    if (data.periode?.debut && data.periode?.fin) {
-      validation.warnings.push(`📅 Période: ${data.periode.debut} → ${data.periode.fin}`);
-    }
-
     return validation;
   };
 
-  // Validation et import
-  const handleValidate = async () => {
+  // ============ FONCTION PRINCIPALE ============
+  const handleFileUpload = useCallback(async (uploadedFile) => {
+    if (processingRef.current) {
+      addLog('Déjà en cours...', 'warn');
+      return;
+    }
+    
+    processingRef.current = true;
+    addLog(`>>> FICHIER: ${uploadedFile?.name}`, 'success');
+    
+    setFile(uploadedFile);
     setLoading(true);
     setError(null);
 
+    try {
+      addLog('OCR Mistral...');
+      const parsed = await PDFServiceWrapper.readPDF(uploadedFile);
+      
+      addLog(`OCR OK: ${parsed?.entries?.length || 0} entrées`, 'success');
+      
+      if (!parsed || !parsed.success) {
+        throw new Error(parsed?.error || 'Extraction échouée');
+      }
+      
+      const transformedData = transformParsedDataForValidation(parsed);
+      const validationResult = validateTransformedData(transformedData);
+      
+      addLog(`Agent: ${transformedData.agent?.nom} ${transformedData.agent?.prenom}`, 'success');
+      
+      setValidation(validationResult);
+      setExtractedData(transformedData);
+      setEditedData(JSON.parse(JSON.stringify(transformedData)));
+      setLoading(false);
+      setCurrentStep(2);
+      addLog('>>> ÉTAPE 2 <<<', 'success');
+      
+    } catch (err) {
+      addLog(`ERREUR: ${err.message}`, 'error');
+      setError(err.message);
+      setLoading(false);
+    } finally {
+      processingRef.current = false;
+    }
+  }, [addLog]);
+
+  const handleValidate = useCallback(async () => {
+    addLog('Validation et import...');
+    setLoading(true);
+    setError(null);
     try {
       const result = await planningImportService.importPlanning(editedData);
       setImportResult(result);
       setCurrentStep(3);
-      
+      addLog('Import terminé', 'success');
       if (result.success) {
+        // Fermer le modal ET notifier le succès
         setTimeout(() => {
+          onClose();
           onSuccess && onSuccess();
         }, 100);
       }
     } catch (err) {
-      console.error('Erreur import:', err);
-      setError(err.message || 'Erreur lors de l\'import');
+      setError(err.message || 'Erreur import');
+      addLog('Erreur import: ' + err.message, 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [addLog, editedData, onClose, onSuccess]);
 
-  // Gestion de l'édition
-  const handleDataEdit = (newData) => {
-    setEditedData(newData);
-  };
+  // Handler pour les modifications de données - SUPPORTE FONCTION OU OBJET
+  const handleDataEdit = useCallback((updaterOrData) => {
+    // Si c'est une fonction, l'utiliser avec setEditedData
+    if (typeof updaterOrData === 'function') {
+      setEditedData(updaterOrData);
+    } else {
+      // Sinon, c'est un objet direct (ancien comportement)
+      setEditedData(updaterOrData);
+    }
+  }, []);
 
-  // Retour à l'upload
-  const goBackToUpload = () => {
-    setCurrentStep(1);
-    setExtractedData(null);
-    setEditedData(null);
+  const goBackToUpload = useCallback(() => { 
+    addLog('Retour étape 1');
+    setCurrentStep(1); 
+    setExtractedData(null); 
+    setEditedData(null); 
     setError(null);
-  };
+  }, [addLog]);
+  
+  const handleClose = useCallback(() => { 
+    if (processingRef.current) {
+      addLog('Fermeture bloquée (en cours)', 'warn');
+      return;
+    }
+    resetModalState();
+    onClose(); 
+  }, [addLog, resetModalState, onClose]);
 
-  // Fermeture du modal
-  const handleClose = () => {
-    resetModal();
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  // Taille du modal adaptée à l'étape (plus grande pour l'étape 2 avec split-view)
-  const modalSizeClass = currentStep === 2 
-    ? 'max-w-[95vw] w-full' // Plus large pour le split-view
-    : 'max-w-6xl w-full';
-
+  // TOUJOURS RENDRE - utiliser CSS pour cacher
+  // Cela évite le démontage/remontage qui cause la perte d'état
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
-      <div className={`bg-white rounded-lg shadow-xl ${modalSizeClass} max-h-[95vh] overflow-hidden flex flex-col`}>
+    <div 
+      className={`fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-2 transition-opacity duration-200 ${
+        isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      }`}
+      style={{ visibility: isOpen ? 'visible' : 'hidden' }}
+    >
+      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
         
-        {/* Header avec étapes */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 flex-shrink-0">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-3 flex-shrink-0">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold flex items-center gap-2">
-                <FileText size={28} />
-                Upload PDF Planning
-              </h2>
-              <p className="text-blue-100 mt-1">
-                Extraction intelligente avec fallback automatique
-                {extractionMethod && (
-                  <span className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs">
-                    {extractionMethod === 'simple-vision' ? '⚡ Mode rapide' : '🔄 Mode classique'}
-                  </span>
-                )}
-              </p>
+            <div className="flex items-center gap-2">
+              <FileText size={20} />
+              <div>
+                <h2 className="text-base font-bold">Import PDF</h2>
+                <p className="text-blue-200 text-xs">Étape {currentStep}/3 • Render #{renderCount.current}</p>
+              </div>
             </div>
-            <button onClick={handleClose} className="text-white hover:bg-white/20 rounded-lg p-2 transition">
-              <X size={24} />
+            <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-lg">
+              <X size={20} />
             </button>
           </div>
-          
-          {/* Indicateur d'étapes */}
-          <div className="flex items-center justify-center mt-4 space-x-8">
-            <div className={`flex items-center ${currentStep >= 1 ? 'text-white' : 'text-blue-300'}`}>
-              <div className={`w-8 h-8 rounded-full ${currentStep >= 1 ? 'bg-white text-blue-600' : 'bg-blue-700'} flex items-center justify-center font-bold mr-2`}>1</div>
-              <span>Upload</span>
-            </div>
-            <div className={`flex items-center ${currentStep >= 2 ? 'text-white' : 'text-blue-300'}`}>
-              <div className={`w-8 h-8 rounded-full ${currentStep >= 2 ? 'bg-white text-blue-600' : 'bg-blue-700'} flex items-center justify-center font-bold mr-2`}>2</div>
-              <span>Validation</span>
-            </div>
-            <div className={`flex items-center ${currentStep >= 3 ? 'text-white' : 'text-blue-300'}`}>
-              <div className={`w-8 h-8 rounded-full ${currentStep >= 3 ? 'bg-white text-blue-600' : 'bg-blue-700'} flex items-center justify-center font-bold mr-2`}>3</div>
-              <span>Import</span>
-            </div>
+        </div>
+
+        {/* Debug log - visible seulement si ouvert */}
+        {isOpen && (
+          <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0 max-h-20 overflow-y-auto">
+            {debugLog.slice(-5).map((log, i) => (
+              <div 
+                key={i} 
+                className={
+                  log.type === 'error' ? 'text-red-400' : 
+                  log.type === 'success' ? 'text-green-400' : 
+                  log.type === 'warn' ? 'text-yellow-400' : 
+                  'text-gray-300'
+                }
+              >
+                {log.time} {log.msg}
+              </div>
+            ))}
           </div>
-        </div>
+        )}
 
-        {/* Contenu principal - flex-1 pour prendre tout l'espace disponible */}
-        <div className={`p-4 flex-1 overflow-hidden ${currentStep === 2 ? '' : 'overflow-y-auto'}`}>
-          
-          {/* Étape 1: Upload */}
-          {currentStep === 1 && (
-            <div className="overflow-y-auto max-h-full">
-              {/* Information sur le nouveau système */}
-              <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
-                <div className="flex">
-                  <Zap className="text-green-600 mr-2 flex-shrink-0" size={20} />
-                  <div>
-                    <h3 className="font-semibold text-green-900">Nouveau système d'extraction v2.0</h3>
-                    <p className="text-green-800">Double méthode avec fallback automatique</p>
-                    <ul className="text-sm text-green-700 mt-2 space-y-1">
-                      <li>• <strong>Mode rapide ⚡</strong> : Mistral Vision direct (150 lignes)</li>
-                      <li>• <strong>Mode classique 🔄</strong> : OCR + parsing (fallback si besoin)</li>
-                      <li>• Détection automatique des services de nuit</li>
-                      <li>• Validation des codes SNCF</li>
-                    </ul>
+        {/* Contenu - rendu seulement si ouvert pour performance */}
+        {isOpen && (
+          <div className="flex-1 overflow-hidden flex flex-col bg-white">
+            {currentStep === 1 && (
+              <div className="flex-1 overflow-y-auto p-3">
+                <PDFUploadStep 
+                  file={file} 
+                  onFileUpload={handleFileUpload} 
+                  error={error} 
+                  isApiConfigured={true} 
+                  stats={stats} 
+                />
+                
+                {error && (
+                  <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-2">
+                    <p className="text-red-800 text-sm"><AlertCircle className="inline mr-1" size={14} />{error}</p>
                   </div>
-                </div>
+                )}
               </div>
+            )}
 
-              {/* ⚠️ AVERTISSEMENT VÉRIFICATION */}
-              <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-4">
-                <div className="flex">
-                  <AlertTriangle className="text-amber-600 mr-2 flex-shrink-0" size={20} />
-                  <div>
-                    <h3 className="font-semibold text-amber-900">⚠️ Vérification recommandée</h3>
-                    <p className="text-amber-800 text-sm mt-1">
-                      Le système détecte automatiquement les services depuis les bulletins PDF, 
-                      mais <strong>il est vivement recommandé de vérifier l'exactitude des données extraites</strong> avant de valider l'import.
-                    </p>
-                    <p className="text-amber-700 text-xs mt-2">
-                      L'étape de validation (étape 2) affiche le PDF original en regard pour faciliter la vérification.
-                    </p>
-                  </div>
-                </div>
+            {currentStep === 2 && extractedData && (
+              <div className="flex-1 overflow-hidden">
+                <PDFValidationStep 
+                  data={editedData} 
+                  onChange={handleDataEdit} 
+                  validation={validation} 
+                  onValidate={handleValidate} 
+                  onCancel={goBackToUpload} 
+                  loading={loading} 
+                  pdfFile={file} 
+                />
               </div>
+            )}
 
-              {/* Information sur le format attendu */}
-              <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
-                <div className="flex">
-                  <Info className="text-blue-600 mr-2 flex-shrink-0" size={20} />
-                  <div>
-                    <h3 className="font-semibold text-blue-900">Format de bulletin SNCF attendu</h3>
-                    <p className="text-blue-800 text-sm">Le système reconnaît automatiquement :</p>
-                    <ul className="text-sm text-blue-700 mt-1">
-                      <li>• Dates au format JJ/MM/AAAA</li>
-                      <li>• Codes service : CCU001-006, CRC001-003, ACR001-004, CENT001-003, REO001-010, RP, DISPO, NU, VISIMED, etc.</li>
-                      <li>• Horaires au format HH:MM → détection auto Matin/Soir/Nuit</li>
-                      <li>• Informations agent et numéro CP</li>
-                    </ul>
-                  </div>
-                </div>
+            {currentStep === 3 && importResult && (
+              <div className="flex-1 overflow-y-auto p-3">
+                <PDFImportResult 
+                  importReport={importResult} 
+                  onClose={handleClose} 
+                  onRollback={null} 
+                  onBackToValidation={() => setCurrentStep(2)} 
+                />
               </div>
+            )}
+          </div>
+        )}
 
-              <PDFUploadStep 
-                file={file}
-                onFileUpload={handleFileUpload}
-                error={error}
-                isApiConfigured={true}
-                stats={stats}
-              />
-            </div>
-          )}
-
-          {/* Étape 2: Validation avec split-screen PDF */}
-          {currentStep === 2 && extractedData && (
-            <PDFValidationStep
-              data={editedData}
-              onChange={handleDataEdit}
-              validation={validation}
-              onValidate={handleValidate}
-              onCancel={goBackToUpload}
-              loading={loading}
-              pdfFile={file}
-            />
-          )}
-
-          {/* Étape 3: Résultats */}
-          {currentStep === 3 && importResult && (
-            <div className="overflow-y-auto max-h-full">
-              <PDFImportResult
-                importReport={importResult}
-                onClose={handleClose}
-                onRollback={null}
-                onBackToValidation={() => setCurrentStep(2)}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Loading overlay */}
-        {loading && (
-          <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center z-10">
-            <div className="bg-white p-6 rounded-lg shadow-lg text-center">
-              <Loader className="animate-spin mx-auto mb-4 text-blue-600" size={32} />
-              <p className="text-gray-700">
-                {currentStep === 1 && 'Analyse du PDF (mode rapide → fallback si besoin)...'}
-                {currentStep === 2 && 'Import en cours...'}
-                {currentStep === 3 && 'Finalisation...'}
-              </p>
+        {loading && isOpen && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-20">
+            <div className="bg-white p-4 rounded-xl shadow-xl text-center mx-4">
+              <Loader className="animate-spin mx-auto mb-2 text-blue-600" size={32} />
+              <p className="text-gray-700 text-sm">Analyse OCR...</p>
+              <p className="text-gray-500 text-xs mt-1">Ne fermez pas cette fenêtre</p>
             </div>
           </div>
         )}
       </div>
     </div>
   );
-};
+});
+
+ModalUploadPDF.displayName = 'ModalUploadPDF';
 
 export default ModalUploadPDF;

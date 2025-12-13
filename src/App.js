@@ -5,6 +5,7 @@ import { AlertTriangle } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { usePlanning } from './hooks/usePlanning';
 import { useModals } from './hooks/useModals';
+import useIsMobile from './hooks/useIsMobile';
 
 // Services
 import supabaseService from './services/supabaseService';
@@ -15,6 +16,7 @@ import MonthTabs from './components/MonthTabs';
 import PlanningTable from './components/PlanningTable';
 import LoginPage from './components/LoginPage';
 import LandingPage from './components/LandingPage';
+import PageUploadPDF from './components/PageUploadPDF';
 
 // Modals
 import ModalCellEdit from './components/modals/ModalCellEdit';
@@ -38,13 +40,14 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
- * v2.5 - Fusion Option A: ModalEditAgent central (création agent + compte Auth auto)
+ * v2.9 - Fix: ModalUploadPDF toujours monté (hors blocs conditionnels)
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
   const { user, loading: authLoading, signOut } = useAuth();
+  const isMobile = useIsMobile();
   
-  // État de navigation : 'landing' ou 'planning'
+  // État de navigation : 'landing', 'planning', ou 'uploadPDF' (mobile uniquement)
   const [currentView, setCurrentView] = React.useState('landing');
   
   // État du mois sélectionné
@@ -84,7 +87,7 @@ const App = () => {
     openGestionAgents,
     openEditAgent,
     openHabilitations,
-    openUploadPDF,
+    openUploadPDF: openUploadPDFModal,
     openPrevisionnelJour,
     closeModal,
     setSelectedAgent
@@ -92,6 +95,18 @@ const App = () => {
 
   // État debug (dev only)
   const [showDebug, setShowDebug] = React.useState(false);
+
+  // === HANDLER HYBRIDE UPLOAD PDF ===
+  // Desktop → Modal | Mobile → Page dédiée
+  const openUploadPDF = React.useCallback(() => {
+    if (isMobile) {
+      console.log('📱 Mobile détecté → Page dédiée PDF');
+      setCurrentView('uploadPDF');
+    } else {
+      console.log('🖥️ Desktop détecté → Modal PDF');
+      openUploadPDFModal();
+    }
+  }, [isMobile, openUploadPDFModal]);
 
   // === CHARGEMENT DES ANNÉES DISPONIBLES ===
   // Configuration: années à toujours afficher (même sans données)
@@ -146,6 +161,11 @@ const App = () => {
   // Retour à la landing page
   const handleBackToLanding = () => {
     setCurrentView('landing');
+  };
+
+  // Retour au planning (depuis page PDF mobile)
+  const handleBackToPlanning = () => {
+    setCurrentView('planning');
   };
 
   // Handler pour changement d'année
@@ -284,38 +304,87 @@ const App = () => {
     }
   };
 
-  // Gestion de l'upload PDF
-  const handleUploadSuccess = () => {
+  // Gestion de l'upload PDF - NE PAS fermer le modal ici, laisser le modal gérer
+  const handleUploadSuccess = React.useCallback(() => {
+    console.log('📥 handleUploadSuccess appelé');
     loadData(currentMonth);
     setConnectionStatus('✅ Planning importé avec succès');
-  };
+    // Si on est sur la page mobile, revenir au planning
+    if (currentView === 'uploadPDF') {
+      setCurrentView('planning');
+    }
+    // NE PAS fermer le modal ici - il se ferme lui-même
+  }, [currentMonth, currentView, loadData, setConnectionStatus]);
 
-  // === RENDU CONDITIONNEL ===
+  // Handler pour fermer le modal PDF - stable
+  const handleCloseUploadPDF = React.useCallback(() => {
+    closeModal('uploadPDF');
+  }, [closeModal]);
+
+  // === RENDU ===
+  
+  // Le modal PDF est TOUJOURS monté (hors des blocs conditionnels)
+  // pour éviter les démontages/remontages lors du rechargement des données
+  const renderPDFModal = () => (
+    <ModalUploadPDF
+      isOpen={modals.uploadPDF}
+      onClose={handleCloseUploadPDF}
+      onSuccess={handleUploadSuccess}
+    />
+  );
 
   // Vérification authentification en cours
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <div className="text-lg text-gray-600">Vérification...</div>
+      <>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+            <div className="text-lg text-gray-600">Vérification...</div>
+          </div>
         </div>
-      </div>
+        {/* Modal toujours présent même pendant auth loading */}
+        {renderPDFModal()}
+      </>
     );
   }
 
   // Non authentifié
   if (!user) {
-    return <LoginPage onLogin={() => {}} />;
+    return (
+      <>
+        <LoginPage onLogin={() => {}} />
+        {/* Modal toujours présent */}
+        {renderPDFModal()}
+      </>
+    );
   }
 
   // === PAGE D'ACCUEIL LANDING ===
   if (currentView === 'landing') {
     return (
-      <LandingPage 
-        onNavigate={handleNavigate}
-        user={user}
-      />
+      <>
+        <LandingPage 
+          onNavigate={handleNavigate}
+          user={user}
+        />
+        {/* Modal toujours présent */}
+        {renderPDFModal()}
+      </>
+    );
+  }
+
+  // === PAGE UPLOAD PDF (MOBILE UNIQUEMENT) ===
+  if (currentView === 'uploadPDF') {
+    return (
+      <>
+        <PageUploadPDF 
+          onBack={handleBackToPlanning}
+          onSuccess={handleUploadSuccess}
+        />
+        {/* Modal toujours présent */}
+        {renderPDFModal()}
+      </>
     );
   }
 
@@ -324,40 +393,48 @@ const App = () => {
   // Chargement des données ou des années
   if (dataLoading || yearsLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
-          <div className="text-lg text-gray-600">Chargement des données...</div>
-          <div className="text-sm text-gray-500 mt-2">{connectionStatus}</div>
+      <>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+            <div className="text-lg text-gray-600">Chargement des données...</div>
+            <div className="text-sm text-gray-500 mt-2">{connectionStatus}</div>
+          </div>
         </div>
-      </div>
+        {/* Modal toujours présent même pendant le chargement */}
+        {renderPDFModal()}
+      </>
     );
   }
 
   // État d'erreur
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4" />
-          <div className="text-lg text-red-600 mb-2">Erreur de connexion</div>
-          <div className="text-sm text-gray-600 mb-4">{error}</div>
-          <div className="flex gap-3 justify-center">
-            <button 
-              onClick={() => loadData()} 
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Réessayer
-            </button>
-            <button 
-              onClick={handleBackToLanding} 
-              className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
-            >
-              Retour à l'accueil
-            </button>
+      <>
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+          <div className="text-center">
+            <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+            <div className="text-lg text-red-600 mb-2">Erreur de connexion</div>
+            <div className="text-sm text-gray-600 mb-4">{error}</div>
+            <div className="flex gap-3 justify-center">
+              <button 
+                onClick={() => loadData()} 
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Réessayer
+              </button>
+              <button 
+                onClick={handleBackToLanding} 
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Retour à l'accueil
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+        {/* Modal toujours présent */}
+        {renderPDFModal()}
+      </>
     );
   }
 
@@ -458,11 +535,11 @@ const App = () => {
         onRemoveHabilitation={handleRemoveHabilitation}
       />
       
-      <ModalUploadPDF
-        isOpen={modals.uploadPDF}
-        onClose={() => closeModal('uploadPDF')}
-        onSuccess={handleUploadSuccess}
-      />
+      {/* 
+        Modal PDF - TOUJOURS MONTÉ via renderPDFModal()
+        Même emplacement que les autres modals pour cohérence visuelle
+      */}
+      {renderPDFModal()}
 
       {/* Modal Équipes du Jour */}
       <ModalPrevisionnelJour
