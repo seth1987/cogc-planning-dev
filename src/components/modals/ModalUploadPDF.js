@@ -1,5 +1,5 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.1 - Fix: lock mobile detection au premier rendu
+// Version 3.2 - DEBUG: logs + alerte au montage
 import React, { useState, useEffect, useRef } from 'react';
 import { X, FileText, AlertCircle, Loader, Info, Zap, AlertTriangle } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
@@ -12,24 +12,15 @@ import { supabase } from '../../lib/supabaseClient';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  // Détection mobile - verrouillée au premier rendu pour éviter les bascules
-  const isMobileHook = useIsMobile();
-  const isMobileRef = useRef(null);
+  // DEBUG: compteur de renders
+  const renderCount = useRef(0);
+  renderCount.current++;
   
-  // Verrouiller la valeur mobile au premier rendu quand le modal s'ouvre
-  if (isMobileRef.current === null && isOpen) {
-    isMobileRef.current = isMobileHook;
-    console.log('📱 Mode verrouillé:', isMobileRef.current ? 'MOBILE' : 'DESKTOP');
-  }
+  // Détection mobile
+  const isMobile = useIsMobile();
   
-  // Réinitialiser quand le modal se ferme
-  useEffect(() => {
-    if (!isOpen) {
-      isMobileRef.current = null;
-    }
-  }, [isOpen]);
-  
-  const isMobile = isMobileRef.current ?? isMobileHook;
+  // DEBUG: log à chaque render
+  console.log(`🔄 ModalUploadPDF render #${renderCount.current}, isOpen=${isOpen}, isMobile=${isMobile}`);
   
   const [currentStep, setCurrentStep] = useState(1);
   const [file, setFile] = useState(null);
@@ -41,28 +32,42 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [stats, setStats] = useState({ total: 0, mapped: 0 });
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
   const [extractionMethod, setExtractionMethod] = useState(null);
+  const [debugLog, setDebugLog] = useState([]);
   
   const codesMapping = useRef({});
 
+  // DEBUG: ajouter un log
+  const addDebugLog = (msg) => {
+    console.log('📋 ' + msg);
+    setDebugLog(prev => [...prev.slice(-10), `${new Date().toLocaleTimeString()}: ${msg}`]);
+  };
+
   useEffect(() => {
     if (isOpen) {
+      addDebugLog('Modal ouvert');
       loadMappingStats();
       loadCodesMapping();
     }
   }, [isOpen]);
 
   const loadMappingStats = async () => {
+    addDebugLog('Chargement stats...');
     const mappingStats = await mappingService.getStats();
     setStats(mappingStats);
+    addDebugLog(`Stats chargées: ${mappingStats.total || mappingStats.totalCodes || 0} codes`);
   };
 
   const loadCodesMapping = async () => {
     try {
+      addDebugLog('Chargement mapping codes...');
       const { data, error } = await supabase
         .from('codes_services')
         .select('code, poste_code, service_code, description');
       
-      if (error) return;
+      if (error) {
+        addDebugLog('Erreur mapping: ' + error.message);
+        return;
+      }
       
       const mapping = {};
       data.forEach(row => {
@@ -74,12 +79,14 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       });
       
       codesMapping.current = mapping;
+      addDebugLog(`Mapping chargé: ${data.length} codes`);
     } catch (err) {
-      console.error('Erreur chargement mapping:', err);
+      addDebugLog('Erreur: ' + err.message);
     }
   };
 
   const resetModal = () => {
+    addDebugLog('Reset modal');
     setCurrentStep(1);
     setFile(null);
     setExtractedData(null);
@@ -176,15 +183,20 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     return null;
   };
 
+  // IMPORTANT: Cette fonction est passée à PDFUploadStep
   const handleFileUpload = async (uploadedFile) => {
-    console.log('📤 handleFileUpload appelé, isMobile:', isMobile);
+    addDebugLog(`handleFileUpload appelé: ${uploadedFile?.name}`);
+    alert(`DEBUG Modal: Fichier reçu!\n${uploadedFile?.name}\nTaille: ${uploadedFile?.size}`);
+    
     setFile(uploadedFile);
     setLoading(true);
     setError(null);
     setExtractionMethod(null);
 
     try {
+      addDebugLog('Appel PDFServiceWrapper.readPDF...');
       const parsed = await PDFServiceWrapper.readPDF(uploadedFile);
+      addDebugLog(`Extraction terminée: ${parsed.method}`);
       setExtractionMethod(parsed.method);
       
       if (!parsed.success) throw new Error(parsed.error || 'Erreur extraction');
@@ -199,8 +211,10 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       setValidation(validationResult);
       setExtractedData(transformedData);
       setEditedData(JSON.parse(JSON.stringify(transformedData)));
+      addDebugLog('Passage à étape 2');
       setCurrentStep(2);
     } catch (err) {
+      addDebugLog('Erreur: ' + err.message);
       setError(err.message || 'Erreur extraction');
     } finally {
       setLoading(false);
@@ -228,6 +242,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   };
 
   const handleValidate = async () => {
+    addDebugLog('Validation...');
     setLoading(true);
     setError(null);
     try {
@@ -248,20 +263,20 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   if (!isOpen) return null;
 
-  // ========== VERSION MOBILE ==========
-  if (isMobile) {
-    return (
-      <div className="fixed inset-0 bg-white z-50 flex flex-col">
-        {/* Header mobile */}
+  // ========== RENDU ==========
+  return (
+    <div className={`fixed inset-0 z-50 ${isMobile ? 'bg-white' : 'bg-black bg-opacity-50 flex items-center justify-center p-2'}`}>
+      <div className={`${isMobile ? 'h-full flex flex-col' : 'bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col'}`}>
+        
+        {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <FileText size={24} />
               <div>
-                <h2 className="text-lg font-bold">Import PDF</h2>
+                <h2 className="text-lg font-bold">Import PDF {isMobile ? '(Mobile)' : '(Desktop)'}</h2>
                 <p className="text-blue-200 text-xs">
-                  Étape {currentStep}/3
-                  {extractionMethod && <span className="ml-1">{extractionMethod === 'simple-vision' ? '⚡' : '🔄'}</span>}
+                  Étape {currentStep}/3 • Render #{renderCount.current}
                 </p>
               </div>
             </div>
@@ -276,7 +291,16 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           </div>
         </div>
 
-        {/* Contenu mobile */}
+        {/* Debug log */}
+        {debugLog.length > 0 && (
+          <div className="bg-yellow-50 border-b border-yellow-200 p-2 text-xs font-mono max-h-24 overflow-y-auto">
+            {debugLog.map((log, i) => (
+              <div key={i} className="text-yellow-800">{log}</div>
+            ))}
+          </div>
+        )}
+
+        {/* Contenu */}
         <div className="flex-1 overflow-hidden flex flex-col">
           {currentStep === 1 && (
             <div className="flex-1 overflow-y-auto p-4">
@@ -286,7 +310,16 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                   <strong>Vérifiez les données</strong> après extraction.
                 </p>
               </div>
-              <PDFUploadStep file={file} onFileUpload={handleFileUpload} error={error} isApiConfigured={true} stats={stats} />
+              
+              {/* PDFUploadStep avec la fonction handleFileUpload */}
+              <PDFUploadStep 
+                file={file} 
+                onFileUpload={handleFileUpload} 
+                error={error} 
+                isApiConfigured={true} 
+                stats={stats} 
+              />
+              
               {error && (
                 <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3">
                   <p className="text-red-800 text-sm"><AlertCircle className="inline mr-1" size={16} />{error}</p>
@@ -313,109 +346,6 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
             <div className="bg-white p-6 rounded-xl shadow-xl text-center mx-4">
               <Loader className="animate-spin mx-auto mb-3 text-blue-600" size={40} />
               <p className="text-gray-700 font-medium">
-                {currentStep === 1 && 'Analyse du PDF...'}
-                {currentStep === 2 && 'Import en cours...'}
-                {currentStep === 3 && 'Finalisation...'}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // ========== VERSION DESKTOP ==========
-  const modalSizeClass = currentStep === 2 ? 'max-w-[95vw] w-full' : 'max-w-6xl w-full';
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
-      <div className={`bg-white rounded-lg shadow-xl ${modalSizeClass} max-h-[95vh] overflow-hidden flex flex-col`}>
-        
-        <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-4 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold flex items-center gap-2">
-                <FileText size={28} />
-                Upload PDF Planning
-              </h2>
-              <p className="text-blue-100 mt-1">
-                Extraction intelligente
-                {extractionMethod && (
-                  <span className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs">
-                    {extractionMethod === 'simple-vision' ? '⚡ Mode rapide' : '🔄 Mode classique'}
-                  </span>
-                )}
-              </p>
-            </div>
-            <button onClick={handleClose} className="text-white hover:bg-white/20 rounded-lg p-2 transition">
-              <X size={24} />
-            </button>
-          </div>
-          
-          <div className="flex items-center justify-center mt-4 space-x-8">
-            {[1, 2, 3].map((step, i) => (
-              <div key={step} className={`flex items-center ${currentStep >= step ? 'text-white' : 'text-blue-300'}`}>
-                <div className={`w-8 h-8 rounded-full ${currentStep >= step ? 'bg-white text-blue-600' : 'bg-blue-700'} flex items-center justify-center font-bold mr-2`}>{step}</div>
-                <span>{['Upload', 'Validation', 'Import'][i]}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className={`p-4 flex-1 overflow-hidden ${currentStep === 2 ? '' : 'overflow-y-auto'}`}>
-          
-          {currentStep === 1 && (
-            <div className="overflow-y-auto max-h-full">
-              <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
-                <div className="flex">
-                  <Zap className="text-green-600 mr-2 flex-shrink-0" size={20} />
-                  <div>
-                    <h3 className="font-semibold text-green-900">Système d'extraction v2.0</h3>
-                    <p className="text-green-800">Double méthode avec fallback automatique</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-amber-50 border-l-4 border-amber-400 p-4 mb-4">
-                <div className="flex">
-                  <AlertTriangle className="text-amber-600 mr-2 flex-shrink-0" size={20} />
-                  <div>
-                    <h3 className="font-semibold text-amber-900">⚠️ Vérification recommandée</h3>
-                    <p className="text-amber-800 text-sm mt-1">Vérifiez les données extraites avant de valider.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
-                <div className="flex">
-                  <Info className="text-blue-600 mr-2 flex-shrink-0" size={20} />
-                  <div>
-                    <h3 className="font-semibold text-blue-900">Format bulletin SNCF</h3>
-                    <p className="text-blue-800 text-sm">Dates JJ/MM/AAAA, codes CCU/CRC/ACR, horaires HH:MM</p>
-                  </div>
-                </div>
-              </div>
-
-              <PDFUploadStep file={file} onFileUpload={handleFileUpload} error={error} isApiConfigured={true} stats={stats} />
-            </div>
-          )}
-
-          {currentStep === 2 && extractedData && (
-            <PDFValidationStep data={editedData} onChange={handleDataEdit} validation={validation} onValidate={handleValidate} onCancel={goBackToUpload} loading={loading} pdfFile={file} />
-          )}
-
-          {currentStep === 3 && importResult && (
-            <div className="overflow-y-auto max-h-full">
-              <PDFImportResult importReport={importResult} onClose={handleClose} onRollback={null} onBackToValidation={() => setCurrentStep(2)} />
-            </div>
-          )}
-        </div>
-
-        {loading && (
-          <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center z-10">
-            <div className="bg-white p-6 rounded-lg shadow-lg text-center">
-              <Loader className="animate-spin mx-auto mb-4 text-blue-600" size={32} />
-              <p className="text-gray-700">
                 {currentStep === 1 && 'Analyse du PDF...'}
                 {currentStep === 2 && 'Import en cours...'}
                 {currentStep === 3 && 'Finalisation...'}
