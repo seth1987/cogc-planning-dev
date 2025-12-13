@@ -18,7 +18,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth);
     const dayName = planningService.getDayName(day, currentMonth);
     
-    let className = 'px-1 py-2 text-center text-xs font-medium min-w-[60px] ';
+    let className = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] ';
     
     if (isFerier) {
       className += 'bg-red-100 text-red-900';
@@ -58,7 +58,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth);
     
     let cellContent = '';
-    let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[60px] min-h-[45px] relative ';
+    let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[55px] min-h-[40px] relative ';
     let hasNote = false;
     
     if (planningData) {
@@ -152,8 +152,8 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                         <>
                           <tr className="bg-gray-50">
                             <th 
-                              className="px-3 py-2 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10"
-                              style={{ minWidth: '120px', width: '120px' }}
+                              className="px-2 py-2 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10"
+                              style={{ minWidth: '95px', width: '95px' }}
                             >
                               Agent
                             </th>
@@ -165,8 +165,8 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                             return (
                               <tr key={agent.id || `${agent.nom}_${agent.prenom}`} className="hover:bg-gray-50">
                                 <td 
-                                  className="px-3 py-1 text-sm text-gray-900 sticky left-0 bg-white z-10 border-r"
-                                  style={{ minWidth: '120px', width: '120px' }}
+                                  className="px-2 py-1 text-gray-900 sticky left-0 bg-white z-10 border-r"
+                                  style={{ minWidth: '95px', width: '95px' }}
                                 >
                                   <button
                                     onClick={() => onAgentClick && onAgentClick(agent)}
@@ -174,8 +174,8 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                                     title={fullName}
                                   >
                                     <div className="flex flex-col leading-tight">
-                                      <span className="font-semibold">{agent.nom}</span>
-                                      <span className="text-xs text-gray-600">{agent.prenom}</span>
+                                      <span className="font-semibold text-xs">{agent.nom}</span>
+                                      <span className="text-[10px] text-gray-600">{agent.prenom}</span>
                                     </div>
                                   </button>
                                 </td>
