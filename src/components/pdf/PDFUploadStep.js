@@ -1,7 +1,7 @@
 // Composant pour l'étape d'upload du PDF
-// Version 2.1 - Fix mobile file selection + meilleure validation
-import React from 'react';
-import { Upload, Key, Database, Lock, FileText } from 'lucide-react';
+// Version 2.2 - Debug mobile + feedback visuel immédiat
+import React, { useState } from 'react';
+import { Upload, Key, Database, Lock, FileText, Loader, CheckCircle } from 'lucide-react';
 import useIsMobile from '../../hooks/useIsMobile';
 
 const PDFUploadStep = ({ 
@@ -12,14 +12,15 @@ const PDFUploadStep = ({
   stats
 }) => {
   const isMobile = useIsMobile();
+  const [localLoading, setLocalLoading] = useState(false);
+  const [localFile, setLocalFile] = useState(null);
   
   // Gestion de la sélection de fichier - compatible mobile
-  const handleFileSelect = (event) => {
+  const handleFileSelect = async (event) => {
     console.log('📱 handleFileSelect déclenché');
     
     if (!isApiConfigured) {
       alert('Le module PDF nécessite une clé API Mistral pour fonctionner.');
-      event.target.value = '';
       return;
     }
 
@@ -40,18 +41,33 @@ const PDFUploadStep = ({
     const isPDF = 
       selectedFile.type === 'application/pdf' || 
       selectedFile.type === 'application/x-pdf' ||
+      selectedFile.type === '' || // Certains mobiles ne donnent pas le MIME
       selectedFile.name.toLowerCase().endsWith('.pdf');
 
     if (isPDF) {
-      console.log('✅ PDF valide, appel onFileUpload');
-      onFileUpload(selectedFile);
+      console.log('✅ PDF valide, mise à jour UI locale');
+      
+      // Feedback immédiat - montrer le fichier sélectionné
+      setLocalFile(selectedFile);
+      setLocalLoading(true);
+      
+      console.log('📤 Appel onFileUpload...');
+      
+      try {
+        // Appeler le parent avec un léger délai pour laisser l'UI se mettre à jour
+        await new Promise(resolve => setTimeout(resolve, 100));
+        onFileUpload(selectedFile);
+        console.log('✅ onFileUpload appelé avec succès');
+      } catch (err) {
+        console.error('❌ Erreur onFileUpload:', err);
+        alert('Erreur lors du traitement: ' + err.message);
+        setLocalLoading(false);
+        setLocalFile(null);
+      }
     } else {
       console.log('❌ Fichier non PDF:', selectedFile.type, selectedFile.name);
       alert(`Veuillez sélectionner un fichier PDF valide.\n\nFichier reçu: ${selectedFile.name}\nType: ${selectedFile.type || 'non détecté'}`);
     }
-    
-    // Reset input pour permettre re-sélection du même fichier
-    event.target.value = '';
   };
 
   // ========== VERSION MOBILE ==========
@@ -85,15 +101,40 @@ const PDFUploadStep = ({
           </div>
         )}
 
-        {/* GROS BOUTON D'UPLOAD MOBILE - Version corrigée */}
-        {isApiConfigured ? (
+        {/* ÉTAT: En cours de traitement */}
+        {localLoading && localFile && (
+          <div className="bg-blue-50 border-2 border-blue-400 rounded-xl p-6 text-center">
+            <Loader className="animate-spin mx-auto mb-3 text-blue-600" size={48} />
+            <p className="text-lg font-bold text-blue-900">Analyse en cours...</p>
+            <p className="text-blue-700 text-sm mt-1 truncate px-4">
+              {localFile.name}
+            </p>
+            <p className="text-blue-500 text-xs mt-2">
+              Extraction OCR avec Mistral AI
+            </p>
+          </div>
+        )}
+
+        {/* ÉTAT: Fichier sélectionné (depuis le parent) */}
+        {!localLoading && file && (
+          <div className="bg-green-50 border-2 border-green-400 rounded-xl p-6 text-center">
+            <CheckCircle className="mx-auto mb-3 text-green-600" size={48} />
+            <p className="text-lg font-bold text-green-900">PDF sélectionné</p>
+            <p className="text-green-700 text-sm mt-1 truncate px-4">
+              {file.name}
+            </p>
+          </div>
+        )}
+
+        {/* BOUTON D'UPLOAD - masqué si en cours */}
+        {!localLoading && !file && isApiConfigured && (
           <label 
             htmlFor="pdf-upload-mobile"
             className="block bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl p-6 text-center transition-colors shadow-lg cursor-pointer"
           >
             <input
               type="file"
-              accept=".pdf,application/pdf"
+              accept=".pdf,application/pdf,application/x-pdf"
               onChange={handleFileSelect}
               className="hidden"
               id="pdf-upload-mobile"
@@ -104,30 +145,18 @@ const PDFUploadStep = ({
               Bulletin de commande SNCF
             </p>
           </label>
-        ) : (
+        )}
+
+        {/* Upload désactivé */}
+        {!isApiConfigured && (
           <div className="bg-gray-200 rounded-xl p-6 text-center">
             <Lock className="mx-auto mb-3 text-gray-400" size={48} />
             <p className="text-gray-500 font-medium">Upload désactivé</p>
           </div>
         )}
 
-        {/* Fichier sélectionné */}
-        {file && isApiConfigured && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <FileText className="text-green-600 flex-shrink-0" size={24} />
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-green-900 truncate">{file.name}</p>
-                <p className="text-xs text-green-700">
-                  {(file.size / 1024).toFixed(1)} Ko
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Instructions condensées mobile */}
-        {isApiConfigured && (
+        {isApiConfigured && !localLoading && !file && (
           <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
             <p className="font-medium mb-2">Format accepté :</p>
             <ul className="space-y-1">
@@ -192,7 +221,7 @@ const PDFUploadStep = ({
           <>
             <input
               type="file"
-              accept=".pdf,application/pdf"
+              accept=".pdf,application/pdf,application/x-pdf"
               onChange={handleFileSelect}
               className="hidden"
               id="pdf-upload"
@@ -218,13 +247,13 @@ const PDFUploadStep = ({
           </>
         )}
         
-        {file && isApiConfigured && (
+        {(file || localFile) && isApiConfigured && (
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
             <p className="text-sm text-blue-900 font-medium">
-              📄 {file.name}
+              📄 {(file || localFile).name}
             </p>
             <p className="text-xs text-blue-700 mt-1">
-              {(file.size / 1024).toFixed(2)} KB
+              {((file || localFile).size / 1024).toFixed(2)} KB
             </p>
           </div>
         )}
