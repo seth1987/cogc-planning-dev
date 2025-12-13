@@ -9,7 +9,7 @@ import supabaseService from '../../services/supabaseService';
  * Permet à TOUS les utilisateurs de modifier TOUS les contacts.
  * Affiche et permet la modification des contacts génériques par groupe.
  * 
- * v3.0 - Modification par tous + contacts de groupe
+ * v3.1 - Noms de groupes dynamiques depuis BDD (groupes_contacts.nom_complet)
  * 
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {function} onClose - Callback de fermeture
@@ -206,7 +206,7 @@ const ModalAnnuaire = ({ isOpen, onClose, currentUser }) => {
           .from('groupes_contacts')
           .insert({
             groupe_code: groupeCode,
-            nom_complet: groupNames[groupeCode] || groupeCode,
+            nom_complet: groupeCode, // Fallback sur le code si pas de nom
             telephone: editGroupForm.telephone || null,
             email: editGroupForm.email || null
           });
@@ -237,6 +237,15 @@ const ModalAnnuaire = ({ isOpen, onClose, currentUser }) => {
     } finally {
       setSavingGroup(false);
     }
+  };
+
+  /**
+   * Récupère le nom complet d'un groupe depuis la BDD
+   * Fallback sur le code du groupe si non trouvé
+   */
+  const getGroupDisplayName = (groupeCode) => {
+    const groupeInfo = groupesContacts[groupeCode];
+    return groupeInfo?.nom_complet || groupeCode;
   };
 
   // Grouper les agents par groupe_travail
@@ -275,22 +284,6 @@ const ModalAnnuaire = ({ isOpen, onClose, currentUser }) => {
       })
     }))
     .filter(group => group.agents.length > 0);
-
-  // Noms complets des groupes
-  const groupNames = {
-    'CRC': 'CRC - Coordinateur Régional Circulation',
-    'ACR': 'ACR - Agent Circulation Régulateur',
-    'RC': 'RC - Régulateur Centre',
-    'RO': 'RO - Régulateur Ouest',
-    'CCU': 'CCU - Centre de Commandement Unifié',
-    'RE': 'RE - Régulateur Est',
-    'CAC': 'CAC - Coordination Animation Circulation',
-    'EAC': 'EAC - Expert Animation Circulation',
-    'PCD': 'PCD - Poste de Commandement Denfert',
-    'RESERVE PN': 'Réserve Paris Nord',
-    'RESERVE DR': 'Réserve Denfert-Rochereau',
-    'AUTRE': 'Autres'
-  };
 
   if (!isOpen) return null;
 
@@ -383,7 +376,7 @@ const ModalAnnuaire = ({ isOpen, onClose, currentUser }) => {
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-cyan-400" />
                             <h3 className="font-semibold text-cyan-400">
-                              {groupNames[group.groupe] || group.groupe}
+                              {getGroupDisplayName(group.groupe)}
                             </h3>
                           </div>
                           <p className="text-xs text-gray-500 mt-1">
