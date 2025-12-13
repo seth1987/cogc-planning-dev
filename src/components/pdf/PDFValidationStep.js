@@ -1,8 +1,9 @@
 // Composant pour l'étape de validation des données extraites
-// Version 2.2 - Vue split-screen avec PDF en regard + scrollbar forcée
+// Version 3.0 - Responsive mobile avec cards scrollables (sans preview PDF)
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlertCircle, Check, X, Calendar, User, Eye, EyeOff, ZoomIn, ZoomOut, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react';
 import { SERVICE_CODES } from '../../constants/config';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 const PDFValidationStep = ({ 
   data,  // Données extraites
@@ -13,16 +14,21 @@ const PDFValidationStep = ({
   pdfFile,  // Fichier PDF original pour affichage
   loading  // État de chargement
 }) => {
+  const isMobile = useIsMobile();
   
-  // État pour l'affichage du PDF
-  const [showPDF, setShowPDF] = useState(true);
+  // État pour l'affichage du PDF (desktop uniquement)
+  const [showPDF, setShowPDF] = useState(!isMobile);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [pdfZoom, setPdfZoom] = useState(100);
   const [splitRatio, setSplitRatio] = useState(50);
+  
+  // État mobile : card en cours d'édition
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [showAgentEdit, setShowAgentEdit] = useState(false);
 
-  // Créer l'URL du PDF au montage
+  // Créer l'URL du PDF au montage (desktop uniquement)
   useEffect(() => {
-    if (pdfFile) {
+    if (pdfFile && !isMobile) {
       const url = URL.createObjectURL(pdfFile);
       setPdfUrl(url);
       console.log('📄 PDF URL créée pour prévisualisation');
@@ -31,7 +37,7 @@ const PDFValidationStep = ({
         URL.revokeObjectURL(url);
       };
     }
-  }, [pdfFile]);
+  }, [pdfFile, isMobile]);
 
   // Vérifications de sécurité
   if (!data || !data.planning) {
@@ -73,19 +79,19 @@ const PDFValidationStep = ({
 
   const getServiceColor = (code) => {
     const colors = {
-      '-': 'bg-blue-100 text-blue-700',
-      'O': 'bg-orange-100 text-orange-700',
-      'X': 'bg-purple-100 text-purple-700',
-      'RP': 'bg-green-100 text-green-700',
-      'C': 'bg-green-100 text-green-700',
-      'D': 'bg-yellow-100 text-yellow-700',
-      'NU': 'bg-gray-100 text-gray-700',
-      'HAB': 'bg-indigo-100 text-indigo-700',
-      'MA': 'bg-red-100 text-red-700',
-      'I': 'bg-pink-100 text-pink-700',
-      'VISIMED': 'bg-cyan-100 text-cyan-700'
+      '-': 'bg-blue-100 text-blue-700 border-blue-300',
+      'O': 'bg-orange-100 text-orange-700 border-orange-300',
+      'X': 'bg-purple-100 text-purple-700 border-purple-300',
+      'RP': 'bg-green-100 text-green-700 border-green-300',
+      'C': 'bg-green-100 text-green-700 border-green-300',
+      'D': 'bg-yellow-100 text-yellow-700 border-yellow-300',
+      'NU': 'bg-gray-100 text-gray-700 border-gray-300',
+      'HAB': 'bg-indigo-100 text-indigo-700 border-indigo-300',
+      'MA': 'bg-red-100 text-red-700 border-red-300',
+      'I': 'bg-pink-100 text-pink-700 border-pink-300',
+      'VISIMED': 'bg-cyan-100 text-cyan-700 border-cyan-300'
     };
-    return colors[code] || 'bg-gray-100 text-gray-700';
+    return colors[code] || 'bg-gray-100 text-gray-700 border-gray-300';
   };
 
   const formatDate = (dateStr) => {
@@ -94,6 +100,15 @@ const PDFValidationStep = ({
       weekday: 'short',
       day: '2-digit',
       month: 'short'
+    });
+  };
+
+  const formatDateShort = (dateStr) => {
+    const date = new Date(dateStr + 'T12:00:00');
+    return date.toLocaleDateString('fr-FR', {
+      weekday: 'short',
+      day: '2-digit',
+      month: '2-digit'
     });
   };
 
@@ -107,25 +122,20 @@ const PDFValidationStep = ({
     const updatedData = { ...data };
     updatedData.planning = updatedData.planning.filter((_, i) => i !== index);
     onChange(updatedData);
+    setEditingIndex(null);
   };
 
   const handleAddEntry = () => {
-    // Calculer une date intelligente par défaut
     let defaultDate;
     
-    // Si on a des dates manquantes détectées, prendre la première
     if (data.stats?.missingDates && data.stats.missingDates.length > 0) {
       defaultDate = data.stats.missingDates[0];
-    } 
-    // Sinon, si on a des entrées existantes, prendre le jour suivant la dernière entrée
-    else if (data.planning && data.planning.length > 0) {
+    } else if (data.planning && data.planning.length > 0) {
       const lastEntry = [...data.planning].sort((a, b) => a.date.localeCompare(b.date)).pop();
       const lastDate = new Date(lastEntry.date + 'T12:00:00');
       lastDate.setDate(lastDate.getDate() + 1);
       defaultDate = lastDate.toISOString().split('T')[0];
-    }
-    // Fallback sur aujourd'hui
-    else {
+    } else {
       defaultDate = new Date().toISOString().split('T')[0];
     }
     
@@ -139,6 +149,7 @@ const PDFValidationStep = ({
     const updatedData = { ...data };
     updatedData.planning = [...updatedData.planning, newEntry];
     onChange(updatedData);
+    setEditingIndex(updatedData.planning.length - 1);
   };
 
   const groupedByDate = (data.planning || []).reduce((acc, entry, index) => {
@@ -149,6 +160,236 @@ const PDFValidationStep = ({
     return acc;
   }, {});
 
+  // ========== VERSION MOBILE - CARDS ==========
+  if (isMobile) {
+    const canValidate = data.agent && data.agent.nom && data.agent.prenom && data.planning && data.planning.length > 0;
+    
+    return (
+      <div className="flex flex-col h-full">
+        {/* Header mobile avec résumé */}
+        <div className="bg-blue-50 border-b border-blue-200 p-3 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-blue-900">
+                {data.planning.length} service{data.planning.length > 1 ? 's' : ''} extrait{data.planning.length > 1 ? 's' : ''}
+              </p>
+              {data.agent?.nom && (
+                <p className="text-sm text-blue-700">
+                  {data.agent.prenom} {data.agent.nom}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => setShowAgentEdit(!showAgentEdit)}
+              className="p-2 bg-blue-600 text-white rounded-lg"
+            >
+              <User size={20} />
+            </button>
+          </div>
+          
+          {/* Zone édition agent (collapsible) */}
+          {showAgentEdit && (
+            <div className="mt-3 pt-3 border-t border-blue-200 space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={data.agent?.nom || ''}
+                  onChange={(e) => {
+                    const updatedData = { ...data };
+                    updatedData.agent = { ...updatedData.agent, nom: e.target.value };
+                    onChange(updatedData);
+                  }}
+                  placeholder="Nom"
+                  className="flex-1 px-3 py-2 border rounded-lg text-base"
+                />
+                <input
+                  type="text"
+                  value={data.agent?.prenom || ''}
+                  onChange={(e) => {
+                    const updatedData = { ...data };
+                    updatedData.agent = { ...updatedData.agent, prenom: e.target.value };
+                    onChange(updatedData);
+                  }}
+                  placeholder="Prénom"
+                  className="flex-1 px-3 py-2 border rounded-lg text-base"
+                />
+              </div>
+              <button
+                onClick={() => setShowAgentEdit(false)}
+                className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
+              >
+                Fermer
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Erreurs/Warnings condensés */}
+        {validation?.errors?.length > 0 && (
+          <div className="bg-red-50 border-b border-red-200 px-3 py-2 flex-shrink-0">
+            <p className="text-sm text-red-800 font-medium">
+              ⚠️ {validation.errors.join(' • ')}
+            </p>
+          </div>
+        )}
+
+        {/* Liste scrollable des services (cards) */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2 pb-24">
+          {data.planning.map((entry, index) => {
+            const isEditing = editingIndex === index;
+            
+            return (
+              <div 
+                key={index}
+                className={`border rounded-xl overflow-hidden transition-all ${
+                  isEditing 
+                    ? 'border-blue-500 shadow-lg' 
+                    : `${getServiceColor(entry.service_code)} border`
+                }`}
+              >
+                {/* Card header - toujours visible */}
+                <div 
+                  className={`p-3 flex items-center justify-between cursor-pointer ${
+                    isEditing ? 'bg-blue-50' : ''
+                  }`}
+                  onClick={() => setEditingIndex(isEditing ? null : index)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`px-3 py-1 rounded-lg font-bold text-sm ${getServiceColor(entry.service_code)}`}>
+                      {getServiceLabel(entry.service_code)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900">
+                        {formatDateShort(entry.date)}
+                      </p>
+                      {entry.poste_code && (
+                        <p className="text-xs text-gray-500">{entry.poste_code}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {entry.original_code && entry.original_code !== 'MANUEL' && (
+                      <span className="text-xs text-gray-400 hidden sm:inline">
+                        {entry.original_code}
+                      </span>
+                    )}
+                    {isEditing ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                  </div>
+                </div>
+
+                {/* Card body - édition (collapsible) */}
+                {isEditing && (
+                  <div className="p-3 bg-white border-t space-y-3">
+                    {/* Date */}
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Date</label>
+                      <input
+                        type="date"
+                        value={entry.date}
+                        onChange={(e) => handleCellEdit(index, 'date', e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg text-base"
+                      />
+                    </div>
+                    
+                    {/* Service */}
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Service</label>
+                      <select
+                        value={entry.service_code}
+                        onChange={(e) => handleCellEdit(index, 'service_code', e.target.value)}
+                        className="w-full px-3 py-2 border rounded-lg text-base bg-white"
+                      >
+                        {SERVICE_CODES.map(({ code, desc }) => (
+                          <option key={code} value={code}>{desc}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Poste (optionnel) */}
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">Poste (optionnel)</label>
+                      <select
+                        value={entry.poste_code || ''}
+                        onChange={(e) => handleCellEdit(index, 'poste_code', e.target.value || null)}
+                        className="w-full px-3 py-2 border rounded-lg text-base bg-white"
+                      >
+                        <option value="">— Aucun —</option>
+                        <option value="CRC">CRC</option>
+                        <option value="ACR">ACR</option>
+                        <option value="CCU">CCU</option>
+                        <option value="RE">RE</option>
+                        <option value="RC">RC</option>
+                        <option value="RO">RO</option>
+                        <option value="CAC">CAC</option>
+                        <option value="SOUF">SOUF</option>
+                      </select>
+                    </div>
+
+                    {/* Boutons d'action */}
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={() => setEditingIndex(null)}
+                        className="flex-1 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium"
+                      >
+                        Fermer
+                      </button>
+                      <button
+                        onClick={() => handleDeleteEntry(index)}
+                        className="px-4 py-2 bg-red-100 text-red-600 rounded-lg"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Bouton ajouter */}
+          <button
+            onClick={handleAddEntry}
+            className="w-full p-4 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 font-medium hover:border-blue-400 hover:text-blue-600 transition-colors"
+          >
+            + Ajouter un service
+          </button>
+        </div>
+
+        {/* Footer fixe avec boutons */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 flex gap-3 z-10">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold"
+          >
+            ← Retour
+          </button>
+          <button
+            onClick={onValidate}
+            disabled={loading || !canValidate}
+            className={`flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 ${
+              !loading && canValidate
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-200 text-gray-400'
+            }`}
+          >
+            {loading ? (
+              <>
+                <span className="animate-spin">⏳</span>
+                Import...
+              </>
+            ) : (
+              <>
+                <Check size={20} />
+                Importer
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ========== VERSION DESKTOP (inchangée) ==========
   // Composant de visualisation du PDF
   const PDFViewer = () => (
     <div className="h-full flex flex-col bg-gray-800 rounded-lg overflow-hidden">
@@ -205,7 +446,7 @@ const PDFValidationStep = ({
     </div>
   );
 
-  // Composant des données extraites avec scrollbar forcée
+  // Composant des données extraites avec scrollbar forcée (desktop)
   const DataEditor = () => (
     <div 
       className="flex flex-col bg-white rounded-lg border border-gray-200 overflow-hidden"
@@ -230,11 +471,11 @@ const PDFValidationStep = ({
         )}
       </div>
 
-      {/* Contenu scrollable - HAUTEUR FIXE avec scrollbar toujours visible */}
+      {/* Contenu scrollable */}
       <div 
         className="flex-1 p-4 space-y-4 overflow-y-scroll"
         style={{ 
-          minHeight: 0,  // Important pour que flex-1 fonctionne avec overflow
+          minHeight: 0,
           scrollbarWidth: 'auto',
           scrollbarColor: '#6b7280 #e5e7eb'
         }}
@@ -338,7 +579,6 @@ const PDFValidationStep = ({
                   <div className="p-2 space-y-1 bg-white">
                     {entries.map((entry) => (
                       <div key={entry.index} className="flex items-center gap-2 p-2 hover:bg-blue-50 rounded text-sm border border-transparent hover:border-blue-200 transition-colors">
-                        {/* Sélecteur de date */}
                         <input
                           type="date"
                           value={entry.date}
@@ -430,7 +670,6 @@ const PDFValidationStep = ({
           </div>
         )}
         
-        {/* Spacer pour s'assurer qu'il y a assez de contenu pour scroller */}
         <div className="h-4"></div>
       </div>
 
@@ -469,7 +708,6 @@ const PDFValidationStep = ({
 
   return (
     <>
-      {/* Styles globaux pour les scrollbars */}
       <style>{`
         .data-scroll-container::-webkit-scrollbar {
           width: 12px;
@@ -489,7 +727,6 @@ const PDFValidationStep = ({
       `}</style>
       
       <div style={{ height: 'calc(70vh)', minHeight: '500px' }}>
-        {/* Message d'aide */}
         {pdfFile && showPDF && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
             <p className="text-sm text-blue-800">
@@ -499,10 +736,8 @@ const PDFValidationStep = ({
           </div>
         )}
 
-        {/* Layout Split ou Simple */}
         {pdfFile && showPDF ? (
           <div className="flex gap-4" style={{ height: 'calc(100% - 50px)' }}>
-            {/* Panneau PDF - Gauche */}
             <div 
               className="flex-shrink-0 transition-all duration-300"
               style={{ width: `${splitRatio}%`, minWidth: '300px', maxWidth: '60%', height: '100%' }}
@@ -510,7 +745,6 @@ const PDFValidationStep = ({
               <PDFViewer />
             </div>
 
-            {/* Séparateur redimensionnable */}
             <div 
               className="w-3 bg-gray-300 hover:bg-blue-500 cursor-col-resize rounded flex-shrink-0 flex items-center justify-center transition-colors"
               style={{ height: '100%' }}
@@ -537,7 +771,6 @@ const PDFValidationStep = ({
               <div className="w-1 h-16 bg-gray-500 rounded" />
             </div>
 
-            {/* Panneau Données - Droite */}
             <div className="flex-1 min-w-[350px]" style={{ height: '100%' }}>
               <DataEditor />
             </div>
