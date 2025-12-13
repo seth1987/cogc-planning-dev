@@ -3,16 +3,6 @@ import { ChevronDown, ChevronUp, StickyNote, Users } from 'lucide-react';
 import { CODE_COLORS } from '../constants/config';
 import planningService from '../services/planningService';
 
-/**
- * PlanningTable - Tableau de planning principal
- * 
- * @param {string} currentMonth - Mois courant
- * @param {object} planning - Données du planning
- * @param {object} agentsData - Données des agents par groupe
- * @param {function} onCellClick - Handler clic sur cellule
- * @param {function} onAgentClick - Handler clic sur agent
- * @param {function} onDayHeaderClick - Handler clic sur en-tête de jour (nouveau)
- */
 const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgentClick, onDayHeaderClick }) => {
   const daysInMonth = planningService.getDaysInMonth(currentMonth);
   const [collapsedGroups, setCollapsedGroups] = useState({});
@@ -38,7 +28,6 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
       className += 'bg-gray-50 text-gray-700';
     }
     
-    // Ajouter cursor-pointer et hover si onDayHeaderClick est fourni
     const isClickable = typeof onDayHeaderClick === 'function';
     if (isClickable) {
       className += ' cursor-pointer hover:bg-blue-100 hover:text-blue-800 transition-colors group';
@@ -49,13 +38,12 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
         key={day} 
         className={className}
         onClick={isClickable ? () => onDayHeaderClick(day) : undefined}
-        title={isClickable ? `Voir les équipes du ${day}` : undefined}
+        title={isClickable ? `Voir les equipes du ${day}` : undefined}
       >
         <div className="flex flex-col items-center">
           <span className="text-xs uppercase">{dayName}</span>
           <span className="font-bold text-sm">{day}</span>
-          {isFerier && <span className="text-xs">Férié</span>}
-          {/* Indicateur visuel pour clic équipes */}
+          {isFerier && <span className="text-xs">Ferie</span>}
           {isClickable && (
             <Users className="w-3 h-3 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-blue-600" />
           )}
@@ -80,29 +68,22 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
       } else if (typeof planningData === 'object') {
         const service = planningData.service || '';
         const poste = planningData.poste || '';
-        // Support pour tableau de postes supplémentaires OU ancien format avec un seul
         const postesSupplementaires = planningData.postesSupplementaires || 
           (planningData.posteSupplementaire ? [planningData.posteSupplementaire] : []);
         
-        // Vérifier si une note existe
         hasNote = Boolean(planningData.note);
         
         cellContent = (
           <div className="flex flex-col h-full justify-between">
-            {/* Indicateur de note en haut à droite */}
             {hasNote && (
               <div className="absolute top-0 right-0 p-0.5" title="Note existante">
                 <StickyNote className="w-3 h-3 text-amber-500" />
               </div>
             )}
-            
-            {/* Partie haute : Service et Poste */}
             <div className="flex flex-col">
               <span className="font-medium">{service}</span>
               {poste && <span className="text-xs font-bold">{poste}</span>}
             </div>
-            
-            {/* Partie basse : Postes supplémentaires en italique */}
             {postesSupplementaires.length > 0 && (
               <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
                 <span className="text-[9px] italic text-purple-700 font-medium">
@@ -150,7 +131,6 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                 <React.Fragment key={groupe}>
                   {agents.length > 0 && (
                     <>
-                      {/* En-tête du groupe avec bouton de réduction */}
                       <tr className="bg-blue-50">
                         <td colSpan={daysInMonth + 1}>
                           <div className="flex items-center justify-between px-4 py-2">
@@ -160,7 +140,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                             <button
                               onClick={() => toggleGroupCollapse(groupe)}
                               className="p-1 hover:bg-blue-100 rounded transition-colors"
-                              title={isCollapsed ? "Afficher" : "Réduire"}
+                              title={isCollapsed ? "Afficher" : "Reduire"}
                             >
                               {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                             </button>
@@ -170,32 +150,33 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                       
                       {!isCollapsed && (
                         <>
-                          {/* En-tête des jours pour chaque groupe */}
                           <tr className="bg-gray-50">
                             <th 
-                              className="px-4 py-2 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10"
-                              style={{ minWidth: '180px', width: '180px' }}
+                              className="px-3 py-2 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10"
+                              style={{ minWidth: '120px', width: '120px' }}
                             >
                               Agent
                             </th>
                             {Array.from({ length: daysInMonth }, (_, i) => getDayHeader(i + 1))}
                           </tr>
                           
-                          {/* Lignes des agents */}
                           {agents.map((agent) => {
                             const fullName = `${agent.nom} ${agent.prenom}`;
                             return (
                               <tr key={agent.id || `${agent.nom}_${agent.prenom}`} className="hover:bg-gray-50">
                                 <td 
-                                  className="px-4 py-2 text-sm font-medium text-gray-900 sticky left-0 bg-white z-10 border-r whitespace-nowrap"
-                                  style={{ minWidth: '180px', width: '180px' }}
+                                  className="px-3 py-1 text-sm text-gray-900 sticky left-0 bg-white z-10 border-r"
+                                  style={{ minWidth: '120px', width: '120px' }}
                                 >
                                   <button
                                     onClick={() => onAgentClick && onAgentClick(agent)}
-                                    className="text-left hover:text-blue-600 hover:underline transition-colors"
+                                    className="text-left hover:text-blue-600 hover:underline transition-colors w-full"
                                     title={fullName}
                                   >
-                                    {fullName}
+                                    <div className="flex flex-col leading-tight">
+                                      <span className="font-semibold">{agent.nom}</span>
+                                      <span className="text-xs text-gray-600">{agent.prenom}</span>
+                                    </div>
                                   </button>
                                 </td>
                                 {Array.from({ length: daysInMonth }, (_, dayIndex) => 
@@ -207,7 +188,6 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                         </>
                       )}
                       
-                      {/* Séparateur entre les groupes */}
                       {groupIndex < Object.entries(agentsData).length - 1 && (
                         <tr className="h-2 bg-gray-100">
                           <td colSpan={daysInMonth + 1}></td>
@@ -222,9 +202,8 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
         </table>
       </div>
       
-      {/* Légende mise à jour - Couleurs corrigées */}
       <div className="p-4 bg-gray-50 border-t">
-        <h4 className="font-semibold text-sm mb-2">Légende des codes</h4>
+        <h4 className="font-semibold text-sm mb-2">Legende des codes</h4>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-xs">
           <div>
             <p className="font-medium mb-1">Services :</p>
@@ -244,7 +223,7 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Repos / Congés :</p>
+            <p className="font-medium mb-1">Repos / Conges :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="inline-block w-4 h-4 bg-green-100 rounded"></span>
@@ -252,12 +231,12 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
               </div>
               <div className="flex items-center gap-2">
                 <span className="inline-block w-4 h-4 bg-yellow-400 rounded"></span>
-                <span>C = Congés</span>
+                <span>C = Conges</span>
               </div>
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">États :</p>
+            <p className="font-medium mb-1">Etats :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="inline-block w-4 h-4 bg-blue-200 rounded"></span>
@@ -274,13 +253,13 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Postes supplémentaires :</p>
+            <p className="font-medium mb-1">Postes supplementaires :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="inline-block px-1 border-t border-dashed border-gray-400 text-[8px] italic text-purple-700">+ACR +RO</span>
               </div>
               <p className="text-gray-500 text-xs">En bas de cellule, italique</p>
-              <p className="text-gray-500 text-xs">Sélection multiple possible</p>
+              <p className="text-gray-500 text-xs">Selection multiple possible</p>
             </div>
           </div>
           <div>
@@ -290,19 +269,19 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
                 <StickyNote className="w-4 h-4 text-amber-500" />
                 <span>Note/Commentaire</span>
               </div>
-              <p className="text-gray-500 text-xs">Icône en haut à droite</p>
+              <p className="text-gray-500 text-xs">Icone en haut a droite</p>
               <p className="text-gray-500 text-xs">Cliquer pour voir/modifier</p>
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Équipes du jour :</p>
+            <p className="font-medium mb-1">Equipes du jour :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-blue-600" />
-                <span>Clic sur en-tête jour</span>
+                <span>Clic sur en-tete jour</span>
               </div>
               <p className="text-gray-500 text-xs">Voir qui travaille</p>
-              <p className="text-gray-500 text-xs">Par créneaux horaires</p>
+              <p className="text-gray-500 text-xs">Par creneaux horaires</p>
             </div>
           </div>
         </div>
