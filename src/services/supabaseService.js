@@ -61,6 +61,10 @@ class SupabaseService {
     return data || [];
   }
 
+  /**
+   * Met à jour un agent existant
+   * v2.0: Inclut maintenant email et telephone
+   */
   async updateAgent(agentId, agentData) {
     // Nettoyer les données avant l'envoi
     const cleanData = {
@@ -75,11 +79,19 @@ class SupabaseService {
     if (agentData.date_arrivee) {
       cleanData.date_arrivee = agentData.date_arrivee;
     }
-    if (agentData.date_depart) {
+    if (agentData.date_depart !== undefined) {
       cleanData.date_depart = agentData.date_depart || null;
     }
 
-    console.log('Mise à jour agent:', agentId, cleanData);
+    // Ajouter email et téléphone (v2.0)
+    if (agentData.email !== undefined) {
+      cleanData.email = agentData.email || null;
+    }
+    if (agentData.telephone !== undefined) {
+      cleanData.telephone = agentData.telephone || null;
+    }
+
+    console.log('📝 Mise à jour agent:', agentId, cleanData);
 
     const { data, error } = await supabase
       .from('agents')
@@ -112,6 +124,11 @@ class SupabaseService {
     return true;
   }
 
+  /**
+   * Crée un nouvel agent
+   * v2.0: Inclut maintenant email et telephone
+   * @returns {Object} L'agent créé avec son ID
+   */
   async createAgent(agentData) {
     // Nettoyer les données avant l'envoi
     const cleanData = {
@@ -134,7 +151,15 @@ class SupabaseService {
       cleanData.date_depart = null;
     }
 
-    console.log('Création agent avec données nettoyées:', cleanData);
+    // Ajouter email et téléphone (v2.0)
+    if (agentData.email) {
+      cleanData.email = agentData.email;
+    }
+    if (agentData.telephone) {
+      cleanData.telephone = agentData.telephone;
+    }
+
+    console.log('✨ Création agent avec données:', cleanData);
 
     const { data, error } = await supabase
       .from('agents')
@@ -145,6 +170,8 @@ class SupabaseService {
       console.error('Erreur createAgent:', error);
       throw error;
     }
+    
+    console.log('✅ Agent créé:', data[0]);
     return data[0];
   }
 
