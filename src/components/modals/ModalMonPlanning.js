@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE, POSTES_PAR_GROUPE } from '../../constants/config';
 
 /**
  * ModalMonPlanning - Calendrier personnel de l'agent connecté
  * 
  * Affiche un calendrier mensuel avec les services de l'agent.
- * Permet de modifier ses propres services.
+ * Permet de modifier ses propres services avec le même popup que le planning général.
  * 
- * v1.0 - Création initiale
+ * v1.1 - Intégration du popup d'édition complet
  */
 const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -15,9 +16,13 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
   const [agentInfo, setAgentInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
+  
+  // États pour l'édition (comme ModalCellEdit)
   const [editMode, setEditMode] = useState(false);
-  const [editValue, setEditValue] = useState('');
-  const [serviceCodes, setServiceCodes] = useState([]);
+  const [tempService, setTempService] = useState('');
+  const [tempPoste, setTempPoste] = useState('');
+  const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
+  const [tempNote, setTempNote] = useState('');
 
   // Mois et années pour navigation
   const months = [
@@ -45,21 +50,6 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
       console.error('Erreur chargement agent:', err);
     }
   }, [currentUser]);
-
-  // Charger les codes de service disponibles
-  const loadServiceCodes = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('service_codes')
-        .select('code, label, type_service')
-        .order('code');
-
-      if (error) throw error;
-      setServiceCodes(data || []);
-    } catch (err) {
-      console.error('Erreur chargement codes:', err);
-    }
-  }, []);
 
   // Charger le planning du mois
   const loadPlanning = useCallback(async () => {
@@ -98,9 +88,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
   useEffect(() => {
     if (isOpen) {
       loadAgentInfo();
-      loadServiceCodes();
     }
-  }, [isOpen, loadAgentInfo, loadServiceCodes]);
+  }, [isOpen, loadAgentInfo]);
 
   useEffect(() => {
     if (agentInfo) {
@@ -112,11 +101,13 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
   const prevMonth = () => {
     setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
     setSelectedDay(null);
+    setEditMode(false);
   };
 
   const nextMonth = () => {
     setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
     setSelectedDay(null);
+    setEditMode(false);
   };
 
   // Générer les jours du calendrier
@@ -125,24 +116,16 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
     const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
     const daysInMonth = lastDayOfMonth.getDate();
     
-    // Jour de la semaine du 1er (0=Dim, 1=Lun...)
     let startDay = firstDayOfMonth.getDay();
-    // Convertir pour commencer par Lundi (0=Lun, 6=Dim)
     startDay = startDay === 0 ? 6 : startDay - 1;
 
     const days = [];
 
-    // Jours du mois précédent
     const prevMonthLastDay = new Date(currentYear, currentMonth, 0).getDate();
     for (let i = startDay - 1; i >= 0; i--) {
-      days.push({
-        day: prevMonthLastDay - i,
-        currentMonth: false,
-        date: null
-      });
+      days.push({ day: prevMonthLastDay - i, currentMonth: false, date: null });
     }
 
-    // Jours du mois actuel
     for (let i = 1; i <= daysInMonth; i++) {
       const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
       days.push({
@@ -153,25 +136,36 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
       });
     }
 
-    // Jours du mois suivant pour compléter
-    const remainingDays = 42 - days.length; // 6 semaines x 7 jours
+    const remainingDays = 42 - days.length;
     for (let i = 1; i <= remainingDays; i++) {
-      days.push({
-        day: i,
-        currentMonth: false,
-        date: null
-      });
+      days.push({ day: i, currentMonth: false, date: null });
     }
 
     return days;
   };
 
-  // Cliquer sur un jour
+  // Cliquer sur un jour - ouvrir l'éditeur
   const handleDayClick = (dayInfo) => {
     if (!dayInfo.currentMonth) return;
     setSelectedDay(dayInfo);
+    setEditMode(true);
+    
+    // Charger les données existantes
+    const existing = dayInfo.planning;
+    setTempService(existing?.service_code || '');
+    setTempPoste(existing?.poste_code || '');
+    setTempPostesSupplementaires(existing?.postes_supplementaires || []);
+    setTempNote(existing?.commentaire || '');
+  };
+
+  // Fermer l'éditeur
+  const closeEditor = () => {
+    setSelectedDay(null);
     setEditMode(false);
-    setEditValue(dayInfo.planning?.service_code || '');
+    setTempService('');
+    setTempPoste('');
+    setTempPostesSupplementaires([]);
+    setTempNote('');
   };
 
   // Sauvegarder modification
@@ -184,7 +178,10 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
         .upsert({
           agent_id: agentInfo.id,
           date: selectedDay.date,
-          service_code: editValue || null,
+          service_code: tempService || null,
+          poste_code: tempPoste || null,
+          postes_supplementaires: tempPostesSupplementaires.length > 0 ? tempPostesSupplementaires : null,
+          commentaire: tempNote || null,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'agent_id,date'
@@ -192,35 +189,74 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
 
       if (error) throw error;
 
-      // Recharger
       await loadPlanning();
-      setEditMode(false);
-      setSelectedDay(null);
+      closeEditor();
     } catch (err) {
       console.error('Erreur sauvegarde:', err);
       alert('Erreur lors de la sauvegarde');
     }
   };
 
-  // Couleur selon le type de service
+  // Supprimer entrée
+  const deleteEntry = async () => {
+    if (!selectedDay || !agentInfo) return;
+    
+    if (!window.confirm('Effacer cette entrée ?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('planning')
+        .delete()
+        .eq('agent_id', agentInfo.id)
+        .eq('date', selectedDay.date);
+
+      if (error) throw error;
+
+      await loadPlanning();
+      closeEditor();
+    } catch (err) {
+      console.error('Erreur suppression:', err);
+    }
+  };
+
+  // Toggle poste supplémentaire
+  const togglePosteSupp = (code) => {
+    setTempPostesSupplementaires(prev => 
+      prev.includes(code) ? prev.filter(p => p !== code) : [...prev, code]
+    );
+  };
+
+  // Vérifier si l'agent a accès au sélecteur de poste
+  const hasPosteSelector = () => {
+    if (!agentInfo?.groupe) return false;
+    return GROUPES_AVEC_POSTE.some(g => agentInfo.groupe.includes(g));
+  };
+
+  // Postes disponibles pour cet agent
+  const getAvailablePostes = () => {
+    if (!agentInfo?.groupe) return POSTES_CODES;
+    for (const [groupeKey, postes] of Object.entries(POSTES_PAR_GROUPE)) {
+      if (agentInfo.groupe.includes(groupeKey)) return postes;
+    }
+    return POSTES_CODES;
+  };
+
+  // Couleur selon le service
   const getServiceColor = (planning) => {
     if (!planning?.service_code) return 'transparent';
     
     const code = planning.service_code.toUpperCase();
     
-    if (code.includes('RP') || code === 'RP') return '#4CAF50';
-    if (code.includes('CP')) return '#2196F3';
-    if (code.includes('MA') || code.includes('MALADIE')) return '#FF9800';
-    if (code.includes('DISPO')) return '#9C27B0';
-    if (code.includes('FORMA') || code.includes('INACTIN')) return '#607D8B';
+    if (code === '-') return '#FFC107'; // Matin - Jaune
+    if (code === 'O') return '#FF5722'; // Soir - Orange
+    if (code === 'X') return '#3F51B5'; // Nuit - Bleu foncé
+    if (code === 'RP' || code === 'RU') return '#4CAF50'; // Repos - Vert
+    if (code === 'C' || code === 'CP') return '#2196F3'; // Congés - Bleu
+    if (code === 'MA') return '#f44336'; // Maladie - Rouge
+    if (code === 'D' || code === 'DISPO') return '#9C27B0'; // Dispo - Violet
+    if (code === 'FO' || code === 'HAB') return '#FF9800'; // Formation - Orange
     
-    // Par type de service (matin/soir/nuit)
-    const type = planning.type_service;
-    if (type === 'matin') return '#FFC107';
-    if (type === 'soiree') return '#FF5722';
-    if (type === 'nuit') return '#3F51B5';
-    
-    return '#00BCD4';
+    return '#607D8B'; // Gris par défaut
   };
 
   if (!isOpen) return null;
@@ -254,14 +290,12 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
 
         {/* Calendrier */}
         <div style={styles.calendar}>
-          {/* En-têtes jours */}
           <div style={styles.weekHeader}>
             {weekDays.map(day => (
               <div key={day} style={styles.weekDay}>{day}</div>
             ))}
           </div>
 
-          {/* Grille jours */}
           {loading ? (
             <div style={styles.loading}>Chargement...</div>
           ) : (
@@ -279,13 +313,14 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
                 >
                   <span style={styles.dayNumber}>{dayInfo.day}</span>
                   {dayInfo.planning?.service_code && (
-                    <span style={styles.serviceCode}>
-                      {dayInfo.planning.service_code}
-                    </span>
+                    <span style={styles.serviceCode}>{dayInfo.planning.service_code}</span>
                   )}
-                  {dayInfo.planning?.position_supplementaire && (
+                  {dayInfo.planning?.poste_code && (
+                    <span style={styles.posteCode}>{dayInfo.planning.poste_code}</span>
+                  )}
+                  {dayInfo.planning?.postes_supplementaires?.length > 0 && (
                     <span style={styles.supplement}>
-                      {dayInfo.planning.position_supplementaire}
+                      {dayInfo.planning.postes_supplementaires.join(' ')}
                     </span>
                   )}
                 </div>
@@ -294,58 +329,127 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
           )}
         </div>
 
-        {/* Panel détail jour sélectionné */}
-        {selectedDay && (
-          <div style={styles.detailPanel}>
-            <h3 style={styles.detailTitle}>
-              {selectedDay.day} {months[currentMonth]} {currentYear}
-            </h3>
-            
-            {editMode ? (
-              <div style={styles.editForm}>
-                <select
-                  value={editValue}
-                  onChange={e => setEditValue(e.target.value)}
-                  style={styles.select}
-                >
-                  <option value="">-- Aucun service --</option>
-                  {serviceCodes.map(sc => (
-                    <option key={sc.code} value={sc.code}>
-                      {sc.code} - {sc.label}
-                    </option>
-                  ))}
-                </select>
-                <div style={styles.editActions}>
-                  <button style={styles.saveBtn} onClick={saveEdit}>Sauvegarder</button>
-                  <button style={styles.cancelBtn} onClick={() => setEditMode(false)}>Annuler</button>
-                </div>
-              </div>
-            ) : (
-              <div style={styles.detailContent}>
-                <p><strong>Service:</strong> {selectedDay.planning?.service_code || 'Non défini'}</p>
-                {selectedDay.planning?.position_supplementaire && (
-                  <p><strong>Position sup:</strong> {selectedDay.planning.position_supplementaire}</p>
-                )}
-                {selectedDay.planning?.commentaire && (
-                  <p><strong>Note:</strong> {selectedDay.planning.commentaire}</p>
-                )}
-                <button style={styles.editBtn} onClick={() => setEditMode(true)}>
-                  ✏️ Modifier
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Légende */}
         <div style={styles.legend}>
+          <span style={{...styles.legendItem, backgroundColor: '#FFC107'}}>- Matin</span>
+          <span style={{...styles.legendItem, backgroundColor: '#FF5722'}}>O Soir</span>
+          <span style={{...styles.legendItem, backgroundColor: '#3F51B5'}}>X Nuit</span>
           <span style={{...styles.legendItem, backgroundColor: '#4CAF50'}}>RP</span>
-          <span style={{...styles.legendItem, backgroundColor: '#2196F3'}}>CP</span>
-          <span style={{...styles.legendItem, backgroundColor: '#FFC107'}}>Matin</span>
-          <span style={{...styles.legendItem, backgroundColor: '#FF5722'}}>Soir</span>
-          <span style={{...styles.legendItem, backgroundColor: '#3F51B5'}}>Nuit</span>
+          <span style={{...styles.legendItem, backgroundColor: '#2196F3'}}>C</span>
+          <span style={{...styles.legendItem, backgroundColor: '#f44336'}}>MA</span>
         </div>
       </div>
+
+      {/* Modal d'édition (comme ModalCellEdit) */}
+      {editMode && selectedDay && (
+        <div style={styles.editOverlay} onClick={closeEditor}>
+          <div style={styles.editModal} onClick={e => e.stopPropagation()}>
+            <div style={styles.editHeader}>
+              <div>
+                <h3 style={styles.editTitle}>
+                  {selectedDay.day} {months[currentMonth]} {currentYear}
+                </h3>
+                <p style={styles.editSubtitle}>{agentInfo?.nom} {agentInfo?.prenom}</p>
+              </div>
+              <button style={styles.editCloseBtn} onClick={closeEditor}>✕</button>
+            </div>
+
+            {/* Section Service */}
+            <div style={styles.section}>
+              <label style={styles.sectionLabel}>Service / Horaire</label>
+              <div style={styles.serviceGrid}>
+                {SERVICE_CODES.filter(s => s.code !== '__LIBRE__').map(({ code, desc }) => (
+                  <button
+                    key={code}
+                    onClick={() => setTempService(code)}
+                    style={{
+                      ...styles.serviceBtn,
+                      ...(tempService === code ? styles.serviceBtnSelected : {})
+                    }}
+                  >
+                    <span style={styles.serviceBtnCode}>{code}</span>
+                    <span style={styles.serviceBtnDesc}>{desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Section Poste (si applicable) */}
+            {hasPosteSelector() && (
+              <div style={styles.section}>
+                <label style={styles.sectionLabel}>Poste</label>
+                <div style={styles.posteGrid}>
+                  {getAvailablePostes().map(poste => (
+                    <button
+                      key={poste}
+                      onClick={() => setTempPoste(tempPoste === poste ? '' : poste)}
+                      style={{
+                        ...styles.posteBtn,
+                        ...(tempPoste === poste ? styles.posteBtnSelected : {})
+                      }}
+                    >
+                      {poste}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Section Postes supplémentaires */}
+            <div style={styles.section}>
+              <label style={styles.sectionLabel}>
+                Postes supplémentaires <span style={styles.labelHint}>(sélection multiple)</span>
+              </label>
+              <div style={styles.suppGrid}>
+                {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => (
+                  <button
+                    key={code}
+                    onClick={() => togglePosteSupp(code)}
+                    style={{
+                      ...styles.suppBtn,
+                      ...(tempPostesSupplementaires.includes(code) ? styles.suppBtnSelected : {})
+                    }}
+                  >
+                    <span style={styles.suppCode}>{code}</span>
+                    {tempPostesSupplementaires.includes(code) && <span style={styles.checkMark}>✓</span>}
+                  </button>
+                ))}
+              </div>
+              {tempPostesSupplementaires.length > 0 && (
+                <div style={styles.selectedSupp}>
+                  Sélectionnés : <em>{tempPostesSupplementaires.join(', ')}</em>
+                </div>
+              )}
+            </div>
+
+            {/* Section Note */}
+            <div style={styles.section}>
+              <label style={styles.sectionLabel}>Note / Commentaire</label>
+              <textarea
+                value={tempNote}
+                onChange={e => setTempNote(e.target.value)}
+                placeholder="Ajouter une note..."
+                style={styles.noteInput}
+              />
+            </div>
+
+            {/* Boutons d'action */}
+            <div style={styles.editActions}>
+              <button style={styles.deleteBtn} onClick={deleteEntry}>Effacer</button>
+              <div style={styles.rightActions}>
+                <button style={styles.cancelBtn} onClick={closeEditor}>Annuler</button>
+                <button 
+                  style={{...styles.saveBtn, opacity: !tempService ? 0.5 : 1}}
+                  onClick={saveEdit}
+                  disabled={!tempService}
+                >
+                  Sauvegarder
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -353,10 +457,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser }) => {
 const styles = {
   overlay: {
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
     display: 'flex',
     justifyContent: 'center',
@@ -381,199 +482,109 @@ const styles = {
     padding: '20px',
     borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
   },
-  title: {
-    margin: 0,
-    color: '#00f0ff',
-    fontSize: '20px'
-  },
+  title: { margin: 0, color: '#00f0ff', fontSize: '20px' },
   closeBtn: {
-    background: 'none',
-    border: 'none',
-    color: 'white',
-    fontSize: '24px',
-    cursor: 'pointer',
-    padding: '5px 10px'
+    background: 'none', border: 'none', color: 'white',
+    fontSize: '24px', cursor: 'pointer', padding: '5px 10px'
   },
   agentInfo: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: '15px',
-    padding: '15px',
-    backgroundColor: 'rgba(0, 102, 179, 0.2)'
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    gap: '15px', padding: '15px', backgroundColor: 'rgba(0, 102, 179, 0.2)'
   },
-  agentName: {
-    color: 'white',
-    fontWeight: 'bold'
-  },
+  agentName: { color: 'white', fontWeight: 'bold' },
   agentGroup: {
-    color: '#00f0ff',
-    backgroundColor: 'rgba(0, 240, 255, 0.2)',
-    padding: '4px 12px',
-    borderRadius: '12px',
-    fontSize: '12px'
+    color: '#00f0ff', backgroundColor: 'rgba(0, 240, 255, 0.2)',
+    padding: '4px 12px', borderRadius: '12px', fontSize: '12px'
   },
   monthNav: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: '20px',
-    padding: '15px'
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    gap: '20px', padding: '15px'
   },
   navBtn: {
-    background: 'rgba(0, 240, 255, 0.2)',
-    border: '1px solid rgba(0, 240, 255, 0.4)',
-    color: 'white',
-    padding: '8px 15px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '16px'
+    background: 'rgba(0, 240, 255, 0.2)', border: '1px solid rgba(0, 240, 255, 0.4)',
+    color: 'white', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontSize: '16px'
   },
-  monthTitle: {
-    color: 'white',
-    fontSize: '18px',
-    fontWeight: 'bold',
-    minWidth: '180px',
-    textAlign: 'center'
-  },
-  calendar: {
-    padding: '0 20px'
-  },
-  weekHeader: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(7, 1fr)',
-    gap: '5px',
-    marginBottom: '10px'
-  },
-  weekDay: {
-    textAlign: 'center',
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: '12px',
-    fontWeight: 'bold',
-    padding: '8px 0'
-  },
-  loading: {
-    textAlign: 'center',
-    color: 'white',
-    padding: '40px'
-  },
-  daysGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(7, 1fr)',
-    gap: '5px'
-  },
+  monthTitle: { color: 'white', fontSize: '18px', fontWeight: 'bold', minWidth: '180px', textAlign: 'center' },
+  calendar: { padding: '0 20px' },
+  weekHeader: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px', marginBottom: '10px' },
+  weekDay: { textAlign: 'center', color: 'rgba(255, 255, 255, 0.6)', fontSize: '12px', fontWeight: 'bold', padding: '8px 0' },
+  loading: { textAlign: 'center', color: 'white', padding: '40px' },
+  daysGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px' },
   dayCell: {
-    aspectRatio: '1',
-    borderRadius: '8px',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    cursor: 'pointer',
-    border: '1px solid transparent',
-    transition: 'all 0.2s ease',
-    minHeight: '50px'
+    aspectRatio: '1', borderRadius: '8px', display: 'flex', flexDirection: 'column',
+    justifyContent: 'center', alignItems: 'center', cursor: 'pointer',
+    border: '1px solid transparent', transition: 'all 0.2s ease', minHeight: '50px'
   },
-  currentMonthDay: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    border: '1px solid rgba(255, 255, 255, 0.1)'
+  currentMonthDay: { backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)' },
+  otherMonthDay: { opacity: 0.3, cursor: 'default' },
+  selectedDay: { border: '2px solid #00f0ff', boxShadow: '0 0 10px rgba(0, 240, 255, 0.5)' },
+  dayNumber: { color: 'white', fontSize: '14px', fontWeight: 'bold' },
+  serviceCode: { fontSize: '10px', color: 'white', fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.5)' },
+  posteCode: { fontSize: '8px', color: 'white', opacity: 0.9 },
+  supplement: { fontSize: '7px', color: '#FFD700', fontStyle: 'italic' },
+  legend: { display: 'flex', justifyContent: 'center', gap: '8px', padding: '15px', flexWrap: 'wrap' },
+  legendItem: { padding: '4px 10px', borderRadius: '10px', fontSize: '10px', color: 'white', fontWeight: 'bold' },
+  
+  // Styles pour la modal d'édition
+  editOverlay: {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex',
+    justifyContent: 'center', alignItems: 'center', zIndex: 10000
   },
-  otherMonthDay: {
-    opacity: 0.3,
-    cursor: 'default'
+  editModal: {
+    backgroundColor: 'white', borderRadius: '12px', padding: '20px',
+    width: '100%', maxWidth: '500px', maxHeight: '85vh', overflow: 'auto'
   },
-  selectedDay: {
-    border: '2px solid #00f0ff !important',
-    boxShadow: '0 0 10px rgba(0, 240, 255, 0.5)'
+  editHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' },
+  editTitle: { margin: 0, fontSize: '18px', color: '#333' },
+  editSubtitle: { margin: '5px 0 0', fontSize: '14px', color: '#666' },
+  editCloseBtn: {
+    background: 'none', border: 'none', fontSize: '20px',
+    color: '#999', cursor: 'pointer', padding: '0 5px'
   },
-  dayNumber: {
-    color: 'white',
-    fontSize: '14px',
-    fontWeight: 'bold'
+  section: { marginBottom: '20px' },
+  sectionLabel: { display: 'block', fontSize: '14px', fontWeight: '600', color: '#333', marginBottom: '10px' },
+  labelHint: { fontWeight: 'normal', fontSize: '12px', color: '#999' },
+  serviceGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' },
+  serviceBtn: {
+    padding: '10px 8px', borderRadius: '8px', border: '1px solid #ddd',
+    backgroundColor: '#f5f5f5', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s'
   },
-  serviceCode: {
-    fontSize: '9px',
-    color: 'white',
-    fontWeight: 'bold',
-    textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+  serviceBtnSelected: { backgroundColor: '#e3f2fd', borderColor: '#2196F3', boxShadow: '0 0 0 2px rgba(33, 150, 243, 0.3)' },
+  serviceBtnCode: { display: 'block', fontWeight: 'bold', fontSize: '14px', color: '#333' },
+  serviceBtnDesc: { display: 'block', fontSize: '10px', color: '#666', marginTop: '3px' },
+  posteGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' },
+  posteBtn: {
+    padding: '10px', borderRadius: '8px', border: '1px solid #ddd',
+    backgroundColor: '#f5f5f5', cursor: 'pointer', fontWeight: '600', fontSize: '12px', color: '#333'
   },
-  supplement: {
-    fontSize: '8px',
-    color: '#FFD700',
-    fontStyle: 'italic'
+  posteBtnSelected: { backgroundColor: '#e3f2fd', borderColor: '#2196F3' },
+  suppGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' },
+  suppBtn: {
+    padding: '10px', borderRadius: '8px', border: '1px solid #ddd',
+    backgroundColor: '#f5f5f5', cursor: 'pointer', position: 'relative', textAlign: 'center'
   },
-  detailPanel: {
-    margin: '20px',
-    padding: '15px',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    borderRadius: '12px',
-    border: '1px solid rgba(0, 240, 255, 0.2)'
+  suppBtnSelected: { backgroundColor: '#e8f5e9', borderColor: '#4CAF50' },
+  suppCode: { fontWeight: '600', fontSize: '11px', fontStyle: 'italic', color: '#333' },
+  checkMark: { position: 'absolute', top: '3px', right: '5px', color: '#4CAF50', fontSize: '12px' },
+  selectedSupp: { marginTop: '10px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '6px', fontSize: '12px', color: '#666' },
+  noteInput: {
+    width: '100%', minHeight: '80px', padding: '10px', borderRadius: '8px',
+    border: '1px solid #ddd', fontSize: '14px', resize: 'vertical', boxSizing: 'border-box'
   },
-  detailTitle: {
-    color: '#00f0ff',
-    margin: '0 0 15px 0',
-    fontSize: '16px'
+  editActions: { display: 'flex', justifyContent: 'space-between', paddingTop: '15px', borderTop: '1px solid #eee' },
+  deleteBtn: {
+    padding: '10px 20px', backgroundColor: '#f44336', color: 'white',
+    border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600'
   },
-  detailContent: {
-    color: 'white'
-  },
-  editForm: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '15px'
-  },
-  select: {
-    padding: '10px',
-    borderRadius: '8px',
-    border: '1px solid rgba(0, 240, 255, 0.3)',
-    backgroundColor: '#0a0a12',
-    color: 'white',
-    fontSize: '14px'
-  },
-  editActions: {
-    display: 'flex',
-    gap: '10px'
-  },
-  editBtn: {
-    marginTop: '15px',
-    padding: '10px 20px',
-    backgroundColor: 'rgba(0, 102, 179, 0.3)',
-    border: '1px solid #0066b3',
-    color: 'white',
-    borderRadius: '8px',
-    cursor: 'pointer'
+  rightActions: { display: 'flex', gap: '10px' },
+  cancelBtn: {
+    padding: '10px 20px', backgroundColor: 'white', color: '#666',
+    border: '1px solid #ddd', borderRadius: '8px', cursor: 'pointer'
   },
   saveBtn: {
-    flex: 1,
-    padding: '10px',
-    backgroundColor: '#4CAF50',
-    border: 'none',
-    color: 'white',
-    borderRadius: '8px',
-    cursor: 'pointer'
-  },
-  cancelBtn: {
-    flex: 1,
-    padding: '10px',
-    backgroundColor: '#666',
-    border: 'none',
-    color: 'white',
-    borderRadius: '8px',
-    cursor: 'pointer'
-  },
-  legend: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: '10px',
-    padding: '15px',
-    flexWrap: 'wrap'
-  },
-  legendItem: {
-    padding: '4px 10px',
-    borderRadius: '10px',
-    fontSize: '10px',
-    color: 'white',
-    fontWeight: 'bold'
+    padding: '10px 20px', backgroundColor: '#2196F3', color: 'white',
+    border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600'
   }
 };
 
