@@ -1,5 +1,5 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.9 - Support onChange avec fonction updater
+// Version 4.0 - TOUJOURS MONTÉ (jamais return null)
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, FileText, AlertCircle, Loader } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
@@ -10,27 +10,28 @@ import PDFValidationStep from '../pdf/PDFValidationStep';
 import PDFImportResult from '../pdf/PDFImportResult';
 import { supabase } from '../../lib/supabaseClient';
 
-// Instance ID pour debug
-let instanceCounter = 0;
+// Instance ID pour debug - STATIC pour éviter increment sur re-render
+const MODAL_INSTANCE_ID = 'PDF-MODAL';
 
-const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  // ID unique pour cette instance (debug)
-  const instanceId = useRef(++instanceCounter);
-  const mountCount = useRef(0);
+const ModalUploadPDF = React.memo(({ isOpen, onClose, onSuccess }) => {
+  // Compteur de render pour debug
+  const renderCount = useRef(0);
+  renderCount.current++;
   
-  // Incrémenter le compteur de montage
-  useEffect(() => {
-    mountCount.current++;
-    console.log(`🔧 [Modal#${instanceId.current}] MONTÉ (${mountCount.current}x)`);
-    return () => {
-      console.log(`🔧 [Modal#${instanceId.current}] DÉMONTÉ`);
-    };
-  }, []);
+  // Track open state changes
+  const prevIsOpen = useRef(isOpen);
   
-  // Log des changements de isOpen
   useEffect(() => {
-    console.log(`🔧 [Modal#${instanceId.current}] isOpen=${isOpen}`);
+    if (prevIsOpen.current !== isOpen) {
+      console.log(`🔧 [${MODAL_INSTANCE_ID}] isOpen: ${prevIsOpen.current} → ${isOpen}`);
+      prevIsOpen.current = isOpen;
+    }
   }, [isOpen]);
+  
+  useEffect(() => {
+    console.log(`🔧 [${MODAL_INSTANCE_ID}] MONTÉ`);
+    return () => console.log(`🔧 [${MODAL_INSTANCE_ID}] DÉMONTÉ`);
+  }, []);
 
   const [currentStep, setCurrentStep] = useState(1);
   const [file, setFile] = useState(null);
@@ -48,7 +49,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   const addLog = useCallback((msg, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[PDF#${instanceId.current}] ${msg}`);
+    console.log(`[${MODAL_INSTANCE_ID}] ${msg}`);
     setDebugLog(prev => [...prev.slice(-20), { time: timestamp, msg, type }]);
   }, []);
 
@@ -202,7 +203,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   };
 
   // ============ FONCTION PRINCIPALE ============
-  const handleFileUpload = async (uploadedFile) => {
+  const handleFileUpload = useCallback(async (uploadedFile) => {
     if (processingRef.current) {
       addLog('Déjà en cours...', 'warn');
       return;
@@ -244,9 +245,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     } finally {
       processingRef.current = false;
     }
-  };
+  }, [addLog]);
 
-  const handleValidate = async () => {
+  const handleValidate = useCallback(async () => {
     addLog('Validation et import...');
     setLoading(true);
     setError(null);
@@ -255,29 +256,28 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       setImportResult(result);
       setCurrentStep(3);
       addLog('Import terminé', 'success');
-      if (result.success) setTimeout(() => onSuccess && onSuccess(), 100);
+      if (result.success) {
+        // Fermer le modal ET notifier le succès
+        setTimeout(() => {
+          onClose();
+          onSuccess && onSuccess();
+        }, 100);
+      }
     } catch (err) {
       setError(err.message || 'Erreur import');
       addLog('Erreur import: ' + err.message, 'error');
     } finally {
       setLoading(false);
     }
-  };
+  }, [addLog, editedData, onClose, onSuccess]);
 
   // Handler pour les modifications de données - SUPPORTE FONCTION OU OBJET
   const handleDataEdit = useCallback((updaterOrData) => {
-    console.log(`[Modal#${instanceId.current}] handleDataEdit appelé`);
-    
     // Si c'est une fonction, l'utiliser avec setEditedData
     if (typeof updaterOrData === 'function') {
-      setEditedData(prevData => {
-        const newData = updaterOrData(prevData);
-        console.log(`[Modal#${instanceId.current}] Mise à jour via fonction`);
-        return newData;
-      });
+      setEditedData(updaterOrData);
     } else {
       // Sinon, c'est un objet direct (ancien comportement)
-      console.log(`[Modal#${instanceId.current}] Mise à jour directe`);
       setEditedData(updaterOrData);
     }
   }, []);
@@ -299,13 +299,15 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     onClose(); 
   }, [addLog, resetModalState, onClose]);
 
-  // Ne pas rendre si fermé
-  if (!isOpen) {
-    return null;
-  }
-
+  // TOUJOURS RENDRE - utiliser CSS pour cacher
+  // Cela évite le démontage/remontage qui cause la perte d'état
   return (
-    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-2">
+    <div 
+      className={`fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-2 transition-opacity duration-200 ${
+        isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+      }`}
+      style={{ visibility: isOpen ? 'visible' : 'hidden' }}
+    >
       <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
         
         {/* Header */}
@@ -315,7 +317,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
               <FileText size={20} />
               <div>
                 <h2 className="text-base font-bold">Import PDF</h2>
-                <p className="text-blue-200 text-xs">Étape {currentStep}/3 • Instance #{instanceId.current}</p>
+                <p className="text-blue-200 text-xs">Étape {currentStep}/3 • Render #{renderCount.current}</p>
               </div>
             </div>
             <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-lg">
@@ -324,70 +326,74 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           </div>
         </div>
 
-        {/* Debug log */}
-        <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0 max-h-20 overflow-y-auto">
-          {debugLog.slice(-5).map((log, i) => (
-            <div 
-              key={i} 
-              className={
-                log.type === 'error' ? 'text-red-400' : 
-                log.type === 'success' ? 'text-green-400' : 
-                log.type === 'warn' ? 'text-yellow-400' : 
-                'text-gray-300'
-              }
-            >
-              {log.time} {log.msg}
-            </div>
-          ))}
-        </div>
+        {/* Debug log - visible seulement si ouvert */}
+        {isOpen && (
+          <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0 max-h-20 overflow-y-auto">
+            {debugLog.slice(-5).map((log, i) => (
+              <div 
+                key={i} 
+                className={
+                  log.type === 'error' ? 'text-red-400' : 
+                  log.type === 'success' ? 'text-green-400' : 
+                  log.type === 'warn' ? 'text-yellow-400' : 
+                  'text-gray-300'
+                }
+              >
+                {log.time} {log.msg}
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* Contenu */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-white">
-          {currentStep === 1 && (
-            <div className="flex-1 overflow-y-auto p-3">
-              <PDFUploadStep 
-                file={file} 
-                onFileUpload={handleFileUpload} 
-                error={error} 
-                isApiConfigured={true} 
-                stats={stats} 
-              />
-              
-              {error && (
-                <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-2">
-                  <p className="text-red-800 text-sm"><AlertCircle className="inline mr-1" size={14} />{error}</p>
-                </div>
-              )}
-            </div>
-          )}
+        {/* Contenu - rendu seulement si ouvert pour performance */}
+        {isOpen && (
+          <div className="flex-1 overflow-hidden flex flex-col bg-white">
+            {currentStep === 1 && (
+              <div className="flex-1 overflow-y-auto p-3">
+                <PDFUploadStep 
+                  file={file} 
+                  onFileUpload={handleFileUpload} 
+                  error={error} 
+                  isApiConfigured={true} 
+                  stats={stats} 
+                />
+                
+                {error && (
+                  <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-2">
+                    <p className="text-red-800 text-sm"><AlertCircle className="inline mr-1" size={14} />{error}</p>
+                  </div>
+                )}
+              </div>
+            )}
 
-          {currentStep === 2 && extractedData && (
-            <div className="flex-1 overflow-hidden">
-              <PDFValidationStep 
-                data={editedData} 
-                onChange={handleDataEdit} 
-                validation={validation} 
-                onValidate={handleValidate} 
-                onCancel={goBackToUpload} 
-                loading={loading} 
-                pdfFile={file} 
-              />
-            </div>
-          )}
+            {currentStep === 2 && extractedData && (
+              <div className="flex-1 overflow-hidden">
+                <PDFValidationStep 
+                  data={editedData} 
+                  onChange={handleDataEdit} 
+                  validation={validation} 
+                  onValidate={handleValidate} 
+                  onCancel={goBackToUpload} 
+                  loading={loading} 
+                  pdfFile={file} 
+                />
+              </div>
+            )}
 
-          {currentStep === 3 && importResult && (
-            <div className="flex-1 overflow-y-auto p-3">
-              <PDFImportResult 
-                importReport={importResult} 
-                onClose={handleClose} 
-                onRollback={null} 
-                onBackToValidation={() => setCurrentStep(2)} 
-              />
-            </div>
-          )}
-        </div>
+            {currentStep === 3 && importResult && (
+              <div className="flex-1 overflow-y-auto p-3">
+                <PDFImportResult 
+                  importReport={importResult} 
+                  onClose={handleClose} 
+                  onRollback={null} 
+                  onBackToValidation={() => setCurrentStep(2)} 
+                />
+              </div>
+            )}
+          </div>
+        )}
 
-        {loading && (
+        {loading && isOpen && (
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-20">
             <div className="bg-white p-4 rounded-xl shadow-xl text-center mx-4">
               <Loader className="animate-spin mx-auto mb-2 text-blue-600" size={32} />
@@ -399,6 +405,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       </div>
     </div>
   );
-};
+});
+
+ModalUploadPDF.displayName = 'ModalUploadPDF';
 
 export default ModalUploadPDF;
