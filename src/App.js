@@ -40,8 +40,7 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
- * v2.7 - Fix: Modal PDF toujours monté sur desktop (évite remount)
- *        Mobile utilise page dédiée PageUploadPDF
+ * v2.8 - Fix: isOpen simplifié (sans isMobile), mobile utilise route dédiée
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -306,14 +305,14 @@ const App = () => {
   };
 
   // Gestion de l'upload PDF
-  const handleUploadSuccess = () => {
+  const handleUploadSuccess = React.useCallback(() => {
     loadData(currentMonth);
     setConnectionStatus('✅ Planning importé avec succès');
     // Si on est sur la page mobile, revenir au planning
     if (currentView === 'uploadPDF') {
       setCurrentView('planning');
     }
-  };
+  }, [currentMonth, currentView, loadData, setConnectionStatus]);
 
   // === RENDU CONDITIONNEL ===
 
@@ -495,12 +494,12 @@ const App = () => {
       
       {/* 
         Modal PDF - Desktop uniquement 
-        v2.7: TOUJOURS monté pour éviter remount lors resize
-        Sur mobile: utilise PageUploadPDF (page dédiée)
-        isOpen contrôle l'affichage via display:none dans le modal
+        v2.8: isOpen simplifié - modals.uploadPDF seulement
+        Sur mobile: openUploadPDF() redirige vers PageUploadPDF,
+        donc modals.uploadPDF ne sera jamais true sur mobile
       */}
       <ModalUploadPDF
-        isOpen={!isMobile && modals.uploadPDF}
+        isOpen={modals.uploadPDF}
         onClose={() => closeModal('uploadPDF')}
         onSuccess={handleUploadSuccess}
       />
