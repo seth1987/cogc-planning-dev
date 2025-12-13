@@ -1,24 +1,68 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /**
- * useIsMobile - Hook de détection mobile/desktop
+ * Détection mobile par User-Agent (ne change jamais)
+ */
+const isMobileUserAgent = () => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || navigator.vendor || window.opera || '';
+  return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i.test(ua);
+};
+
+/**
+ * Détection tactile
+ */
+const isTouchDevice = () => {
+  if (typeof window === 'undefined') return false;
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+};
+
+/**
+ * useIsMobile - Hook de détection mobile/desktop STABLE
  * 
- * Détecte si l'utilisateur est sur mobile en fonction de :
- * - La largeur de l'écran (breakpoint configurable, défaut 768px)
- * - Réactif aux changements de taille (resize, rotation)
+ * Utilise une combinaison de :
+ * - User-Agent (prioritaire, ne change jamais)
+ * - Touch capability
+ * - Largeur écran (fallback)
  * 
- * @param {number} breakpoint - Largeur en px sous laquelle on considère mobile (défaut: 768)
+ * La valeur initiale est VERROUILLÉE pour éviter les bascules
+ * causées par le clavier virtuel ou autres resize events.
+ * 
+ * @param {number} breakpoint - Largeur en px (défaut: 768)
  * @returns {boolean} true si mobile, false si desktop
- * 
- * @example
- * const isMobile = useIsMobile();
- * const isTablet = useIsMobile(1024);
- * 
- * return isMobile ? <MobileView /> : <DesktopView />;
  */
 const useIsMobile = (breakpoint = 768) => {
+  // Détection initiale avec User-Agent (prioritaire)
+  const initialDetection = useRef(null);
+  
+  if (initialDetection.current === null) {
+    const byUserAgent = isMobileUserAgent();
+    const byTouch = isTouchDevice();
+    const byWidth = typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false;
+    
+    // Priorité : User-Agent > Touch + Width
+    initialDetection.current = byUserAgent || (byTouch && byWidth);
+    
+    console.log('📱 Détection mobile initiale:', {
+      userAgent: byUserAgent,
+      touch: byTouch,
+      width: byWidth,
+      result: initialDetection.current
+    });
+  }
+  
+  // État basé sur la détection initiale (verrouillée)
+  const [isMobile] = useState(initialDetection.current);
+  
+  return isMobile;
+};
+
+/**
+ * useIsMobileReactive - Version réactive (pour les cas où on veut suivre les resize)
+ * À utiliser avec précaution car peut causer des bascules d'UI
+ */
+export const useIsMobileReactive = (breakpoint = 768) => {
   const [isMobile, setIsMobile] = useState(() => {
-    // Check initial state (SSR safe)
     if (typeof window !== 'undefined') {
       return window.innerWidth <= breakpoint;
     }
@@ -26,21 +70,14 @@ const useIsMobile = (breakpoint = 768) => {
   });
 
   useEffect(() => {
-    // Handler pour le resize
     const handleResize = () => {
       setIsMobile(window.innerWidth <= breakpoint);
     };
 
-    // Écouter les changements de taille
     window.addEventListener('resize', handleResize);
-    
-    // Écouter aussi les changements d'orientation (mobile)
     window.addEventListener('orientationchange', handleResize);
-
-    // Vérifier au montage
     handleResize();
 
-    // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('orientationchange', handleResize);
@@ -51,46 +88,27 @@ const useIsMobile = (breakpoint = 768) => {
 };
 
 /**
- * useDeviceDetect - Hook de détection avancée
- * 
- * Retourne des informations détaillées sur l'appareil
- * 
- * @returns {object} { isMobile, isTablet, isDesktop, isTouchDevice, screenWidth }
+ * useDeviceDetect - Hook de détection avancée (STABLE)
  */
 export const useDeviceDetect = () => {
-  const [device, setDevice] = useState({
-    isMobile: false,
-    isTablet: false,
-    isDesktop: true,
-    isTouchDevice: false,
-    screenWidth: typeof window !== 'undefined' ? window.innerWidth : 1024
-  });
-
-  useEffect(() => {
-    const detectDevice = () => {
-      const width = window.innerWidth;
-      const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-      
-      setDevice({
-        isMobile: width <= 768,
-        isTablet: width > 768 && width <= 1024,
-        isDesktop: width > 1024,
-        isTouchDevice,
-        screenWidth: width
-      });
-    };
-
-    window.addEventListener('resize', detectDevice);
-    window.addEventListener('orientationchange', detectDevice);
+  const detectionRef = useRef(null);
+  
+  if (detectionRef.current === null) {
+    const width = typeof window !== 'undefined' ? window.innerWidth : 1024;
+    const touch = isTouchDevice();
+    const mobileUA = isMobileUserAgent();
     
-    detectDevice();
-
-    return () => {
-      window.removeEventListener('resize', detectDevice);
-      window.removeEventListener('orientationchange', detectDevice);
+    detectionRef.current = {
+      isMobile: mobileUA || (touch && width <= 768),
+      isTablet: width > 768 && width <= 1024,
+      isDesktop: !mobileUA && width > 768,
+      isTouchDevice: touch,
+      screenWidth: width,
+      userAgentMobile: mobileUA
     };
-  }, []);
-
+  }
+  
+  const [device] = useState(detectionRef.current);
   return device;
 };
 
