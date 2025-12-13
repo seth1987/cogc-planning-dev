@@ -5,7 +5,7 @@ import { AlertTriangle } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { usePlanning } from './hooks/usePlanning';
 import { useModals } from './hooks/useModals';
-import { useIsMobile } from './hooks/useIsMobile';
+import useIsMobile from './hooks/useIsMobile';
 
 // Services
 import supabaseService from './services/supabaseService';
