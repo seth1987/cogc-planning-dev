@@ -1,5 +1,5 @@
 // Composant pour l'étape d'upload du PDF
-// Version 2.2 - Debug mobile + feedback visuel immédiat
+// Version 2.3 - DEBUG MOBILE avec alertes
 import React, { useState } from 'react';
 import { Upload, Key, Database, Lock, FileText, Loader, CheckCircle } from 'lucide-react';
 import useIsMobile from '../../hooks/useIsMobile';
@@ -14,59 +14,76 @@ const PDFUploadStep = ({
   const isMobile = useIsMobile();
   const [localLoading, setLocalLoading] = useState(false);
   const [localFile, setLocalFile] = useState(null);
+  const [debugInfo, setDebugInfo] = useState('');
   
-  // Gestion de la sélection de fichier - compatible mobile
+  // Gestion de la sélection de fichier - DEBUG VERSION
   const handleFileSelect = async (event) => {
-    console.log('📱 handleFileSelect déclenché');
+    const debug = [];
+    debug.push('1. Handler déclenché');
     
-    if (!isApiConfigured) {
-      alert('Le module PDF nécessite une clé API Mistral pour fonctionner.');
-      return;
-    }
+    try {
+      if (!isApiConfigured) {
+        alert('API non configurée');
+        return;
+      }
+      debug.push('2. API OK');
 
-    const selectedFile = event.target.files?.[0];
-    console.log('📁 Fichier détecté:', selectedFile);
-    
-    if (!selectedFile) {
-      console.log('❌ Aucun fichier sélectionné');
-      return;
-    }
-
-    // Log pour debug mobile
-    console.log('📄 Nom:', selectedFile.name);
-    console.log('📄 Type MIME:', selectedFile.type);
-    console.log('📄 Taille:', selectedFile.size);
-
-    // Validation plus robuste : vérifier le type MIME OU l'extension
-    const isPDF = 
-      selectedFile.type === 'application/pdf' || 
-      selectedFile.type === 'application/x-pdf' ||
-      selectedFile.type === '' || // Certains mobiles ne donnent pas le MIME
-      selectedFile.name.toLowerCase().endsWith('.pdf');
-
-    if (isPDF) {
-      console.log('✅ PDF valide, mise à jour UI locale');
+      const files = event.target.files;
+      debug.push(`3. Files: ${files ? files.length : 'null'}`);
       
-      // Feedback immédiat - montrer le fichier sélectionné
+      if (!files || files.length === 0) {
+        setDebugInfo(debug.join('\n'));
+        alert('DEBUG: Aucun fichier dans event.target.files\n\n' + debug.join('\n'));
+        return;
+      }
+
+      const selectedFile = files[0];
+      debug.push(`4. Fichier: ${selectedFile.name}`);
+      debug.push(`5. Type: "${selectedFile.type}"`);
+      debug.push(`6. Taille: ${selectedFile.size}`);
+
+      // Validation très permissive
+      const fileName = selectedFile.name.toLowerCase();
+      const fileType = selectedFile.type.toLowerCase();
+      const isPDF = 
+        fileType.includes('pdf') || 
+        fileType === '' || 
+        fileName.endsWith('.pdf');
+      
+      debug.push(`7. isPDF: ${isPDF}`);
+
+      if (!isPDF) {
+        setDebugInfo(debug.join('\n'));
+        alert('DEBUG: Fichier rejeté\n\n' + debug.join('\n'));
+        return;
+      }
+
+      debug.push('8. Validation OK, update UI...');
       setLocalFile(selectedFile);
       setLocalLoading(true);
+      setDebugInfo(debug.join('\n'));
+
+      debug.push('9. Appel onFileUpload...');
       
-      console.log('📤 Appel onFileUpload...');
+      // Petit délai pour laisser React mettre à jour l'UI
+      await new Promise(resolve => setTimeout(resolve, 50));
       
-      try {
-        // Appeler le parent avec un léger délai pour laisser l'UI se mettre à jour
-        await new Promise(resolve => setTimeout(resolve, 100));
+      if (typeof onFileUpload === 'function') {
+        debug.push('10. onFileUpload est une fonction, appel...');
         onFileUpload(selectedFile);
-        console.log('✅ onFileUpload appelé avec succès');
-      } catch (err) {
-        console.error('❌ Erreur onFileUpload:', err);
-        alert('Erreur lors du traitement: ' + err.message);
+        debug.push('11. onFileUpload appelé !');
+      } else {
+        debug.push('10. ERREUR: onFileUpload n\'est pas une fonction!');
+        alert('ERREUR: onFileUpload non défini\n\n' + debug.join('\n'));
         setLocalLoading(false);
-        setLocalFile(null);
       }
-    } else {
-      console.log('❌ Fichier non PDF:', selectedFile.type, selectedFile.name);
-      alert(`Veuillez sélectionner un fichier PDF valide.\n\nFichier reçu: ${selectedFile.name}\nType: ${selectedFile.type || 'non détecté'}`);
+      
+    } catch (err) {
+      debug.push(`ERREUR: ${err.message}`);
+      setDebugInfo(debug.join('\n'));
+      alert('ERREUR dans handleFileSelect:\n\n' + debug.join('\n') + '\n\nErreur: ' + err.message);
+      setLocalLoading(false);
+      setLocalFile(null);
     }
   };
 
@@ -74,6 +91,13 @@ const PDFUploadStep = ({
   if (isMobile) {
     return (
       <div className="space-y-4">
+        {/* Debug info */}
+        {debugInfo && (
+          <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-2 text-xs font-mono text-yellow-800 whitespace-pre-wrap">
+            {debugInfo}
+          </div>
+        )}
+
         {/* Alerte si API non configurée */}
         {!isApiConfigured && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -126,25 +150,37 @@ const PDFUploadStep = ({
           </div>
         )}
 
-        {/* BOUTON D'UPLOAD - masqué si en cours */}
+        {/* BOUTON D'UPLOAD - Version input visible pour debug */}
         {!localLoading && !file && isApiConfigured && (
-          <label 
-            htmlFor="pdf-upload-mobile"
-            className="block bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl p-6 text-center transition-colors shadow-lg cursor-pointer"
-          >
-            <input
-              type="file"
-              accept=".pdf,application/pdf,application/x-pdf"
-              onChange={handleFileSelect}
-              className="hidden"
-              id="pdf-upload-mobile"
-            />
-            <FileText className="mx-auto mb-3" size={48} />
-            <p className="text-lg font-bold">Sélectionner un PDF</p>
-            <p className="text-blue-200 text-sm mt-1">
-              Bulletin de commande SNCF
-            </p>
-          </label>
+          <div className="space-y-3">
+            {/* Méthode 1: Input visible */}
+            <div className="bg-blue-600 text-white rounded-xl p-4">
+              <p className="text-center font-bold mb-3">Sélectionner un PDF</p>
+              <input
+                type="file"
+                accept=".pdf,application/pdf,application/x-pdf,*/*"
+                onChange={handleFileSelect}
+                className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-white file:text-blue-700 hover:file:bg-blue-50"
+              />
+            </div>
+            
+            {/* Méthode 2: Label classique en backup */}
+            <label 
+              htmlFor="pdf-upload-mobile-backup"
+              className="block bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded-xl p-4 text-center transition-colors shadow-lg cursor-pointer"
+            >
+              <input
+                type="file"
+                accept="*/*"
+                onChange={handleFileSelect}
+                className="hidden"
+                id="pdf-upload-mobile-backup"
+              />
+              <FileText className="mx-auto mb-2" size={32} />
+              <p className="font-bold">Méthode alternative</p>
+              <p className="text-green-200 text-xs">Si le bouton bleu ne marche pas</p>
+            </label>
+          </div>
         )}
 
         {/* Upload désactivé */}
@@ -170,9 +206,16 @@ const PDFUploadStep = ({
     );
   }
 
-  // ========== VERSION DESKTOP (inchangée) ==========
+  // ========== VERSION DESKTOP ==========
   return (
     <div className="space-y-4">
+      {/* Debug info desktop */}
+      {debugInfo && (
+        <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-2 text-xs font-mono text-yellow-800 whitespace-pre-wrap">
+          DEBUG: {debugInfo}
+        </div>
+      )}
+
       {/* Alerte si API non configurée */}
       {!isApiConfigured && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -183,9 +226,6 @@ const PDFUploadStep = ({
               <p className="text-sm text-red-800 mt-1">
                 Ce module nécessite une clé API Mistral pour fonctionner.
                 Configurez REACT_APP_MISTRAL_API_KEY dans vos variables d'environnement.
-              </p>
-              <p className="text-xs text-red-700 mt-2">
-                Obtenez votre clé sur : https://console.mistral.ai/
               </p>
             </div>
           </div>
@@ -238,11 +278,9 @@ const PDFUploadStep = ({
           </>
         ) : (
           <>
-            <p className="text-gray-500 font-medium">
-              Upload désactivé
-            </p>
+            <p className="text-gray-500 font-medium">Upload désactivé</p>
             <p className="text-sm text-gray-400 mt-2">
-              Configurez votre clé API Mistral pour activer cette fonctionnalité
+              Configurez votre clé API Mistral
             </p>
           </>
         )}
@@ -252,40 +290,18 @@ const PDFUploadStep = ({
             <p className="text-sm text-blue-900 font-medium">
               📄 {(file || localFile).name}
             </p>
-            <p className="text-xs text-blue-700 mt-1">
-              {((file || localFile).size / 1024).toFixed(2)} KB
-            </p>
           </div>
         )}
       </div>
 
       {/* Instructions desktop */}
-      <div className={`rounded-lg p-4 ${
-        isApiConfigured ? 'bg-gray-50' : 'bg-gray-100'
-      }`}>
-        <h3 className="font-semibold text-gray-900 mb-2">
-          {isApiConfigured ? 'Instructions :' : 'Configuration requise :'}
-        </h3>
-        
-        {isApiConfigured ? (
-          <ul className="text-sm text-gray-700 space-y-1">
-            <li>✓ Format accepté : PDF bulletin de commande SNCF</li>
-            <li>✓ Le nom de l'agent sera détecté automatiquement</li>
-            <li>✓ Les services de nuit seront décalés au lendemain</li>
-            <li>✓ Mapping automatique via base de données</li>
-            <li>✓ Extraction par Mistral OCR avec IA</li>
-          </ul>
-        ) : (
-          <ol className="text-sm text-gray-700 space-y-2">
-            <li>1. Créez un compte sur <a href="https://console.mistral.ai/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">console.mistral.ai</a></li>
-            <li>2. Générez une clé API dans votre dashboard</li>
-            <li>3. Ajoutez la clé dans votre fichier .env :</li>
-            <li className="ml-4 font-mono text-xs bg-white p-2 rounded border">
-              REACT_APP_MISTRAL_API_KEY=votre_clé_ici
-            </li>
-            <li>4. Redémarrez l'application</li>
-          </ol>
-        )}
+      <div className="bg-gray-50 rounded-lg p-4">
+        <h3 className="font-semibold text-gray-900 mb-2">Instructions :</h3>
+        <ul className="text-sm text-gray-700 space-y-1">
+          <li>✓ Format accepté : PDF bulletin de commande SNCF</li>
+          <li>✓ Le nom de l'agent sera détecté automatiquement</li>
+          <li>✓ Extraction par Mistral OCR avec IA</li>
+        </ul>
       </div>
     </div>
   );
