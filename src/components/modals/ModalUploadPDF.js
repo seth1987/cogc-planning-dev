@@ -1,6 +1,6 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.7 - Persistance sessionStorage pour survivre au remount mobile
-import React, { useState, useEffect, useRef } from 'react';
+// Version 3.8 - Fix remount: composant stable sans conditions externes
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, FileText, AlertCircle, Loader } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
 import mappingService from '../../services/mappingService';
@@ -9,15 +9,29 @@ import PDFUploadStep from '../pdf/PDFUploadStep';
 import PDFValidationStep from '../pdf/PDFValidationStep';
 import PDFImportResult from '../pdf/PDFImportResult';
 import { supabase } from '../../lib/supabaseClient';
-import useIsMobile from '../../hooks/useIsMobile';
 
-// Clé pour sessionStorage
-const STORAGE_KEY = 'cogc_pdf_upload_state';
+// Instance ID pour debug
+let instanceCounter = 0;
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  const instanceId = useRef(Date.now());
-  const isMobile = useIsMobile();
+  // ID unique pour cette instance (debug)
+  const instanceId = useRef(++instanceCounter);
+  const mountCount = useRef(0);
   
+  // Incrémenter le compteur de montage
+  useEffect(() => {
+    mountCount.current++;
+    console.log(`🔧 [Modal#${instanceId.current}] MONTÉ (${mountCount.current}x)`);
+    return () => {
+      console.log(`🔧 [Modal#${instanceId.current}] DÉMONTÉ`);
+    };
+  }, []);
+  
+  // Log des changements de isOpen
+  useEffect(() => {
+    console.log(`🔧 [Modal#${instanceId.current}] isOpen=${isOpen}`);
+  }, [isOpen]);
+
   const [currentStep, setCurrentStep] = useState(1);
   const [file, setFile] = useState(null);
   const [extractedData, setExtractedData] = useState(null);
@@ -31,42 +45,21 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   
   const codesMapping = useRef({});
   const processingRef = useRef(false);
-  const fileInputRef = useRef(null);
 
-  const addLog = (msg, type = 'info') => {
+  const addLog = useCallback((msg, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`[PDF] ${msg}`);
+    console.log(`[PDF#${instanceId.current}] ${msg}`);
     setDebugLog(prev => [...prev.slice(-20), { time: timestamp, msg, type }]);
-  };
-
-  // Restaurer l'état depuis sessionStorage au montage
-  useEffect(() => {
-    const saved = sessionStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const state = JSON.parse(saved);
-        addLog(`État restauré: étape ${state.currentStep}`, 'success');
-        if (state.extractedData) {
-          setExtractedData(state.extractedData);
-          setEditedData(state.editedData || state.extractedData);
-          setCurrentStep(state.currentStep || 2);
-          setValidation(state.validation || { errors: [], warnings: [] });
-        }
-        // Nettoyer après restauration
-        sessionStorage.removeItem(STORAGE_KEY);
-      } catch (e) {
-        console.error('Erreur restauration état:', e);
-      }
-    }
   }, []);
 
-  // Charger les stats et mapping au montage
+  // Charger les stats et mapping quand le modal s'ouvre
   useEffect(() => {
     if (isOpen) {
+      addLog('Modal ouvert, chargement mapping...');
       loadMappingStats();
       loadCodesMapping();
     }
-  }, [isOpen]);
+  }, [isOpen, addLog]);
 
   const loadMappingStats = async () => {
     const mappingStats = await mappingService.getStats();
@@ -98,7 +91,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
-  const resetModalState = () => {
+  const resetModalState = useCallback(() => {
+    addLog('Reset état modal');
     setCurrentStep(1);
     setFile(null);
     setExtractedData(null);
@@ -107,10 +101,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setError(null);
     setValidation({ errors: [], warnings: [] });
     setDebugLog([]);
-    sessionStorage.removeItem(STORAGE_KEY);
-  };
+  }, [addLog]);
 
-  // Fonctions de transformation (identiques aux versions précédentes)
+  // Fonctions de transformation
   const determineServiceTypeFromHoraires = (horaires) => {
     if (!horaires || horaires.length === 0) return '-';
     let mainHoraire = horaires.find(h => h.type === 'SERVICE') || horaires[0];
@@ -208,7 +201,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     return validation;
   };
 
-  // ============ FONCTION PRINCIPALE - avec sauvegarde avant OCR ============
+  // ============ FONCTION PRINCIPALE ============
   const handleFileUpload = async (uploadedFile) => {
     if (processingRef.current) {
       addLog('Déjà en cours...', 'warn');
@@ -237,17 +230,6 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       
       addLog(`Agent: ${transformedData.agent?.nom} ${transformedData.agent?.prenom}`, 'success');
       
-      // Sauvegarder l'état dans sessionStorage AVANT de changer d'étape
-      // Ceci permet de récupérer si l'app est remontée
-      const stateToSave = {
-        currentStep: 2,
-        extractedData: transformedData,
-        editedData: transformedData,
-        validation: validationResult
-      };
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-      addLog('État sauvegardé', 'success');
-      
       setValidation(validationResult);
       setExtractedData(transformedData);
       setEditedData(JSON.parse(JSON.stringify(transformedData)));
@@ -265,61 +247,56 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   };
 
   const handleValidate = async () => {
+    addLog('Validation et import...');
     setLoading(true);
     setError(null);
     try {
       const result = await planningImportService.importPlanning(editedData);
       setImportResult(result);
       setCurrentStep(3);
-      sessionStorage.removeItem(STORAGE_KEY);
+      addLog('Import terminé', 'success');
       if (result.success) setTimeout(() => onSuccess && onSuccess(), 100);
     } catch (err) {
       setError(err.message || 'Erreur import');
+      addLog('Erreur import: ' + err.message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDataEdit = (newData) => {
+  // Handler pour les modifications de données - STABLE avec useCallback
+  const handleDataEdit = useCallback((newData) => {
+    console.log(`[Modal#${instanceId.current}] handleDataEdit appelé`);
     setEditedData(newData);
-    // Mettre à jour sessionStorage avec les modifications
-    const stateToSave = {
-      currentStep: 2,
-      extractedData,
-      editedData: newData,
-      validation
-    };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-  };
+  }, []);
 
-  const goBackToUpload = () => { 
+  const goBackToUpload = useCallback(() => { 
+    addLog('Retour étape 1');
     setCurrentStep(1); 
     setExtractedData(null); 
     setEditedData(null); 
     setError(null);
-    sessionStorage.removeItem(STORAGE_KEY);
-  };
+  }, [addLog]);
   
-  const handleClose = () => { 
+  const handleClose = useCallback(() => { 
     if (processingRef.current) {
-      addLog('Fermeture bloquée', 'warn');
+      addLog('Fermeture bloquée (en cours)', 'warn');
       return;
     }
     resetModalState();
     onClose(); 
-  };
+  }, [addLog, resetModalState, onClose]);
 
-  // Rendu avec display:none si fermé
-  const modalStyle = {
-    display: isOpen ? 'flex' : 'none',
-    position: 'fixed',
-    inset: 0,
-    zIndex: 50,
-  };
+  // Rendu avec display:none si fermé (pas de démontage!)
+  if (!isOpen) {
+    return null; // Ne pas rendre du tout quand fermé pour économiser les ressources
+  }
 
   return (
-    <div style={modalStyle} className={isMobile ? 'bg-white' : 'bg-black bg-opacity-50 items-center justify-center p-2'}>
-      <div className={`${isMobile ? 'h-full w-full flex flex-col' : 'bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col'}`}>
+    <div 
+      className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-2"
+    >
+      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
         
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-3 flex-shrink-0">
@@ -328,7 +305,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
               <FileText size={20} />
               <div>
                 <h2 className="text-base font-bold">Import PDF</h2>
-                <p className="text-blue-200 text-xs">Étape {currentStep}/3</p>
+                <p className="text-blue-200 text-xs">Étape {currentStep}/3 • Instance #{instanceId.current}</p>
               </div>
             </div>
             <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-lg">
@@ -337,7 +314,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           </div>
         </div>
 
-        {/* Debug log - plus compact */}
+        {/* Debug log */}
         <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0 max-h-20 overflow-y-auto">
           {debugLog.slice(-5).map((log, i) => (
             <div 
@@ -376,13 +353,26 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
           {currentStep === 2 && extractedData && (
             <div className="flex-1 overflow-hidden">
-              <PDFValidationStep data={editedData} onChange={handleDataEdit} validation={validation} onValidate={handleValidate} onCancel={goBackToUpload} loading={loading} pdfFile={file} />
+              <PDFValidationStep 
+                data={editedData} 
+                onChange={handleDataEdit} 
+                validation={validation} 
+                onValidate={handleValidate} 
+                onCancel={goBackToUpload} 
+                loading={loading} 
+                pdfFile={file} 
+              />
             </div>
           )}
 
           {currentStep === 3 && importResult && (
             <div className="flex-1 overflow-y-auto p-3">
-              <PDFImportResult importReport={importResult} onClose={handleClose} onRollback={null} onBackToValidation={() => setCurrentStep(2)} />
+              <PDFImportResult 
+                importReport={importResult} 
+                onClose={handleClose} 
+                onRollback={null} 
+                onBackToValidation={() => setCurrentStep(2)} 
+              />
             </div>
           )}
         </div>
