@@ -136,11 +136,26 @@ export const SERVICE_CODES = [
   { code: 'HAB', desc: 'Habilitation/Formation' },
   { code: 'FO', desc: 'Formation' },
   { code: 'VT', desc: 'Temps partiel' },
-  { code: 'D2I', desc: 'D2I' }
+  { code: 'D2I', desc: 'D2I' },
+  { code: '__LIBRE__', desc: '✏️ Texte libre...' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)
 export const POSTES_CODES = ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'SOUF'];
+
+// Liste des postes avec option texte libre pour les formulaires
+export const POSTES_CODES_WITH_LIBRE = [
+  { code: '', desc: '— Aucun —' },
+  { code: 'CRC', desc: 'CRC' },
+  { code: 'ACR', desc: 'ACR' },
+  { code: 'CCU', desc: 'CCU' },
+  { code: 'RE', desc: 'RE' },
+  { code: 'RC', desc: 'RC' },
+  { code: 'RO', desc: 'RO' },
+  { code: 'CAC', desc: 'CAC' },
+  { code: 'SOUF', desc: 'SOUF' },
+  { code: '__LIBRE__', desc: '✏️ Texte libre...' }
+];
 
 // Postes spécifiques par groupe (pour les agents avec choix de poste limité)
 export const POSTES_PAR_GROUPE = {
@@ -168,3 +183,6 @@ export const POSTES_SUPPLEMENTAIRES = [
   { code: '+CCU', desc: 'Poste CCU supplémentaire' },
   { code: '+OV', desc: 'Poste OV supplémentaire' }
 ];
+
+// Constante pour détecter si une valeur est en mode texte libre
+export const LIBRE_MARKER = '__LIBRE__';
