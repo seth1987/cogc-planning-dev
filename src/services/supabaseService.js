@@ -1,5 +1,30 @@
 import { supabase } from '../lib/supabaseClient';
 
+/**
+ * Extrait le code de groupe (groupe_travail) depuis le nom complet du groupe
+ * Utilisé pour synchroniser avec l'annuaire
+ * 
+ * @param {string} groupeComplet - Nom complet du groupe (ex: "ACR - ROULEMENT ACR COGC")
+ * @returns {string} Code du groupe (ex: "ACR")
+ */
+const extractGroupeCode = (groupeComplet) => {
+  if (!groupeComplet) return null;
+  
+  // Cas spéciaux pour les réserves
+  if (groupeComplet.startsWith('RESERVE PCD')) return 'PCD';
+  if (groupeComplet.startsWith('RESERVE REGULATEUR PN')) return 'RESERVE PN';
+  if (groupeComplet.startsWith('RESERVE REGULATEUR DR')) return 'RESERVE DR';
+  
+  // Cas standard : extraire le préfixe avant " - "
+  const dashIndex = groupeComplet.indexOf(' - ');
+  if (dashIndex > 0) {
+    return groupeComplet.substring(0, dashIndex);
+  }
+  
+  // Fallback : retourner tel quel
+  return groupeComplet;
+};
+
 class SupabaseService {
   // Exposer le client Supabase pour accès direct si nécessaire
   get client() {
@@ -63,7 +88,7 @@ class SupabaseService {
 
   /**
    * Met à jour un agent existant
-   * v2.0: Inclut maintenant email et telephone
+   * v2.1: Calcule automatiquement groupe_travail pour synchronisation annuaire
    */
   async updateAgent(agentId, agentData) {
     // Nettoyer les données avant l'envoi
@@ -74,6 +99,12 @@ class SupabaseService {
       groupe: agentData.groupe,
       site: agentData.site
     };
+
+    // Calculer automatiquement groupe_travail depuis groupe (v2.1)
+    if (agentData.groupe) {
+      cleanData.groupe_travail = extractGroupeCode(agentData.groupe);
+      console.log(`📇 groupe_travail calculé: "${agentData.groupe}" → "${cleanData.groupe_travail}"`);
+    }
 
     // Ajouter les dates seulement si elles existent
     if (agentData.date_arrivee) {
@@ -126,7 +157,7 @@ class SupabaseService {
 
   /**
    * Crée un nouvel agent
-   * v2.0: Inclut maintenant email et telephone
+   * v2.1: Calcule automatiquement groupe_travail pour synchronisation annuaire
    * @returns {Object} L'agent créé avec son ID
    */
   async createAgent(agentData) {
@@ -138,6 +169,12 @@ class SupabaseService {
       groupe: agentData.groupe,
       site: agentData.site
     };
+
+    // Calculer automatiquement groupe_travail depuis groupe (v2.1)
+    if (agentData.groupe) {
+      cleanData.groupe_travail = extractGroupeCode(agentData.groupe);
+      console.log(`📇 groupe_travail calculé: "${agentData.groupe}" → "${cleanData.groupe_travail}"`);
+    }
 
     // Ajouter les dates seulement si elles existent et sont valides
     if (agentData.date_arrivee) {
@@ -471,103 +508,6 @@ class SupabaseService {
     }
     
     console.log(`🗑️ Poste figé supprimé: ${poste} (${creneau}) pour ${date}`);
-    return true;
-  }
-
-  // ============================================
-  // ANNUAIRE
-  // ============================================
-
-  /**
-   * Récupère tous les contacts de l'annuaire
-   * @returns {Promise<Array>} Liste des contacts groupés
-   */
-  async getAnnuaire() {
-    const { data, error } = await supabase
-      .from('annuaire')
-      .select('*')
-      .order('groupe, ordre_affichage, nom');
-    
-    if (error) {
-      console.error('Erreur getAnnuaire:', error);
-      throw error;
-    }
-    return data || [];
-  }
-
-  /**
-   * Met à jour un contact de l'annuaire
-   * @param {string} id - ID du contact
-   * @param {Object} contactData - Données à mettre à jour (telephone, email)
-   */
-  async updateAnnuaireContact(id, contactData) {
-    const updateData = {};
-    
-    // Ne mettre à jour que les champs fournis
-    if (contactData.telephone !== undefined) {
-      updateData.telephone = contactData.telephone || '';
-    }
-    if (contactData.email !== undefined) {
-      updateData.email = contactData.email || '';
-    }
-
-    console.log('📇 Mise à jour annuaire:', id, updateData);
-
-    const { data, error } = await supabase
-      .from('annuaire')
-      .update(updateData)
-      .eq('id', id)
-      .select();
-    
-    if (error) {
-      console.error('Erreur updateAnnuaireContact:', error);
-      throw error;
-    }
-    
-    console.log('✅ Contact annuaire mis à jour:', data);
-    return data[0];
-  }
-
-  /**
-   * Ajoute un nouveau contact à l'annuaire
-   * @param {Object} contactData - Données du contact
-   */
-  async createAnnuaireContact(contactData) {
-    const { data, error } = await supabase
-      .from('annuaire')
-      .insert({
-        groupe: contactData.groupe,
-        nom: contactData.nom,
-        telephone: contactData.telephone || '',
-        email: contactData.email || '',
-        contact_groupe: contactData.contact_groupe || '',
-        telephone_groupe: contactData.telephone_groupe || '',
-        email_groupe: contactData.email_groupe || '',
-        ordre_affichage: contactData.ordre_affichage || 0
-      })
-      .select();
-    
-    if (error) {
-      console.error('Erreur createAnnuaireContact:', error);
-      throw error;
-    }
-    return data[0];
-  }
-
-  /**
-   * Supprime un contact de l'annuaire
-   * @param {string} id - ID du contact
-   */
-  async deleteAnnuaireContact(id) {
-    const { error } = await supabase
-      .from('annuaire')
-      .delete()
-      .eq('id', id);
-    
-    if (error) {
-      console.error('Erreur deleteAnnuaireContact:', error);
-      throw error;
-    }
     return true;
   }
 
