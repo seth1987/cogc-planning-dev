@@ -1,5 +1,5 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.3 - DEBUG INTENSIF: alertes à CHAQUE étape
+// Version 3.4 - SANS ALERTES - Debug dans zone visible uniquement
 import React, { useState, useEffect, useRef } from 'react';
 import { X, FileText, AlertCircle, Loader, AlertTriangle } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
@@ -30,27 +30,18 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [debugLog, setDebugLog] = useState([]);
   
   const codesMapping = useRef({});
-  const isMounted = useRef(true);
+  const processingRef = useRef(false);
 
-  // Track unmount
-  useEffect(() => {
-    isMounted.current = true;
-    return () => {
-      isMounted.current = false;
-      console.log('⚠️ MODAL UNMOUNTED!');
-    };
-  }, []);
-
-  const addDebugLog = (msg) => {
-    console.log('📋 ' + msg);
-    if (isMounted.current) {
-      setDebugLog(prev => [...prev.slice(-20), `${new Date().toLocaleTimeString()}: ${msg}`]);
-    }
+  const addLog = (msg, type = 'info') => {
+    const timestamp = new Date().toLocaleTimeString();
+    const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warn' ? '⚠️' : '📋';
+    console.log(`${prefix} ${msg}`);
+    setDebugLog(prev => [...prev.slice(-30), { time: timestamp, msg, type }]);
   };
 
   useEffect(() => {
     if (isOpen) {
-      addDebugLog('Modal ouvert');
+      addLog('Modal ouvert');
       loadMappingStats();
       loadCodesMapping();
     }
@@ -58,10 +49,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   const loadMappingStats = async () => {
     const mappingStats = await mappingService.getStats();
-    if (isMounted.current) {
-      setStats(mappingStats);
-      addDebugLog(`Stats: ${mappingStats.total || mappingStats.totalCodes || 0} codes`);
-    }
+    setStats(mappingStats);
+    addLog(`Stats: ${mappingStats.total || mappingStats.totalCodes || 0} codes`);
   };
 
   const loadCodesMapping = async () => {
@@ -70,7 +59,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         .from('codes_services')
         .select('code, poste_code, service_code, description');
       
-      if (error || !isMounted.current) return;
+      if (error) return;
       
       const mapping = {};
       data.forEach(row => {
@@ -82,9 +71,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       });
       
       codesMapping.current = mapping;
-      addDebugLog(`Mapping: ${data.length} codes`);
+      addLog(`Mapping: ${data.length} codes`);
     } catch (err) {
-      addDebugLog('Erreur mapping: ' + err.message);
+      addLog('Erreur mapping: ' + err.message, 'error');
     }
   };
 
@@ -97,6 +86,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setError(null);
     setValidation({ errors: [], warnings: [] });
     setExtractionMethod(null);
+    processingRef.current = false;
   };
 
   const determineServiceTypeFromHoraires = (horaires) => {
@@ -196,110 +186,57 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     return validation;
   };
 
-  // ============ FONCTION PRINCIPALE - DEBUG INTENSIF ============
+  // ============ FONCTION PRINCIPALE - SANS ALERTES ============
   const handleFileUpload = async (uploadedFile) => {
-    // LOG IMMÉDIAT - avant toute autre action
-    console.log('🚀 handleFileUpload START', uploadedFile?.name);
-    addDebugLog(`>>> handleFileUpload: ${uploadedFile?.name}`);
-    
-    // ÉTAPE 1: Confirmation fichier reçu
-    alert(`ÉTAPE 1/5: Fichier reçu!\n\nNom: ${uploadedFile?.name}\nTaille: ${uploadedFile?.size} bytes\n\nCliquez OK pour continuer...`);
-    
-    // Vérifier si toujours monté après l'alerte
-    if (!isMounted.current) {
-      console.log('❌ Component unmounted après alerte 1');
+    // Protection contre double appel
+    if (processingRef.current) {
+      addLog('Traitement déjà en cours, ignoré', 'warn');
       return;
     }
+    processingRef.current = true;
     
-    addDebugLog('Après alerte 1 - setFile...');
+    addLog(`>>> FICHIER REÇU: ${uploadedFile?.name}`, 'success');
+    addLog(`Taille: ${uploadedFile?.size} bytes`);
     
-    // ÉTAPE 2: Mise à jour état
+    setFile(uploadedFile);
+    setLoading(true);
+    setError(null);
+
     try {
-      setFile(uploadedFile);
-      setLoading(true);
-      setError(null);
-      addDebugLog('États mis à jour');
-    } catch (e) {
-      alert('ERREUR setState: ' + e.message);
-      return;
-    }
-    
-    alert('ÉTAPE 2/5: États mis à jour\n\nLoading activé\n\nCliquez OK pour lancer OCR...');
-    
-    if (!isMounted.current) {
-      console.log('❌ Component unmounted après alerte 2');
-      return;
-    }
-    
-    // ÉTAPE 3: Appel OCR
-    addDebugLog('Avant appel PDFServiceWrapper...');
-    
-    let parsed = null;
-    try {
-      addDebugLog('Appel readPDF...');
-      alert('ÉTAPE 3/5: Lancement extraction OCR...\n\nCeci peut prendre quelques secondes.\n\nCliquez OK et patientez...');
+      addLog('Lancement OCR Mistral...');
       
-      parsed = await PDFServiceWrapper.readPDF(uploadedFile);
+      const parsed = await PDFServiceWrapper.readPDF(uploadedFile);
       
-      addDebugLog(`OCR terminé: ${parsed?.method || 'unknown'}`);
-      alert(`ÉTAPE 4/5: OCR terminé!\n\nMéthode: ${parsed?.method}\nSuccès: ${parsed?.success}\nEntrées: ${parsed?.entries?.length || 0}`);
+      addLog(`OCR terminé: ${parsed?.method}`, 'success');
+      addLog(`Succès: ${parsed?.success}, Entrées: ${parsed?.entries?.length || 0}`);
       
-    } catch (ocrError) {
-      const errMsg = ocrError?.message || String(ocrError);
-      addDebugLog('ERREUR OCR: ' + errMsg);
-      alert('ERREUR OCR:\n\n' + errMsg);
-      if (isMounted.current) {
-        setError(errMsg);
-        setLoading(false);
+      if (!parsed || !parsed.success) {
+        throw new Error(parsed?.error || 'Extraction échouée');
       }
-      return;
-    }
-    
-    if (!isMounted.current) {
-      console.log('❌ Component unmounted après OCR');
-      return;
-    }
-    
-    // ÉTAPE 4: Vérification résultat
-    if (!parsed || !parsed.success) {
-      const errorMsg = parsed?.error || 'Extraction échouée sans message';
-      addDebugLog('Échec extraction: ' + errorMsg);
-      alert('ÉCHEC EXTRACTION:\n\n' + errorMsg);
-      if (isMounted.current) {
-        setError(errorMsg);
-        setLoading(false);
-      }
-      return;
-    }
-    
-    // ÉTAPE 5: Transformation et passage étape 2
-    try {
-      addDebugLog('Transformation données...');
+      
+      setExtractionMethod(parsed.method);
+      
+      addLog('Transformation données...');
       const transformedData = transformParsedDataForValidation(parsed);
       const validationResult = validateTransformedData(transformedData);
       
-      addDebugLog(`Agent: ${transformedData.agent?.nom} ${transformedData.agent?.prenom}`);
-      addDebugLog(`Planning: ${transformedData.planning?.length} entrées`);
+      addLog(`Agent: ${transformedData.agent?.nom} ${transformedData.agent?.prenom}`, 'success');
+      addLog(`Planning: ${transformedData.planning?.length} entrées`, 'success');
       
-      alert(`ÉTAPE 5/5: Transformation OK!\n\nAgent: ${transformedData.agent?.nom} ${transformedData.agent?.prenom}\nEntrées: ${transformedData.planning?.length}\n\nPassage à l'étape 2...`);
+      setValidation(validationResult);
+      setExtractedData(transformedData);
+      setEditedData(JSON.parse(JSON.stringify(transformedData)));
+      setLoading(false);
       
-      if (isMounted.current) {
-        setExtractionMethod(parsed.method);
-        setValidation(validationResult);
-        setExtractedData(transformedData);
-        setEditedData(JSON.parse(JSON.stringify(transformedData)));
-        setLoading(false);
-        addDebugLog('>>> PASSAGE ÉTAPE 2 <<<');
-        setCurrentStep(2);
-      }
+      addLog('>>> PASSAGE ÉTAPE 2 <<<', 'success');
+      setCurrentStep(2);
       
-    } catch (transformError) {
-      addDebugLog('ERREUR Transform: ' + transformError.message);
-      alert('ERREUR TRANSFORMATION:\n\n' + transformError.message);
-      if (isMounted.current) {
-        setError(transformError.message);
-        setLoading(false);
-      }
+    } catch (err) {
+      addLog(`ERREUR: ${err.message}`, 'error');
+      setError(err.message);
+      setLoading(false);
+    } finally {
+      processingRef.current = false;
     }
   };
 
@@ -335,7 +272,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
               <FileText size={20} />
               <div>
                 <h2 className="text-base font-bold">Import PDF {isMobile ? '📱' : '💻'}</h2>
-                <p className="text-blue-200 text-xs">Étape {currentStep}/3 • R#{renderCount.current}</p>
+                <p className="text-blue-200 text-xs">Étape {currentStep}/3</p>
               </div>
             </div>
             <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-lg">
@@ -344,14 +281,24 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           </div>
         </div>
 
-        {/* Debug log - TOUJOURS VISIBLE */}
-        <div className="bg-gray-900 text-green-400 p-2 text-xs font-mono max-h-40 overflow-y-auto flex-shrink-0">
-          <div className="text-gray-500 mb-1">--- Debug ({debugLog.length} logs) ---</div>
+        {/* Debug log - TOUJOURS VISIBLE avec scroll */}
+        <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+          <div className="text-gray-500 mb-1">--- Console ({debugLog.length}) ---</div>
           {debugLog.length === 0 ? (
-            <div className="text-gray-600">En attente...</div>
+            <div className="text-gray-600">En attente de fichier...</div>
           ) : (
             debugLog.map((log, i) => (
-              <div key={i} className={log.includes('ERREUR') ? 'text-red-400' : log.includes('>>>') ? 'text-yellow-400' : ''}>{log}</div>
+              <div 
+                key={i} 
+                className={
+                  log.type === 'error' ? 'text-red-400' : 
+                  log.type === 'success' ? 'text-green-400' : 
+                  log.type === 'warn' ? 'text-yellow-400' : 
+                  'text-gray-300'
+                }
+              >
+                <span className="text-gray-500">{log.time}</span> {log.msg}
+              </div>
             ))
           )}
         </div>
@@ -360,13 +307,6 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         <div className="flex-1 overflow-hidden flex flex-col">
           {currentStep === 1 && (
             <div className="flex-1 overflow-y-auto p-3">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-3">
-                <p className="text-amber-800 text-sm">
-                  <AlertTriangle className="inline mr-1" size={14} />
-                  <strong>Vérifiez les données</strong> après extraction.
-                </p>
-              </div>
-              
               <PDFUploadStep 
                 file={file} 
                 onFileUpload={handleFileUpload} 
@@ -400,7 +340,8 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-20">
             <div className="bg-white p-4 rounded-xl shadow-xl text-center mx-4">
               <Loader className="animate-spin mx-auto mb-2 text-blue-600" size={32} />
-              <p className="text-gray-700 text-sm">Analyse en cours...</p>
+              <p className="text-gray-700 text-sm">Analyse OCR en cours...</p>
+              <p className="text-gray-500 text-xs mt-1">Veuillez patienter</p>
             </div>
           </div>
         )}
