@@ -1,5 +1,5 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.6 - TOUJOURS MONTÉ (hidden par CSS) pour éviter destruction sur mobile
+// Version 3.7 - Persistance sessionStorage pour survivre au remount mobile
 import React, { useState, useEffect, useRef } from 'react';
 import { X, FileText, AlertCircle, Loader } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
@@ -11,14 +11,11 @@ import PDFImportResult from '../pdf/PDFImportResult';
 import { supabase } from '../../lib/supabaseClient';
 import useIsMobile from '../../hooks/useIsMobile';
 
-// ID unique global pour tracker les instances
-let globalInstanceCounter = 0;
+// Clé pour sessionStorage
+const STORAGE_KEY = 'cogc_pdf_upload_state';
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  // ID unique de cette instance - ne change jamais
-  const instanceId = useRef(++globalInstanceCounter);
-  const hasInitialized = useRef(false);
-  
+  const instanceId = useRef(Date.now());
   const isMobile = useIsMobile();
   
   const [currentStep, setCurrentStep] = useState(1);
@@ -30,40 +27,44 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState({ total: 0, mapped: 0 });
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
-  const [extractionMethod, setExtractionMethod] = useState(null);
   const [debugLog, setDebugLog] = useState([]);
   
   const codesMapping = useRef({});
   const processingRef = useRef(false);
+  const fileInputRef = useRef(null);
 
   const addLog = (msg, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
-    const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warn' ? '⚠️' : '📋';
-    console.log(`[Modal#${instanceId.current}] ${prefix} ${msg}`);
-    setDebugLog(prev => [...prev.slice(-30), { time: timestamp, msg, type }]);
+    console.log(`[PDF] ${msg}`);
+    setDebugLog(prev => [...prev.slice(-20), { time: timestamp, msg, type }]);
   };
 
-  // Initialisation UNE SEULE FOIS quand isOpen devient true
+  // Restaurer l'état depuis sessionStorage au montage
   useEffect(() => {
-    if (isOpen && !hasInitialized.current) {
-      hasInitialized.current = true;
-      addLog(`Modal #${instanceId.current} initialisé`, 'success');
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const state = JSON.parse(saved);
+        addLog(`État restauré: étape ${state.currentStep}`, 'success');
+        if (state.extractedData) {
+          setExtractedData(state.extractedData);
+          setEditedData(state.editedData || state.extractedData);
+          setCurrentStep(state.currentStep || 2);
+          setValidation(state.validation || { errors: [], warnings: [] });
+        }
+        // Nettoyer après restauration
+        sessionStorage.removeItem(STORAGE_KEY);
+      } catch (e) {
+        console.error('Erreur restauration état:', e);
+      }
+    }
+  }, []);
+
+  // Charger les stats et mapping au montage
+  useEffect(() => {
+    if (isOpen) {
       loadMappingStats();
       loadCodesMapping();
-    }
-  }, [isOpen]);
-
-  // Reset quand le modal se ferme proprement
-  useEffect(() => {
-    if (!isOpen && hasInitialized.current && !processingRef.current) {
-      // Délai pour éviter reset pendant fermeture temporaire
-      const timeout = setTimeout(() => {
-        if (!processingRef.current) {
-          hasInitialized.current = false;
-          resetModalState();
-        }
-      }, 500);
-      return () => clearTimeout(timeout);
     }
   }, [isOpen]);
 
@@ -105,10 +106,11 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setImportResult(null);
     setError(null);
     setValidation({ errors: [], warnings: [] });
-    setExtractionMethod(null);
     setDebugLog([]);
+    sessionStorage.removeItem(STORAGE_KEY);
   };
 
+  // Fonctions de transformation (identiques aux versions précédentes)
   const determineServiceTypeFromHoraires = (horaires) => {
     if (!horaires || horaires.length === 0) return '-';
     let mainHoraire = horaires.find(h => h.type === 'SERVICE') || horaires[0];
@@ -118,6 +120,34 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     if (debutMinutes >= 240 && debutMinutes < 600) return '-';
     if (debutMinutes >= 600 && debutMinutes < 1080) return 'O';
     return 'X';
+  };
+
+  const mapServiceCodeToSimpleFallback = (code, serviceTypeFromHoraires) => {
+    if (!code) return 'RP';
+    const upperCode = code.toUpperCase();
+    if (upperCode === 'RP' || upperCode.includes('REPOS')) return 'RP';
+    if (upperCode === 'CA' || upperCode === 'C' || upperCode === 'CONGE') return 'C';
+    if (upperCode === 'NU') return 'NU';
+    if (upperCode === 'DISPO' || upperCode === 'D') return 'D';
+    if (upperCode === 'INACTIN' || upperCode === 'I') return 'I';
+    if (upperCode.includes('HAB') || upperCode.includes('FORM')) return 'HAB';
+    if (upperCode === 'RTT' || upperCode === 'RQ') return 'RP';
+    if (upperCode === 'MAL' || upperCode === 'MA') return 'MA';
+    if (upperCode === 'VISIMED' || upperCode === 'VMT') return 'VISIMED';
+    return serviceTypeFromHoraires || '-';
+  };
+
+  const extractPosteCodeFallback = (code) => {
+    if (!code) return null;
+    const upperCode = code.toUpperCase();
+    if (upperCode.startsWith('CCU')) return 'RE';
+    if (upperCode.startsWith('CRC')) return 'CRC';
+    if (upperCode.startsWith('ACR')) return 'ACR';
+    if (upperCode.startsWith('CENT') || upperCode.startsWith('SOUF')) return 'SOUF';
+    if (upperCode.startsWith('REO')) return 'REO';
+    if (upperCode.startsWith('RC')) return 'RC';
+    if (upperCode.startsWith('RO')) return 'RO';
+    return null;
   };
 
   const transformParsedDataForValidation = (parsed) => {
@@ -167,34 +197,6 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     };
   };
 
-  const mapServiceCodeToSimpleFallback = (code, serviceTypeFromHoraires) => {
-    if (!code) return 'RP';
-    const upperCode = code.toUpperCase();
-    if (upperCode === 'RP' || upperCode.includes('REPOS')) return 'RP';
-    if (upperCode === 'CA' || upperCode === 'C' || upperCode === 'CONGE') return 'C';
-    if (upperCode === 'NU') return 'NU';
-    if (upperCode === 'DISPO' || upperCode === 'D') return 'D';
-    if (upperCode === 'INACTIN' || upperCode === 'I') return 'I';
-    if (upperCode.includes('HAB') || upperCode.includes('FORM')) return 'HAB';
-    if (upperCode === 'RTT' || upperCode === 'RQ') return 'RP';
-    if (upperCode === 'MAL' || upperCode === 'MA') return 'MA';
-    if (upperCode === 'VISIMED' || upperCode === 'VMT') return 'VISIMED';
-    return serviceTypeFromHoraires || '-';
-  };
-
-  const extractPosteCodeFallback = (code) => {
-    if (!code) return null;
-    const upperCode = code.toUpperCase();
-    if (upperCode.startsWith('CCU')) return 'RE';
-    if (upperCode.startsWith('CRC')) return 'CRC';
-    if (upperCode.startsWith('ACR')) return 'ACR';
-    if (upperCode.startsWith('CENT') || upperCode.startsWith('SOUF')) return 'SOUF';
-    if (upperCode.startsWith('REO')) return 'REO';
-    if (upperCode.startsWith('RC')) return 'RC';
-    if (upperCode.startsWith('RO')) return 'RO';
-    return null;
-  };
-
   const validateTransformedData = (data) => {
     const validation = { errors: [], warnings: [], isValid: true };
     if (!data.agent?.nom) validation.warnings.push('Nom non détecté');
@@ -206,7 +208,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     return validation;
   };
 
-  // ============ FONCTION PRINCIPALE ============
+  // ============ FONCTION PRINCIPALE - avec sauvegarde avant OCR ============
   const handleFileUpload = async (uploadedFile) => {
     if (processingRef.current) {
       addLog('Déjà en cours...', 'warn');
@@ -230,12 +232,21 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         throw new Error(parsed?.error || 'Extraction échouée');
       }
       
-      setExtractionMethod(parsed.method);
-      
       const transformedData = transformParsedDataForValidation(parsed);
       const validationResult = validateTransformedData(transformedData);
       
       addLog(`Agent: ${transformedData.agent?.nom} ${transformedData.agent?.prenom}`, 'success');
+      
+      // Sauvegarder l'état dans sessionStorage AVANT de changer d'étape
+      // Ceci permet de récupérer si l'app est remontée
+      const stateToSave = {
+        currentStep: 2,
+        extractedData: transformedData,
+        editedData: transformedData,
+        validation: validationResult
+      };
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+      addLog('État sauvegardé', 'success');
       
       setValidation(validationResult);
       setExtractedData(transformedData);
@@ -260,6 +271,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       const result = await planningImportService.importPlanning(editedData);
       setImportResult(result);
       setCurrentStep(3);
+      sessionStorage.removeItem(STORAGE_KEY);
       if (result.success) setTimeout(() => onSuccess && onSuccess(), 100);
     } catch (err) {
       setError(err.message || 'Erreur import');
@@ -268,20 +280,36 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
-  const handleDataEdit = (newData) => setEditedData(newData);
-  const goBackToUpload = () => { setCurrentStep(1); setExtractedData(null); setEditedData(null); setError(null); };
+  const handleDataEdit = (newData) => {
+    setEditedData(newData);
+    // Mettre à jour sessionStorage avec les modifications
+    const stateToSave = {
+      currentStep: 2,
+      extractedData,
+      editedData: newData,
+      validation
+    };
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+  };
+
+  const goBackToUpload = () => { 
+    setCurrentStep(1); 
+    setExtractedData(null); 
+    setEditedData(null); 
+    setError(null);
+    sessionStorage.removeItem(STORAGE_KEY);
+  };
   
   const handleClose = () => { 
     if (processingRef.current) {
       addLog('Fermeture bloquée', 'warn');
       return;
     }
+    resetModalState();
     onClose(); 
   };
 
-  // ========== RENDU TOUJOURS PRÉSENT MAIS CACHÉ SI !isOpen ==========
-  // Ceci évite la destruction du composant sur mobile
-  
+  // Rendu avec display:none si fermé
   const modalStyle = {
     display: isOpen ? 'flex' : 'none',
     position: 'fixed',
@@ -299,7 +327,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
             <div className="flex items-center gap-2">
               <FileText size={20} />
               <div>
-                <h2 className="text-base font-bold">Import PDF #{instanceId.current}</h2>
+                <h2 className="text-base font-bold">Import PDF</h2>
                 <p className="text-blue-200 text-xs">Étape {currentStep}/3</p>
               </div>
             </div>
@@ -309,10 +337,9 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
           </div>
         </div>
 
-        {/* Debug log */}
-        <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0" style={{ maxHeight: '100px', overflowY: 'auto' }}>
-          <div className="text-gray-500 mb-1">Console #{instanceId.current}</div>
-          {debugLog.slice(-8).map((log, i) => (
+        {/* Debug log - plus compact */}
+        <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0 max-h-20 overflow-y-auto">
+          {debugLog.slice(-5).map((log, i) => (
             <div 
               key={i} 
               className={
@@ -322,7 +349,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
                 'text-gray-300'
               }
             >
-              <span className="text-gray-500">{log.time}</span> {log.msg}
+              {log.time} {log.msg}
             </div>
           ))}
         </div>
@@ -365,6 +392,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
             <div className="bg-white p-4 rounded-xl shadow-xl text-center mx-4">
               <Loader className="animate-spin mx-auto mb-2 text-blue-600" size={32} />
               <p className="text-gray-700 text-sm">Analyse OCR...</p>
+              <p className="text-gray-500 text-xs mt-1">Ne fermez pas cette fenêtre</p>
             </div>
           </div>
         )}
