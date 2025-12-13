@@ -1,5 +1,5 @@
 // Modal d'upload et d'import de PDF - Extraction avec Mistral OCR
-// Version 3.5 - Protection contre re-mount + ID unique pour debug
+// Version 3.6 - TOUJOURS MONTÉ (hidden par CSS) pour éviter destruction sur mobile
 import React, { useState, useEffect, useRef } from 'react';
 import { X, FileText, AlertCircle, Loader } from 'lucide-react';
 import PDFServiceWrapper from '../../services/PDFServiceWrapper';
@@ -15,9 +15,9 @@ import useIsMobile from '../../hooks/useIsMobile';
 let globalInstanceCounter = 0;
 
 const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
-  // ID unique de cette instance
+  // ID unique de cette instance - ne change jamais
   const instanceId = useRef(++globalInstanceCounter);
-  const mountTime = useRef(Date.now());
+  const hasInitialized = useRef(false);
   
   const isMobile = useIsMobile();
   
@@ -35,33 +35,35 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   
   const codesMapping = useRef({});
   const processingRef = useRef(false);
-  const fileBeingProcessed = useRef(null);
 
   const addLog = (msg, type = 'info') => {
     const timestamp = new Date().toLocaleTimeString();
     const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warn' ? '⚠️' : '📋';
     console.log(`[Modal#${instanceId.current}] ${prefix} ${msg}`);
-    setDebugLog(prev => [...prev.slice(-30), { time: timestamp, msg: `#${instanceId.current} ${msg}`, type }]);
+    setDebugLog(prev => [...prev.slice(-30), { time: timestamp, msg, type }]);
   };
 
-  // Log mount/unmount
+  // Initialisation UNE SEULE FOIS quand isOpen devient true
   useEffect(() => {
-    addLog(`MOUNT instance #${instanceId.current}`, 'success');
-    return () => {
-      console.log(`[Modal#${instanceId.current}] ❌ UNMOUNT après ${Date.now() - mountTime.current}ms`);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isOpen) {
-      // Si on a un fichier en cours de traitement, ne pas réinitialiser
-      if (processingRef.current && fileBeingProcessed.current) {
-        addLog(`Modal rouvert MAIS traitement en cours - SKIP init`, 'warn');
-        return;
-      }
-      addLog('Modal ouvert');
+    if (isOpen && !hasInitialized.current) {
+      hasInitialized.current = true;
+      addLog(`Modal #${instanceId.current} initialisé`, 'success');
       loadMappingStats();
       loadCodesMapping();
+    }
+  }, [isOpen]);
+
+  // Reset quand le modal se ferme proprement
+  useEffect(() => {
+    if (!isOpen && hasInitialized.current && !processingRef.current) {
+      // Délai pour éviter reset pendant fermeture temporaire
+      const timeout = setTimeout(() => {
+        if (!processingRef.current) {
+          hasInitialized.current = false;
+          resetModalState();
+        }
+      }, 500);
+      return () => clearTimeout(timeout);
     }
   }, [isOpen]);
 
@@ -95,11 +97,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
-  const resetModal = () => {
-    if (processingRef.current) {
-      addLog('Reset bloqué - traitement en cours', 'warn');
-      return;
-    }
+  const resetModalState = () => {
     setCurrentStep(1);
     setFile(null);
     setExtractedData(null);
@@ -108,7 +106,7 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
     setError(null);
     setValidation({ errors: [], warnings: [] });
     setExtractionMethod(null);
-    fileBeingProcessed.current = null;
+    setDebugLog([]);
   };
 
   const determineServiceTypeFromHoraires = (horaires) => {
@@ -210,28 +208,23 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
 
   // ============ FONCTION PRINCIPALE ============
   const handleFileUpload = async (uploadedFile) => {
-    // Protection contre double appel
     if (processingRef.current) {
-      addLog('Traitement déjà en cours, ignoré', 'warn');
+      addLog('Déjà en cours...', 'warn');
       return;
     }
     
     processingRef.current = true;
-    fileBeingProcessed.current = uploadedFile;
-    
-    addLog(`>>> FICHIER: ${uploadedFile?.name} (${uploadedFile?.size} bytes)`, 'success');
+    addLog(`>>> FICHIER: ${uploadedFile?.name}`, 'success');
     
     setFile(uploadedFile);
     setLoading(true);
     setError(null);
 
     try {
-      addLog('Lancement OCR Mistral...');
-      
+      addLog('OCR Mistral...');
       const parsed = await PDFServiceWrapper.readPDF(uploadedFile);
       
-      addLog(`OCR terminé: ${parsed?.method}`, 'success');
-      addLog(`Entrées: ${parsed?.entries?.length || 0}`);
+      addLog(`OCR OK: ${parsed?.entries?.length || 0} entrées`, 'success');
       
       if (!parsed || !parsed.success) {
         throw new Error(parsed?.error || 'Extraction échouée');
@@ -239,20 +232,17 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       
       setExtractionMethod(parsed.method);
       
-      addLog('Transformation données...');
       const transformedData = transformParsedDataForValidation(parsed);
       const validationResult = validateTransformedData(transformedData);
       
       addLog(`Agent: ${transformedData.agent?.nom} ${transformedData.agent?.prenom}`, 'success');
-      addLog(`Planning: ${transformedData.planning?.length} entrées`, 'success');
       
       setValidation(validationResult);
       setExtractedData(transformedData);
       setEditedData(JSON.parse(JSON.stringify(transformedData)));
       setLoading(false);
-      
-      addLog('>>> ÉTAPE 2 <<<', 'success');
       setCurrentStep(2);
+      addLog('>>> ÉTAPE 2 <<<', 'success');
       
     } catch (err) {
       addLog(`ERREUR: ${err.message}`, 'error');
@@ -260,7 +250,6 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
       setLoading(false);
     } finally {
       processingRef.current = false;
-      fileBeingProcessed.current = null;
     }
   };
 
@@ -284,27 +273,34 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
   
   const handleClose = () => { 
     if (processingRef.current) {
-      addLog('Fermeture bloquée - traitement en cours', 'warn');
+      addLog('Fermeture bloquée', 'warn');
       return;
     }
-    resetModal(); 
     onClose(); 
   };
 
-  if (!isOpen) return null;
+  // ========== RENDU TOUJOURS PRÉSENT MAIS CACHÉ SI !isOpen ==========
+  // Ceci évite la destruction du composant sur mobile
+  
+  const modalStyle = {
+    display: isOpen ? 'flex' : 'none',
+    position: 'fixed',
+    inset: 0,
+    zIndex: 50,
+  };
 
   return (
-    <div className={`fixed inset-0 z-50 ${isMobile ? 'bg-white' : 'bg-black bg-opacity-50 flex items-center justify-center p-2'}`}>
-      <div className={`${isMobile ? 'h-full flex flex-col' : 'bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col'}`}>
+    <div style={modalStyle} className={isMobile ? 'bg-white' : 'bg-black bg-opacity-50 items-center justify-center p-2'}>
+      <div className={`${isMobile ? 'h-full w-full flex flex-col' : 'bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col'}`}>
         
-        {/* Header avec ID instance */}
+        {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-3 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <FileText size={20} />
               <div>
                 <h2 className="text-base font-bold">Import PDF #{instanceId.current}</h2>
-                <p className="text-blue-200 text-xs">Étape {currentStep}/3 {processingRef.current ? '⏳' : ''}</p>
+                <p className="text-blue-200 text-xs">Étape {currentStep}/3</p>
               </div>
             </div>
             <button onClick={handleClose} className="p-2 hover:bg-white/20 rounded-lg">
@@ -314,29 +310,25 @@ const ModalUploadPDF = ({ isOpen, onClose, onSuccess }) => {
         </div>
 
         {/* Debug log */}
-        <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0" style={{ maxHeight: '120px', overflowY: 'auto' }}>
-          <div className="text-gray-500 mb-1">--- Console ({debugLog.length}) ---</div>
-          {debugLog.length === 0 ? (
-            <div className="text-gray-600">En attente...</div>
-          ) : (
-            debugLog.slice(-10).map((log, i) => (
-              <div 
-                key={i} 
-                className={
-                  log.type === 'error' ? 'text-red-400' : 
-                  log.type === 'success' ? 'text-green-400' : 
-                  log.type === 'warn' ? 'text-yellow-400' : 
-                  'text-gray-300'
-                }
-              >
-                <span className="text-gray-500">{log.time}</span> {log.msg}
-              </div>
-            ))
-          )}
+        <div className="bg-gray-900 p-2 text-xs font-mono flex-shrink-0" style={{ maxHeight: '100px', overflowY: 'auto' }}>
+          <div className="text-gray-500 mb-1">Console #{instanceId.current}</div>
+          {debugLog.slice(-8).map((log, i) => (
+            <div 
+              key={i} 
+              className={
+                log.type === 'error' ? 'text-red-400' : 
+                log.type === 'success' ? 'text-green-400' : 
+                log.type === 'warn' ? 'text-yellow-400' : 
+                'text-gray-300'
+              }
+            >
+              <span className="text-gray-500">{log.time}</span> {log.msg}
+            </div>
+          ))}
         </div>
 
         {/* Contenu */}
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-hidden flex flex-col bg-white">
           {currentStep === 1 && (
             <div className="flex-1 overflow-y-auto p-3">
               <PDFUploadStep 
