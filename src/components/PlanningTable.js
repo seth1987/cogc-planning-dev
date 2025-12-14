@@ -7,18 +7,17 @@ import planningService from '../services/planningService';
  * PlanningTable - Grille mensuelle du planning
  * 
  * FIX v2.10: Ajout de currentYear pour calcul correct des jours du mois
- * Corrige le bug où Décembre 2025 n'affichait pas tous les jours
+ * FIX v2.11: Scrollbar horizontale toujours visible et stylée
  */
 const PlanningTable = ({ 
   currentMonth, 
-  currentYear = CURRENT_YEAR, // FIX: Ajout prop avec fallback
+  currentYear = CURRENT_YEAR,
   planning, 
   agentsData, 
   onCellClick, 
   onAgentClick, 
   onDayHeaderClick 
 }) => {
-  // FIX: Passer currentYear à getDaysInMonth
   const daysInMonth = planningService.getDaysInMonth(currentMonth, currentYear);
   const [collapsedGroups, setCollapsedGroups] = useState({});
   
@@ -30,7 +29,6 @@ const PlanningTable = ({
   };
   
   const getDayHeader = (day) => {
-    // FIX: Passer currentYear à getJourType et getDayName
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, currentYear);
     const dayName = planningService.getDayName(day, currentMonth, currentYear);
     
@@ -71,7 +69,6 @@ const PlanningTable = ({
   const renderPlanningCell = (agent, day) => {
     const agentName = `${agent.nom} ${agent.prenom}`;
     const planningData = planning[agentName]?.[day];
-    // FIX: Passer currentYear à getJourType
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, currentYear);
     
     let cellContent = '';
@@ -133,9 +130,37 @@ const PlanningTable = ({
     );
   };
 
+  // Styles pour scrollbar visible et stylée
+  const scrollContainerStyle = {
+    overflowX: 'scroll',
+    scrollbarWidth: 'auto', // Firefox
+    scrollbarColor: '#3b82f6 #e5e7eb', // Firefox: thumb & track colors
+  };
+
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* Container avec scrollbar horizontale toujours visible */}
+      <div 
+        className="planning-scroll-container"
+        style={scrollContainerStyle}
+      >
+        <style>{`
+          .planning-scroll-container::-webkit-scrollbar {
+            height: 14px;
+          }
+          .planning-scroll-container::-webkit-scrollbar-track {
+            background: #e5e7eb;
+            border-radius: 7px;
+          }
+          .planning-scroll-container::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+            border-radius: 7px;
+            border: 2px solid #e5e7eb;
+          }
+          .planning-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+          }
+        `}</style>
         <table className="w-full">
           <tbody>
             {Object.entries(agentsData).map(([groupe, agents], groupIndex) => {
@@ -217,6 +242,13 @@ const PlanningTable = ({
             })}
           </tbody>
         </table>
+      </div>
+      
+      {/* Indicateur de scroll */}
+      <div className="flex items-center justify-center gap-2 py-2 bg-blue-50 text-blue-700 text-xs border-t">
+        <span>◀</span>
+        <span>Faites défiler horizontalement pour voir tous les jours du mois</span>
+        <span>▶</span>
       </div>
       
       <div className="p-4 bg-gray-50 border-t">
