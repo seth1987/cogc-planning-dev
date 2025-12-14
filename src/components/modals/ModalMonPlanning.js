@@ -90,6 +90,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
   // Effets
   useEffect(() => {
     if (isOpen) {
+      // Réinitialiser au mois actuel à chaque ouverture
+      setCurrentDate(new Date());
       loadAgentInfo();
       hasChanges.current = false; // Reset au moment d'ouvrir
     }
