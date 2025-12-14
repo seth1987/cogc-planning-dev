@@ -60,6 +60,102 @@ const App = () => {
   
   // Actions différées depuis la landing page
   const [pendingAction, setPendingAction] = React.useState(null);
+
+  // === PWA INSTALLATION ===
+  const [deferredPrompt, setDeferredPrompt] = React.useState(null);
+  const [isAppInstalled, setIsAppInstalled] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleBeforeInstall = (e) => {
+      console.log('beforeinstallprompt captured');
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    const handleAppInstalled = () => {
+      console.log('App installed');
+      setDeferredPrompt(null);
+      setIsAppInstalled(true);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+    if (window.matchMedia('(display-mode: standalone)').matches) { setIsAppInstalled(true); }
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallPWA = React.useCallback(async () => {
+    if (!deferredPrompt) return false;
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
+  }, [deferredPrompt]);
+
+  // === PWA INSTALLATION ===
+  const [deferredPrompt, setDeferredPrompt] = React.useState(null);
+  const [isAppInstalled, setIsAppInstalled] = React.useState(false);
+
+  // Capturer l'événement beforeinstallprompt
+  React.useEffect(() => {
+    const handleBeforeInstall = (e) => {
+      console.log('📲 beforeinstallprompt capturé');
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      console.log('✅ App installée avec succès');
+      setDeferredPrompt(null);
+      setIsAppInstalled(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    // Vérifier si déjà installé (mode standalone)
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsAppInstalled(true);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  // Fonction pour déclencher l'installation PWA
+  const handleInstallPWA = React.useCallback(async () => {
+    if (!deferredPrompt) {
+      console.log('📲 Pas de prompt disponible (iOS ou déjà installé)');
+      return false;
+    }
+
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`📲 Choix utilisateur: ${outcome}`);
+      
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Erreur installation PWA:', err);
+      return false;
+    }
+  }, [deferredPrompt]);
+
   
   // Données et actions du planning (passer currentYear au hook)
   const {
@@ -370,6 +466,9 @@ const App = () => {
           onNavigate={handleNavigate}
           user={user}
           onSignOut={signOut}
+          canInstallPWA={!!deferredPrompt}
+          isAppInstalled={isAppInstalled}
+          onInstallPWA={handleInstallPWA}
         />
         {/* Modal toujours présent */}
         {renderPDFModal()}

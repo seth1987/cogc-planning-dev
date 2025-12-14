@@ -16,7 +16,7 @@ import ModalInstallApp from './modals/ModalInstallApp';
  * 
  * v3.1 - Ajout bouton déconnexion
  */
-const LandingPage = ({ onNavigate, user, onSignOut }) => {
+const LandingPage = ({ onNavigate, user, onSignOut, canInstallPWA, isAppInstalled, onInstallPWA }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showAnnuaire, setShowAnnuaire] = useState(false);
@@ -96,11 +96,18 @@ const LandingPage = ({ onNavigate, user, onSignOut }) => {
     },
     {
       id: 'install-app',
-      badge: '📲',
-      title: 'Installer',
-      subtitle: 'Application mobile',
-      disabled: false,
-      action: () => setShowInstallApp(true)
+      badge: isAppInstalled ? '✅' : '📲',
+      title: isAppInstalled ? 'Installée' : 'Installer',
+      subtitle: isAppInstalled ? 'Déjà installée' : 'Application mobile',
+      disabled: isAppInstalled,
+      action: async () => {
+        if (canInstallPWA && onInstallPWA) {
+          const success = await onInstallPWA();
+          if (!success) setShowInstallApp(true);
+        } else {
+          setShowInstallApp(true);
+        }
+      }
     },
     {
       id: 'help',
