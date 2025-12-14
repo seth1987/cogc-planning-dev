@@ -11,15 +11,16 @@ import planningService from '../services/planningService';
  * FIX v2.11: Scrollbar horizontale toujours visible et stylée
  * FIX v2.12: Barre navigation via PORTAIL React (fixe bas écran)
  * FIX v2.13: Calcul correct des jours de la semaine avec l'année dynamique
+ * FIX v2.14: Réduction hauteur barre navigation (moins intrusive sur mobile)
  */
 
-// Composant barre de navigation rendu via portail
+// Composant barre de navigation rendu via portail - VERSION COMPACTE
 const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd }) => {
   return ReactDOM.createPortal(
     <div 
-      className="fixed bottom-0 left-0 right-0 z-[9999] bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 flex items-center justify-center gap-4"
+      className="fixed bottom-0 left-0 right-0 z-[9999] bg-gradient-to-r from-blue-600 to-blue-700 px-2 py-1.5 flex items-center justify-center gap-2"
       style={{ 
-        boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.4)',
+        boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.3)',
         position: 'fixed',
         bottom: 0,
         left: 0,
@@ -29,42 +30,42 @@ const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd
     >
       <button
         onClick={onScrollStart}
-        className="flex items-center gap-1 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm font-medium transition-colors"
+        className="flex items-center gap-0.5 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-white text-xs font-medium transition-colors"
         title="Aller au début du mois (Jour 1)"
       >
-        <ChevronLeft size={18} />
-        <ChevronLeft size={18} className="-ml-3" />
-        <span>Jour 1</span>
+        <ChevronLeft size={14} />
+        <ChevronLeft size={14} className="-ml-2" />
+        <span>J1</span>
       </button>
       
       <button
         onClick={onScrollLeft}
-        className="p-3 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+        className="p-1.5 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
         title="Défiler vers la gauche"
       >
-        <ChevronLeft size={24} />
+        <ChevronLeft size={18} />
       </button>
       
-      <span className="text-white text-sm font-medium px-4 hidden sm:block">
-        ◀ Défiler le planning ▶
+      <span className="text-white text-xs font-medium px-2 hidden sm:block">
+        ◀ ▶
       </span>
       
       <button
         onClick={onScrollRight}
-        className="p-3 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+        className="p-1.5 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
         title="Défiler vers la droite"
       >
-        <ChevronRight size={24} />
+        <ChevronRight size={18} />
       </button>
       
       <button
         onClick={onScrollEnd}
-        className="flex items-center gap-1 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm font-medium transition-colors"
+        className="flex items-center gap-0.5 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-white text-xs font-medium transition-colors"
         title="Aller à la fin du mois (Jour 31)"
       >
-        <span>Jour 31</span>
-        <ChevronRight size={18} />
-        <ChevronRight size={18} className="-ml-3" />
+        <span>J31</span>
+        <ChevronRight size={14} />
+        <ChevronRight size={14} className="-ml-2" />
       </button>
     </div>,
     document.body
@@ -241,7 +242,7 @@ const PlanningTable = ({
     overflowX: 'scroll',
     scrollbarWidth: 'auto',
     scrollbarColor: '#3b82f6 #e5e7eb',
-    paddingBottom: '80px',
+    paddingBottom: '50px', // Réduit de 80px à 50px
   };
 
   return (
