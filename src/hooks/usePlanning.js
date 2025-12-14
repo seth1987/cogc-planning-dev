@@ -7,7 +7,7 @@ import { MONTHS, CURRENT_YEAR } from '../constants/config';
  * Hook personnalisé pour la gestion du planning
  * Centralise le chargement, la mise à jour et la suppression des données de planning
  * 
- * @version 1.2.0 - Fix timezone bug for date parsing
+ * @version 1.3.0 - Fix limite Supabase + logs débogage améliorés
  * @param {Object} user - L'utilisateur authentifié
  * @param {string} currentMonth - Le mois actuellement sélectionné
  * @param {number} currentYear - L'année actuellement sélectionnée
@@ -79,9 +79,41 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       const lastDay = new Date(year, monthIndex + 1, 0).getDate();
       const endDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
       
-      console.log(`📅 Chargement planning ${month} ${year}: du ${startDate} au ${endDate}`);
+      console.log(`📅 Chargement planning ${month.toUpperCase()} ${year}: du ${startDate} au ${endDate}`);
       
       const planningFromDB = await supabaseService.getPlanningForMonth(startDate, endDate);
+      
+      // Logs de débogage détaillés
+      console.log(`📊 Entrées récupérées de Supabase: ${planningFromDB?.length || 0}`);
+      
+      if (planningFromDB && planningFromDB.length > 0) {
+        // Compter les entrées par jour pour détecter les problèmes
+        const entriesByDay = {};
+        planningFromDB.forEach(entry => {
+          const day = parseDayFromDateString(entry.date);
+          entriesByDay[day] = (entriesByDay[day] || 0) + 1;
+        });
+        
+        // Vérifier les jours de fin de mois
+        const endMonthDays = Object.keys(entriesByDay)
+          .map(d => parseInt(d))
+          .filter(d => d >= 23);
+        const endMonthCount = endMonthDays.reduce((sum, d) => sum + entriesByDay[d], 0);
+        console.log(`📊 Entrées fin de mois (23-31): ${endMonthCount}`);
+        
+        // Vérifier quelques agents spécifiques (debug)
+        const debugAgents = ['GREVIN', 'LUCHIER'];
+        debugAgents.forEach(nom => {
+          const agent = agentsResult.find(a => a.nom === nom);
+          if (agent) {
+            const agentEntries = planningFromDB.filter(e => e.agent_id === agent.id);
+            console.log(`📊 Entrées ${nom} ${agent.prenom}: ${agentEntries.length}`);
+            if (agentEntries.length < 20) {
+              console.log(`   Détail:`, agentEntries.map(e => `${e.date}: ${e.service_code}`).join(', '));
+            }
+          }
+        });
+      }
       
       // Organiser les données de planning AVEC les notes et postes supplémentaires
       const planningData = {};
@@ -91,6 +123,9 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       });
       
       if (planningFromDB) {
+        let processedCount = 0;
+        let endMonthProcessed = 0;
+        
         planningFromDB.forEach(entry => {
           const agent = agentsResult.find(a => a.id === entry.agent_id);
           if (agent) {
@@ -98,6 +133,8 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
             // FIX: Parse la date directement sans passer par Date object
             // Évite le bug de fuseau horaire (UTC → heure locale = J-1)
             const day = parseDayFromDateString(entry.date);
+            
+            if (day >= 23) endMonthProcessed++;
             
             // Construire l'objet de données de cellule avec note ET postes supplémentaires
             const cellData = {
@@ -116,14 +153,17 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
             } else {
               planningData[agentName][day] = cellData;
             }
+            processedCount++;
           }
         });
+        
+        console.log(`✅ Planning chargé: ${processedCount} entrées traitées (fin de mois: ${endMonthProcessed})`);
       }
       
       setPlanning(planningData);
       
     } catch (err) {
-      console.error('Erreur chargement données:', err);
+      console.error('❌ Erreur chargement données:', err);
       setError(`Erreur de connexion: ${err.message}`);
       setConnectionStatus('❌ Erreur de connexion');
     } finally {
