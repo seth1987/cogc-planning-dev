@@ -1,10 +1,25 @@
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, StickyNote, Users } from 'lucide-react';
-import { CODE_COLORS } from '../constants/config';
+import { CODE_COLORS, CURRENT_YEAR } from '../constants/config';
 import planningService from '../services/planningService';
 
-const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgentClick, onDayHeaderClick }) => {
-  const daysInMonth = planningService.getDaysInMonth(currentMonth);
+/**
+ * PlanningTable - Grille mensuelle du planning
+ * 
+ * FIX v2.10: Ajout de currentYear pour calcul correct des jours du mois
+ * Corrige le bug où Décembre 2025 n'affichait pas tous les jours
+ */
+const PlanningTable = ({ 
+  currentMonth, 
+  currentYear = CURRENT_YEAR, // FIX: Ajout prop avec fallback
+  planning, 
+  agentsData, 
+  onCellClick, 
+  onAgentClick, 
+  onDayHeaderClick 
+}) => {
+  // FIX: Passer currentYear à getDaysInMonth
+  const daysInMonth = planningService.getDaysInMonth(currentMonth, currentYear);
   const [collapsedGroups, setCollapsedGroups] = useState({});
   
   const toggleGroupCollapse = (groupName) => {
@@ -15,8 +30,9 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
   };
   
   const getDayHeader = (day) => {
-    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth);
-    const dayName = planningService.getDayName(day, currentMonth);
+    // FIX: Passer currentYear à getJourType et getDayName
+    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, currentYear);
+    const dayName = planningService.getDayName(day, currentMonth, currentYear);
     
     let className = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] ';
     
@@ -55,7 +71,8 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
   const renderPlanningCell = (agent, day) => {
     const agentName = `${agent.nom} ${agent.prenom}`;
     const planningData = planning[agentName]?.[day];
-    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth);
+    // FIX: Passer currentYear à getJourType
+    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, currentYear);
     
     let cellContent = '';
     let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[55px] min-h-[40px] relative ';
