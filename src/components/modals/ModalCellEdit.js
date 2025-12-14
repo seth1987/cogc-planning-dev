@@ -30,12 +30,12 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.0.0 - Ajout fonctionnalité Croisement de services
+ * @version 2.1.0 - Fix récupération service pour croisement
  * @param {Object} selectedCell - {agent: string, day: number}
  * @param {Object|null} cellData - Données existantes {service, poste, note, texteLibre, postesSupplementaires}
  * @param {Object} agentsData - Données des agents par groupe
  * @param {Array} allAgents - Liste complète de tous les agents (pour croisement)
- * @param {Object} allPlanning - Données planning complet (pour récupérer service de l'autre agent)
+ * @param {Object} allPlanning - Données planning complet {agentName: {day: cellData}}
  * @param {number} currentMonth - Mois actuel (index 0-11)
  * @param {number} currentYear - Année actuelle
  * @param {string} userEmail - Email de l'utilisateur connecté
@@ -272,10 +272,37 @@ const ModalCellEdit = ({
     });
   };
 
-  // Récupérer les données planning d'un agent pour un jour donné
+  /**
+   * Récupérer les données planning d'un agent pour un jour donné
+   * FIX v2.1.0: Utilise la bonne structure allPlanning[agentName][day]
+   * @param {string} agentName - Nom complet de l'agent
+   * @param {number} day - Jour du mois
+   * @returns {Object|null} {service, poste, note, postesSupplementaires}
+   */
   const getAgentPlanningForDay = (agentName, day) => {
-    const key = `${agentName}_${day}`;
-    return allPlanning[key] || null;
+    // Structure correcte: allPlanning[agentName][day]
+    const cellValue = allPlanning[agentName]?.[day];
+    
+    if (!cellValue) return null;
+    
+    // Si c'est une string simple (juste le code service)
+    if (typeof cellValue === 'string') {
+      return { 
+        service: cellValue, 
+        poste: null, 
+        note: null, 
+        postesSupplementaires: null 
+      };
+    }
+    
+    // Si c'est un objet avec les détails
+    return {
+      service: cellValue.service || null,
+      poste: cellValue.poste || null,
+      note: cellValue.note || null,
+      postesSupplementaires: cellValue.postesSupplementaires || null,
+      texteLibre: cellValue.texteLibre || null
+    };
   };
 
   // Effectuer le croisement
@@ -296,6 +323,9 @@ const ModalCellEdit = ({
       const agent1Data = cellData || {};
       const agent2Data = getAgentPlanningForDay(agent2Name, day) || {};
 
+      console.log('🔄 Croisement - Agent 1 data:', agent1Data);
+      console.log('🔄 Croisement - Agent 2 data:', agent2Data);
+
       // Préparer les nouvelles données avec échange
       const newAgent1Data = {
         service: agent2Data.service || '',
@@ -312,6 +342,9 @@ const ModalCellEdit = ({
         note: `Croisement avec ${agent1Name}`,
         texteLibre: agent1Data.texteLibre || tempTexteLibre || ''
       };
+
+      console.log('🔄 Croisement - New Agent 1 data:', newAgent1Data);
+      console.log('🔄 Croisement - New Agent 2 data:', newAgent2Data);
 
       // Appeler le callback de croisement si disponible
       if (onCroisement) {
@@ -821,9 +854,9 @@ const ModalCellEdit = ({
                             <div className="text-xs text-gray-500">{agent.groupe}</div>
                           </div>
                           <div className="text-right">
-                            {agentPlanning ? (
+                            {agentPlanning?.service ? (
                               <span className="inline-block px-2 py-1 text-xs font-medium bg-gray-100 rounded">
-                                {agentPlanning.service || '-'}
+                                {agentPlanning.service}
                                 {agentPlanning.poste && ` / ${agentPlanning.poste}`}
                               </span>
                             ) : (
@@ -847,13 +880,19 @@ const ModalCellEdit = ({
                     <div className="font-medium">{selectedCell.agent}</div>
                     <div className="text-xs text-gray-500">
                       {cellData?.service || tempService || '-'}
+                      {(cellData?.poste || tempPoste) && ` / ${cellData?.poste || tempPoste}`}
                     </div>
                   </div>
                   <ArrowLeftRight className="w-5 h-5 text-purple-500" />
                   <div className="flex-1 text-center">
                     <div className="font-medium">{selectedCroisementAgent.nom} {selectedCroisementAgent.prenom}</div>
                     <div className="text-xs text-gray-500">
-                      {getAgentPlanningForDay(`${selectedCroisementAgent.nom} ${selectedCroisementAgent.prenom}`, selectedCell.day)?.service || '-'}
+                      {(() => {
+                        const otherAgentData = getAgentPlanningForDay(`${selectedCroisementAgent.nom} ${selectedCroisementAgent.prenom}`, selectedCell.day);
+                        return otherAgentData?.service 
+                          ? `${otherAgentData.service}${otherAgentData.poste ? ` / ${otherAgentData.poste}` : ''}`
+                          : '-';
+                      })()}
                     </div>
                   </div>
                 </div>
