@@ -41,6 +41,7 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
  * v3.0 - Ajout signOut sur LandingPage
+ * v3.1 - FIX: Passage de currentYear à PlanningTable
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -513,8 +514,10 @@ const App = () => {
       />
       
       <div className="p-4">
+        {/* FIX v3.1: Ajout de currentYear pour calcul correct des jours */}
         <PlanningTable 
           currentMonth={currentMonth}
+          currentYear={currentYear}
           planning={planning}
           agentsData={agentsData}
           onCellClick={handleCellClick}
