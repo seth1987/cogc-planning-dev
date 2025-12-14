@@ -20,7 +20,7 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.2.0 - Debug récupération service pour croisement
+ * @version 2.3.0 - Fix croisement avec recherche flexible des noms
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -58,12 +58,21 @@ const ModalCellEdit = ({
   const [croisementSearch, setCroisementSearch] = useState('');
   const [croisementLoading, setCroisementLoading] = useState(false);
 
-  // DEBUG: Log des props reçues
+  // DEBUG: Log des props reçues à chaque render
   useEffect(() => {
+    const planningKeys = Object.keys(allPlanning || {});
+    const agentsWithData = planningKeys.filter(key => {
+      const agentData = allPlanning[key];
+      return agentData && Object.keys(agentData).length > 0;
+    });
+    
     console.log('🔍 ModalCellEdit - Props reçues:');
-    console.log('   allPlanning keys:', Object.keys(allPlanning || {}));
-    console.log('   allPlanning sample:', Object.entries(allPlanning || {}).slice(0, 2));
+    console.log('   allPlanning type:', typeof allPlanning);
+    console.log('   allPlanning keys count:', planningKeys.length);
+    console.log('   allPlanning sample keys:', planningKeys.slice(0, 5));
+    console.log('   Agents avec données:', agentsWithData.length);
     console.log('   selectedCell:', selectedCell);
+    console.log('   selectedCell.day type:', typeof selectedCell?.day);
   }, [allPlanning, selectedCell]);
 
   // Initialiser les états avec les données existantes
@@ -209,12 +218,40 @@ const ModalCellEdit = ({
   // === GESTION CROISEMENT ===
 
   const openCroisementModal = () => {
-    // DEBUG: Afficher la structure du planning
-    console.log('🔄 Ouverture modal croisement');
-    console.log('   allPlanning:', allPlanning);
-    console.log('   Nombre d\'agents dans planning:', Object.keys(allPlanning).length);
-    console.log('   Exemple agent:', Object.keys(allPlanning)[0]);
-    console.log('   Données exemple:', allPlanning[Object.keys(allPlanning)[0]]);
+    // DEBUG: Afficher la structure complète du planning
+    console.log('🔄 ═══════════════════════════════════════════');
+    console.log('🔄 Ouverture modal croisement - DEBUG COMPLET');
+    console.log('🔄 ═══════════════════════════════════════════');
+    console.log('   allPlanning est null?:', allPlanning === null);
+    console.log('   allPlanning est undefined?:', allPlanning === undefined);
+    console.log('   allPlanning type:', typeof allPlanning);
+    
+    const keys = Object.keys(allPlanning || {});
+    console.log('   Nombre de clés dans allPlanning:', keys.length);
+    console.log('   Premières clés (noms agents):', keys.slice(0, 10));
+    
+    // Vérifier la structure pour le premier agent
+    if (keys.length > 0) {
+      const firstKey = keys[0];
+      const firstAgentData = allPlanning[firstKey];
+      console.log(`   Structure agent "${firstKey}":`, firstAgentData);
+      console.log('   Type données premier agent:', typeof firstAgentData);
+      console.log('   Jours disponibles pour cet agent:', Object.keys(firstAgentData || {}));
+    }
+    
+    // Vérifier si selectedCell.day existe dans les données
+    const day = selectedCell.day;
+    console.log('   selectedCell.day:', day, '(type:', typeof day, ')');
+    
+    // Chercher combien d'agents ont des données pour ce jour
+    let agentsWithDayData = 0;
+    keys.forEach(key => {
+      if (allPlanning[key] && allPlanning[key][day] !== undefined) {
+        agentsWithDayData++;
+      }
+    });
+    console.log(`   Agents avec données pour jour ${day}:`, agentsWithDayData);
+    console.log('🔄 ═══════════════════════════════════════════');
     
     setSelectedCroisementAgent(null);
     setCroisementSearch('');
@@ -245,24 +282,88 @@ const ModalCellEdit = ({
   };
 
   /**
+   * Normalise un nom pour la comparaison
+   */
+  const normalizeName = (name) => {
+    return name?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
+  };
+
+  /**
+   * Trouve la clé correspondante dans allPlanning pour un nom d'agent
+   * Recherche flexible pour gérer les variations d'espaces/casse
+   */
+  const findPlanningKey = (agentName) => {
+    if (!allPlanning || !agentName) return null;
+    
+    // Essai 1: Correspondance exacte
+    if (allPlanning[agentName] !== undefined) {
+      return agentName;
+    }
+    
+    // Essai 2: Recherche normalisée
+    const normalizedSearch = normalizeName(agentName);
+    const keys = Object.keys(allPlanning);
+    
+    for (const key of keys) {
+      if (normalizeName(key) === normalizedSearch) {
+        console.log(`   → Clé trouvée par normalisation: "${key}" pour "${agentName}"`);
+        return key;
+      }
+    }
+    
+    // Essai 3: Recherche partielle (nom contient)
+    for (const key of keys) {
+      if (normalizeName(key).includes(normalizedSearch) || 
+          normalizedSearch.includes(normalizeName(key))) {
+        console.log(`   → Clé trouvée par inclusion: "${key}" pour "${agentName}"`);
+        return key;
+      }
+    }
+    
+    return null;
+  };
+
+  /**
    * Récupérer les données planning d'un agent pour un jour donné
    * Structure attendue: allPlanning[agentName][day]
+   * @version 2.3.0 - Recherche flexible des clés
    */
   const getAgentPlanningForDay = (agentName, day) => {
     // DEBUG détaillé
     console.log(`🔍 getAgentPlanningForDay("${agentName}", ${day})`);
     console.log(`   allPlanning existe:`, !!allPlanning);
-    console.log(`   allPlanning[agentName] existe:`, !!allPlanning[agentName]);
+    console.log(`   Nombre de clés:`, Object.keys(allPlanning || {}).length);
     
-    if (allPlanning[agentName]) {
-      console.log(`   allPlanning[agentName] keys:`, Object.keys(allPlanning[agentName]));
-      console.log(`   allPlanning[agentName][${day}]:`, allPlanning[agentName][day]);
+    // Trouver la clé correspondante
+    const planningKey = findPlanningKey(agentName);
+    console.log(`   Clé planning trouvée:`, planningKey);
+    
+    if (!planningKey) {
+      console.log(`   → Résultat: null (agent non trouvé dans planning)`);
+      return null;
     }
     
-    const cellValue = allPlanning[agentName]?.[day];
+    const agentData = allPlanning[planningKey];
+    console.log(`   Données agent:`, agentData);
+    console.log(`   Jours disponibles:`, Object.keys(agentData || {}));
+    
+    // Essayer avec day comme number et comme string
+    let cellValue = agentData?.[day];
+    if (cellValue === undefined) {
+      cellValue = agentData?.[String(day)];
+      if (cellValue !== undefined) {
+        console.log(`   → Trouvé avec day comme string`);
+      }
+    }
+    if (cellValue === undefined) {
+      cellValue = agentData?.[Number(day)];
+      if (cellValue !== undefined) {
+        console.log(`   → Trouvé avec day comme number`);
+      }
+    }
     
     if (!cellValue) {
-      console.log(`   → Résultat: null (pas de données)`);
+      console.log(`   → Résultat: null (pas de données pour jour ${day})`);
       return null;
     }
     
@@ -393,6 +494,12 @@ const ModalCellEdit = ({
   const hasExistingTexteLibre = Boolean(tempTexteLibre);
   const hasExistingPostesSupp = tempPostesSupplementaires.length > 0;
   const hasCroisementNote = tempNote?.toLowerCase().includes('croisement avec');
+
+  // Compter combien d'agents ont des données pour ce jour (pour debug)
+  const agentsWithDataForDay = Object.keys(allPlanning || {}).filter(key => {
+    const data = allPlanning[key];
+    return data && data[selectedCell.day] !== undefined;
+  }).length;
 
   return (
     <>
@@ -712,8 +819,9 @@ const ModalCellEdit = ({
             
             {/* DEBUG INFO */}
             <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-              <p>🔍 Debug: {Object.keys(allPlanning).length} agents dans planning</p>
-              <p>📅 Jour: {selectedCell.day}</p>
+              <p>🔍 Debug: {Object.keys(allPlanning || {}).length} agents dans planning</p>
+              <p>📅 Jour: {selectedCell.day} (type: {typeof selectedCell.day})</p>
+              <p>👥 Agents avec données ce jour: {agentsWithDataForDay}</p>
             </div>
             
             <div className="mb-4">
