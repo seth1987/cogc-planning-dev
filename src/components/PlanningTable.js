@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users } from 'lucide-react';
-import { CODE_COLORS, CURRENT_YEAR } from '../constants/config';
+import { CODE_COLORS, MONTHS } from '../constants/config';
 import planningService from '../services/planningService';
 
 /**
@@ -10,6 +10,7 @@ import planningService from '../services/planningService';
  * FIX v2.10: Ajout de currentYear pour calcul correct des jours du mois
  * FIX v2.11: Scrollbar horizontale toujours visible et stylée
  * FIX v2.12: Barre navigation via PORTAIL React (fixe bas écran)
+ * FIX v2.13: Calcul correct des jours de la semaine avec l'année dynamique
  */
 
 // Composant barre de navigation rendu via portail
@@ -72,14 +73,22 @@ const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd
 
 const PlanningTable = ({ 
   currentMonth, 
-  currentYear = CURRENT_YEAR,
+  currentYear,  // OBLIGATOIRE - plus de fallback à CURRENT_YEAR
   planning, 
   agentsData, 
   onCellClick, 
   onAgentClick, 
   onDayHeaderClick 
 }) => {
-  const daysInMonth = planningService.getDaysInMonth(currentMonth, currentYear);
+  // FIX v2.13: Calcul de l'année - utiliser la prop OU l'année système si non fournie
+  const year = currentYear || new Date().getFullYear();
+  
+  // DEBUG: Log pour vérifier l'année utilisée
+  useEffect(() => {
+    console.log(`📅 PlanningTable: currentMonth=${currentMonth}, currentYear prop=${currentYear}, year utilisé=${year}`);
+  }, [currentMonth, currentYear, year]);
+  
+  const daysInMonth = planningService.getDaysInMonth(currentMonth, year);
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const [showNavBar, setShowNavBar] = useState(true);
   const scrollContainerRef = useRef(null);
@@ -125,8 +134,9 @@ const PlanningTable = ({
   };
   
   const getDayHeader = (day) => {
-    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, currentYear);
-    const dayName = planningService.getDayName(day, currentMonth, currentYear);
+    // FIX v2.13: Utiliser 'year' calculé, pas currentYear directement
+    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
+    const dayName = planningService.getDayName(day, currentMonth, year);
     
     let className = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] ';
     
@@ -165,7 +175,8 @@ const PlanningTable = ({
   const renderPlanningCell = (agent, day) => {
     const agentName = `${agent.nom} ${agent.prenom}`;
     const planningData = planning[agentName]?.[day];
-    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, currentYear);
+    // FIX v2.13: Utiliser 'year' calculé
+    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
     
     let cellContent = '';
     let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[55px] min-h-[40px] relative ';
