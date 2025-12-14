@@ -40,7 +40,7 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * App - Composant principal de l'application COGC Planning
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
- * v2.9 - Fix: ModalUploadPDF toujours monté (hors blocs conditionnels)
+ * v3.0 - Ajout signOut sur LandingPage
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -367,6 +367,7 @@ const App = () => {
         <LandingPage 
           onNavigate={handleNavigate}
           user={user}
+          onSignOut={signOut}
         />
         {/* Modal toujours présent */}
         {renderPDFModal()}
