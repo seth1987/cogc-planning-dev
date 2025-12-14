@@ -8,9 +8,9 @@ import { supabase } from '../../lib/supabaseClient';
  * - Compteurs par type de vacation : - (Matin), O (Soir), X (Nuit)
  * - Compteurs RP, CP, MA
  * - Pourcentages mensuels et annuels
- * - Compteurs des positions supplémentaires (+CCU, +RO, +RC, etc.)
+ * - Compteurs des positions supplémentaires (+CCU, +RO, +RC, etc.) - MENSUEL et ANNUEL
  * 
- * v1.1 - Comptage basé sur les marqueurs -, O, X
+ * v1.2 - Ajout décompte mensuel/annuel des postes supplémentaires
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -32,6 +32,9 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
   ];
 
+  // Liste des postes supplémentaires possibles
+  const supplementTypes = ['+ACR', '+RO', '+RC', '+CCU', '+RE', '+OV'];
+
   // Catégories de comptage - CORRIGÉES selon les marqueurs
   const categories = [
     { key: 'matin', label: 'Matinées (-)', color: '#FFC107', marker: '-' },
@@ -41,6 +44,16 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     { key: 'cp', label: 'CP/C', color: '#2196F3' },
     { key: 'ma', label: 'MA', color: '#f44336' }
   ];
+
+  // Couleurs pour les postes supplémentaires
+  const supplementColors = {
+    '+ACR': '#9C27B0',
+    '+RO': '#E91E63',
+    '+RC': '#00BCD4',
+    '+CCU': '#FF9800',
+    '+RE': '#8BC34A',
+    '+OV': '#795548'
+  };
 
   // Charger les infos agent
   const loadAgentInfo = useCallback(async () => {
@@ -96,6 +109,17 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
         };
       }
 
+      // Initialiser tous les types de postes supplémentaires
+      supplementTypes.forEach(sup => {
+        supplements[sup] = { 
+          count: 0, 
+          byMonth: {} 
+        };
+        for (let i = 0; i < 12; i++) {
+          supplements[sup].byMonth[i] = 0;
+        }
+      });
+
       // Analyser les données avec la BONNE logique
       (data || []).forEach(entry => {
         const month = new Date(entry.date).getMonth();
@@ -149,13 +173,14 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
         if (entry.postes_supplementaires && Array.isArray(entry.postes_supplementaires)) {
           entry.postes_supplementaires.forEach(sup => {
             const supCode = sup.toUpperCase();
+            // Initialiser si nouveau type de poste supp non prévu
             if (!supplements[supCode]) {
               supplements[supCode] = { count: 0, byMonth: {} };
+              for (let i = 0; i < 12; i++) {
+                supplements[supCode].byMonth[i] = 0;
+              }
             }
             supplements[supCode].count++;
-            if (!supplements[supCode].byMonth[month]) {
-              supplements[supCode].byMonth[month] = 0;
-            }
             supplements[supCode].byMonth[month]++;
           });
         }
@@ -188,10 +213,31 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     return `${Math.round((value / total) * 100)}%`;
   };
 
+  // Calculer le total mensuel des postes supplémentaires
+  const getMonthSupplementTotal = (monthIdx) => {
+    return Object.values(stats.supplements).reduce((sum, sup) => {
+      return sum + (sup.byMonth[monthIdx] || 0);
+    }, 0);
+  };
+
+  // Calculer le total annuel des postes supplémentaires
+  const getTotalSupplements = () => {
+    return Object.values(stats.supplements).reduce((sum, sup) => sum + sup.count, 0);
+  };
+
+  // Obtenir les postes supplémentaires avec données (triés par count)
+  const getActiveSupplements = () => {
+    return Object.entries(stats.supplements)
+      .filter(([_, data]) => data.count > 0)
+      .sort((a, b) => b[1].count - a[1].count);
+  };
+
   if (!isOpen) return null;
 
   // Total des vacations (matins + soirs + nuits)
   const totalVacations = stats.annual.matin + stats.annual.soiree + stats.annual.nuit;
+  const totalSupplements = getTotalSupplements();
+  const activeSupplements = getActiveSupplements();
 
   return (
     <div style={styles.overlay} onClick={onClose}>
@@ -307,9 +353,9 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               </div>
             </div>
 
-            {/* Tableau mensuel */}
+            {/* Tableau mensuel vacations */}
             <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>📆 Détail par Mois</h3>
+              <h3 style={styles.sectionTitle}>📆 Détail Vacations par Mois</h3>
               <div style={styles.tableContainer}>
                 <table style={styles.table}>
                   <thead>
@@ -361,26 +407,105 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               </div>
             </div>
 
-            {/* Positions supplémentaires */}
+            {/* === NOUVELLE SECTION : Positions Supplémentaires Détaillées === */}
             <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>⚡ Positions Supplémentaires</h3>
-              {Object.keys(stats.supplements).length > 0 ? (
-                <div style={styles.supplementsGrid}>
-                  {Object.entries(stats.supplements)
-                    .sort((a, b) => b[1].count - a[1].count)
-                    .map(([sup, data]) => (
-                      <div key={sup} style={styles.supplementCard}>
-                        <div style={styles.supplementName}>{sup}</div>
-                        <div style={styles.supplementCount}>{data.count}</div>
+              <h3 style={styles.sectionTitle}>⚡ Positions Supplémentaires {selectedYear}</h3>
+              
+              {/* Cartes récapitulatives annuelles */}
+              <div style={styles.supplementsSummary}>
+                {activeSupplements.length > 0 ? (
+                  activeSupplements.map(([sup, data]) => (
+                    <div key={sup} style={{
+                      ...styles.supplementCard,
+                      borderColor: supplementColors[sup] || '#FFD700',
+                      backgroundColor: `${supplementColors[sup] || '#FFD700'}20`
+                    }}>
+                      <div style={{...styles.supplementName, color: supplementColors[sup] || '#FFD700'}}>
+                        {sup}
                       </div>
-                    ))}
+                      <div style={styles.supplementCount}>{data.count}</div>
+                      <div style={styles.supplementPercent}>
+                        {getPercentage(data.count, totalSupplements)}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p style={styles.noData}>Aucune position supplémentaire enregistrée</p>
+                )}
+              </div>
+              
+              {totalSupplements > 0 && (
+                <div style={styles.totalBox}>
+                  <strong>Total positions supplémentaires :</strong> {totalSupplements}
                 </div>
-              ) : (
-                <p style={styles.noData}>Aucune position supplémentaire enregistrée</p>
               )}
             </div>
 
-            {/* Graphique visuel */}
+            {/* Tableau mensuel des positions supplémentaires */}
+            {totalSupplements > 0 && (
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}>📆 Détail Postes Supplémentaires par Mois</h3>
+                <div style={styles.tableContainer}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Mois</th>
+                        {activeSupplements.map(([sup]) => (
+                          <th key={sup} style={{
+                            ...styles.th, 
+                            color: supplementColors[sup] || '#FFD700',
+                            fontSize: '11px'
+                          }}>
+                            {sup}
+                          </th>
+                        ))}
+                        <th style={styles.th}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {months.map((month, idx) => {
+                        const monthTotal = getMonthSupplementTotal(idx);
+                        return (
+                          <tr key={idx} style={styles.tr}>
+                            <td style={styles.td}>{month}</td>
+                            {activeSupplements.map(([sup, data]) => (
+                              <td key={sup} style={{
+                                ...styles.td, 
+                                color: supplementColors[sup] || '#FFD700',
+                                fontWeight: data.byMonth[idx] > 0 ? 'bold' : 'normal'
+                              }}>
+                                {data.byMonth[idx] || 0}
+                              </td>
+                            ))}
+                            <td style={{...styles.td, fontWeight: monthTotal > 0 ? 'bold' : 'normal'}}>
+                              {monthTotal}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {/* Ligne totaux */}
+                      <tr style={{...styles.tr, backgroundColor: 'rgba(255, 215, 0, 0.1)'}}>
+                        <td style={{...styles.td, fontWeight: 'bold'}}>TOTAL</td>
+                        {activeSupplements.map(([sup, data]) => (
+                          <td key={sup} style={{
+                            ...styles.td, 
+                            color: supplementColors[sup] || '#FFD700',
+                            fontWeight: 'bold'
+                          }}>
+                            {data.count}
+                          </td>
+                        ))}
+                        <td style={{...styles.td, fontWeight: 'bold', color: '#FFD700'}}>
+                          {totalSupplements}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Graphique visuel Vacations */}
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>📈 Répartition Vacations</h3>
               <div style={styles.barChart}>
@@ -411,6 +536,37 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                 })}
               </div>
             </div>
+
+            {/* Graphique visuel Postes Supplémentaires */}
+            {totalSupplements > 0 && (
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}>📈 Répartition Postes Supplémentaires</h3>
+                <div style={styles.barChart}>
+                  {activeSupplements.map(([sup, data]) => {
+                    const maxSup = Math.max(...activeSupplements.map(([_, d]) => d.count), 1);
+                    const width = (data.count / maxSup) * 100;
+                    
+                    return (
+                      <div key={sup} style={styles.barRow}>
+                        <span style={{...styles.barLabel, color: supplementColors[sup] || '#FFD700'}}>
+                          {sup}
+                        </span>
+                        <div style={styles.barContainer}>
+                          <div 
+                            style={{
+                              ...styles.bar,
+                              width: `${width}%`,
+                              backgroundColor: supplementColors[sup] || '#FFD700'
+                            }}
+                          />
+                        </div>
+                        <span style={styles.barValue}>{data.count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -433,7 +589,7 @@ const styles = {
     backgroundColor: '#1a1a2e',
     borderRadius: '16px',
     width: '100%',
-    maxWidth: '700px',
+    maxWidth: '750px',
     maxHeight: '90vh',
     overflow: 'auto',
     border: '1px solid rgba(0, 240, 255, 0.3)',
@@ -516,15 +672,35 @@ const styles = {
   },
   tr: { borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
   td: { padding: '8px 5px', color: 'white', textAlign: 'center' },
-  supplementsGrid: {
-    display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '10px'
+  // Styles pour les postes supplémentaires
+  supplementsSummary: {
+    display: 'grid', 
+    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
+    gap: '12px',
+    marginBottom: '15px'
   },
   supplementCard: {
-    backgroundColor: 'rgba(255, 215, 0, 0.2)', border: '1px solid rgba(255, 215, 0, 0.4)',
-    borderRadius: '10px', padding: '12px', textAlign: 'center'
+    border: '1px solid',
+    borderRadius: '12px', 
+    padding: '15px 10px', 
+    textAlign: 'center',
+    transition: 'transform 0.2s ease'
   },
-  supplementName: { color: '#FFD700', fontSize: '12px', fontWeight: 'bold', marginBottom: '5px' },
-  supplementCount: { color: 'white', fontSize: '20px', fontWeight: 'bold' },
+  supplementName: { 
+    fontSize: '14px', 
+    fontWeight: 'bold', 
+    marginBottom: '8px' 
+  },
+  supplementCount: { 
+    color: 'white', 
+    fontSize: '24px', 
+    fontWeight: 'bold',
+    marginBottom: '4px'
+  },
+  supplementPercent: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: '11px'
+  },
   noData: { color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', fontStyle: 'italic' },
   barChart: { display: 'flex', flexDirection: 'column', gap: '12px' },
   barRow: { display: 'flex', alignItems: 'center', gap: '10px' },
