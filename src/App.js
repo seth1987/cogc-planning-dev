@@ -149,6 +149,8 @@ const App = () => {
   // Handler pour la navigation depuis la landing page
   const handleNavigate = (view, options = {}) => {
     if (view === 'planning') {
+      // Réinitialiser au mois actuel
+      setCurrentMonth(MONTHS[new Date().getMonth()]);
       setCurrentView('planning');
       
       // Si options demandent d'ouvrir un modal, stocker l'action

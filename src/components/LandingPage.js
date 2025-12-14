@@ -6,6 +6,7 @@ import ModalDocuments from './modals/ModalDocuments';
 import ModalAide from './modals/ModalAide';
 import ModalMonPlanning from './modals/ModalMonPlanning';
 import ModalStatistiques from './modals/ModalStatistiques';
+import ModalInstallApp from './modals/ModalInstallApp';
 
 /**
  * LandingPage - Page d'accueil avec design Nexaverse
@@ -23,6 +24,7 @@ const LandingPage = ({ onNavigate, user, onSignOut }) => {
   const [showAide, setShowAide] = useState(false);
   const [showMonPlanning, setShowMonPlanning] = useState(false);
   const [showStatistiques, setShowStatistiques] = useState(false);
+  const [showInstallApp, setShowInstallApp] = useState(false);
 
   // Simulate loading and trigger animations
   useEffect(() => {
@@ -93,12 +95,12 @@ const LandingPage = ({ onNavigate, user, onSignOut }) => {
       action: () => setShowAnnuaire(true)
     },
     {
-      id: 'a-venir',
-      badge: '🔧',
-      title: 'À venir',
-      subtitle: 'En construction',
-      disabled: true,
-      action: () => {}
+      id: 'install-app',
+      badge: '📲',
+      title: 'Installer',
+      subtitle: 'Application mobile',
+      disabled: false,
+      action: () => setShowInstallApp(true)
     },
     {
       id: 'help',
@@ -305,6 +307,12 @@ const LandingPage = ({ onNavigate, user, onSignOut }) => {
         isOpen={showStatistiques}
         onClose={() => setShowStatistiques(false)}
         currentUser={user}
+      />
+
+      {/* Modal Installer App */}
+      <ModalInstallApp
+        isOpen={showInstallApp}
+        onClose={() => setShowInstallApp(false)}
       />
     </div>
   );
