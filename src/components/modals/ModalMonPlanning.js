@@ -8,7 +8,7 @@ import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE
  * Affiche un calendrier mensuel avec les services de l'agent.
  * Permet de modifier ses propres services avec le même popup que le planning général.
  * 
- * v1.2 - Synchronisation avec planning général via onUpdate callback
+ * v1.3 - Harmonisation couleurs avec Planning complet
  */
 const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -257,22 +257,60 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
     return POSTES_CODES;
   };
 
-  // Couleur selon le service
+  // Couleur selon le service - ALIGNÉ SUR PLANNING COMPLET (CODE_COLORS)
   const getServiceColor = (planning) => {
     if (!planning?.service_code) return 'transparent';
     
     const code = planning.service_code.toUpperCase();
     
-    if (code === '-') return '#FFC107'; // Matin - Jaune
-    if (code === 'O') return '#FF5722'; // Soir - Orange
-    if (code === 'X') return '#3F51B5'; // Nuit - Bleu foncé
-    if (code === 'RP' || code === 'RU') return '#4CAF50'; // Repos - Vert
-    if (code === 'C' || code === 'CP') return '#2196F3'; // Congés - Bleu
-    if (code === 'MA') return '#f44336'; // Maladie - Rouge
-    if (code === 'D' || code === 'DISPO') return '#9C27B0'; // Dispo - Violet
-    if (code === 'FO' || code === 'HAB') return '#FF9800'; // Formation - Orange
+    // Services -, O, X : PAS de couleur de fond (comme planning complet)
+    if (code === '-' || code === 'O' || code === 'X') return 'rgba(255, 255, 255, 0.15)';
     
-    return '#607D8B'; // Gris par défaut
+    // Repos - Vert clair (bg-green-100)
+    if (code === 'RP' || code === 'RU') return '#dcfce7';
+    
+    // Congés - Jaune/Or (bg-yellow-400)
+    if (code === 'C' || code === 'CP') return '#facc15';
+    
+    // Maladie - Rouge clair (bg-red-200)
+    if (code === 'MA') return '#fecaca';
+    
+    // Dispo - Bleu clair (bg-blue-200)
+    if (code === 'D' || code === 'DISPO') return '#bfdbfe';
+    
+    // Formation - Orange clair (bg-orange-200)
+    if (code === 'FO' || code === 'HAB' || code === 'HAB-QF' || code === 'VL' || code === 'VM' || code === 'EIA') return '#fed7aa';
+    
+    // Inactif (bg-gray-300)
+    if (code === 'INACTIN') return '#d1d5db';
+    
+    // Inactif/Visite (bg-pink-100)
+    if (code === 'I') return '#fce7f3';
+    
+    // Non utilisé (bg-gray-100)
+    if (code === 'NU') return '#f3f4f6';
+    
+    // VT Temps partiel (bg-yellow-100)
+    if (code === 'VT') return '#fef9c3';
+    
+    // D2I (bg-gray-300)
+    if (code === 'D2I') return '#d1d5db';
+    
+    return 'rgba(255, 255, 255, 0.1)'; // Défaut transparent
+  };
+
+  // Couleur du texte selon le fond
+  const getTextColor = (planning) => {
+    if (!planning?.service_code) return 'white';
+    
+    const code = planning.service_code.toUpperCase();
+    
+    // Fonds clairs → texte foncé
+    if (['RP', 'RU', 'C', 'CP', 'MA', 'D', 'DISPO', 'FO', 'HAB', 'HAB-QF', 'VL', 'VM', 'EIA', 'INACTIN', 'I', 'NU', 'VT', 'D2I'].includes(code)) {
+      return '#1f2937'; // gray-800
+    }
+    
+    return 'white';
   };
 
   if (!isOpen) return null;
@@ -323,16 +361,17 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
                     ...styles.dayCell,
                     ...(dayInfo.currentMonth ? styles.currentMonthDay : styles.otherMonthDay),
                     ...(selectedDay?.date === dayInfo.date ? styles.selectedDay : {}),
-                    backgroundColor: dayInfo.currentMonth ? getServiceColor(dayInfo.planning) : 'transparent'
+                    backgroundColor: dayInfo.currentMonth ? getServiceColor(dayInfo.planning) : 'transparent',
+                    color: dayInfo.currentMonth ? getTextColor(dayInfo.planning) : 'rgba(255,255,255,0.3)'
                   }}
                   onClick={() => handleDayClick(dayInfo)}
                 >
-                  <span style={styles.dayNumber}>{dayInfo.day}</span>
+                  <span style={{...styles.dayNumber, color: dayInfo.currentMonth ? getTextColor(dayInfo.planning) : 'rgba(255,255,255,0.3)'}}>{dayInfo.day}</span>
                   {dayInfo.planning?.service_code && (
-                    <span style={styles.serviceCode}>{dayInfo.planning.service_code}</span>
+                    <span style={{...styles.serviceCode, color: getTextColor(dayInfo.planning)}}>{dayInfo.planning.service_code}</span>
                   )}
                   {dayInfo.planning?.poste_code && (
-                    <span style={styles.posteCode}>{dayInfo.planning.poste_code}</span>
+                    <span style={{...styles.posteCode, color: getTextColor(dayInfo.planning), opacity: 0.8}}>{dayInfo.planning.poste_code}</span>
                   )}
                   {dayInfo.planning?.postes_supplementaires?.length > 0 && (
                     <span style={styles.supplement}>
@@ -345,14 +384,14 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
           )}
         </div>
 
-        {/* Légende */}
+        {/* Légende - Alignée sur Planning complet */}
         <div style={styles.legend}>
-          <span style={{...styles.legendItem, backgroundColor: '#FFC107'}}>- Matin</span>
-          <span style={{...styles.legendItem, backgroundColor: '#FF5722'}}>O Soir</span>
-          <span style={{...styles.legendItem, backgroundColor: '#3F51B5'}}>X Nuit</span>
-          <span style={{...styles.legendItem, backgroundColor: '#4CAF50'}}>RP</span>
-          <span style={{...styles.legendItem, backgroundColor: '#2196F3'}}>C</span>
-          <span style={{...styles.legendItem, backgroundColor: '#f44336'}}>MA</span>
+          <span style={{...styles.legendItem, backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)'}}>- O X</span>
+          <span style={{...styles.legendItem, backgroundColor: '#dcfce7', color: '#166534'}}>RP</span>
+          <span style={{...styles.legendItem, backgroundColor: '#facc15', color: '#713f12'}}>C</span>
+          <span style={{...styles.legendItem, backgroundColor: '#fecaca', color: '#991b1b'}}>MA</span>
+          <span style={{...styles.legendItem, backgroundColor: '#bfdbfe', color: '#1e40af'}}>D</span>
+          <span style={{...styles.legendItem, backgroundColor: '#fed7aa', color: '#9a3412'}}>FO</span>
         </div>
       </div>
 
@@ -534,12 +573,12 @@ const styles = {
   currentMonthDay: { backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)' },
   otherMonthDay: { opacity: 0.3, cursor: 'default' },
   selectedDay: { border: '2px solid #00f0ff', boxShadow: '0 0 10px rgba(0, 240, 255, 0.5)' },
-  dayNumber: { color: 'white', fontSize: '14px', fontWeight: 'bold' },
-  serviceCode: { fontSize: '10px', color: 'white', fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.5)' },
-  posteCode: { fontSize: '8px', color: 'white', opacity: 0.9 },
-  supplement: { fontSize: '7px', color: '#FFD700', fontStyle: 'italic' },
+  dayNumber: { fontSize: '14px', fontWeight: 'bold' },
+  serviceCode: { fontSize: '10px', fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.3)' },
+  posteCode: { fontSize: '8px' },
+  supplement: { fontSize: '7px', color: '#a855f7', fontStyle: 'italic', fontWeight: 'bold' },
   legend: { display: 'flex', justifyContent: 'center', gap: '8px', padding: '15px', flexWrap: 'wrap' },
-  legendItem: { padding: '4px 10px', borderRadius: '10px', fontSize: '10px', color: 'white', fontWeight: 'bold' },
+  legendItem: { padding: '4px 10px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold' },
   
   // Styles pour la modal d'édition
   editOverlay: {
