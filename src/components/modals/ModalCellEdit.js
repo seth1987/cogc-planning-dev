@@ -1,1 +1,0 @@
-$(cat /tmp/ModalCellEdit_final.js)
