@@ -28,6 +28,10 @@ class PlanningService {
     };
   }
 
+  /**
+   * Organise les agents par groupe et les habilitations par agent
+   * FIX v2.10: Dédoublonnage des habilitations avec Set
+   */
   organizeData(agents, habilitations) {
     const agentsByGroupe = {};
     
@@ -45,27 +49,45 @@ class PlanningService {
       agentsByGroupe[groupe].push(agent);
     });
     
-    // Organiser les habilitations par agent
+    // Organiser les habilitations par agent AVEC DÉDUPLICATION
     const habilitationsByAgent = {};
     habilitations.forEach(hab => {
       if (!habilitationsByAgent[hab.agent_id]) {
-        habilitationsByAgent[hab.agent_id] = [];
+        habilitationsByAgent[hab.agent_id] = new Set();
       }
-      habilitationsByAgent[hab.agent_id].push(hab.poste);
+      habilitationsByAgent[hab.agent_id].add(hab.poste);
+    });
+    
+    // Convertir les Sets en tableaux pour compatibilité
+    Object.keys(habilitationsByAgent).forEach(agentId => {
+      habilitationsByAgent[agentId] = [...habilitationsByAgent[agentId]];
     });
     
     return { agentsByGroupe, habilitationsByAgent };
   }
 
-  getDaysInMonth(month) {
+  /**
+   * Retourne le nombre de jours dans un mois
+   * FIX v2.10: Ajout du paramètre year pour supporter les années dynamiques
+   * @param {string} month - Nom du mois (JANVIER, FÉVRIER, etc.)
+   * @param {number} year - Année (optionnel, fallback CURRENT_YEAR)
+   * @returns {number} Nombre de jours dans le mois
+   */
+  getDaysInMonth(month, year = CURRENT_YEAR) {
     const monthIndex = MONTHS.indexOf(month);
-    const year = CURRENT_YEAR;
     return new Date(year, monthIndex + 1, 0).getDate();
   }
 
-  getJourType(day, month) {
+  /**
+   * Retourne le type de jour (weekend, férié)
+   * FIX v2.10: Ajout du paramètre year pour calcul correct
+   * @param {number} day - Jour du mois
+   * @param {string} month - Nom du mois
+   * @param {number} year - Année (optionnel, fallback CURRENT_YEAR)
+   */
+  getJourType(day, month, year = CURRENT_YEAR) {
     const monthIndex = MONTHS.indexOf(month);
-    const date = new Date(CURRENT_YEAR, monthIndex, day);
+    const date = new Date(year, monthIndex, day);
     const dayOfWeek = date.getDay();
     
     // Vérifier si c'est un jour férié - utilise JOURS_FERIES (année courante)
@@ -97,9 +119,16 @@ class PlanningService {
     return `${year}-${monthStr}-${dayStr}`;
   }
 
-  getDayName(day, month) {
+  /**
+   * Retourne le nom court du jour de la semaine
+   * FIX v2.10: Ajout du paramètre year
+   * @param {number} day - Jour du mois
+   * @param {string} month - Nom du mois
+   * @param {number} year - Année (optionnel)
+   */
+  getDayName(day, month, year = CURRENT_YEAR) {
     const monthIndex = MONTHS.indexOf(month);
-    const date = new Date(CURRENT_YEAR, monthIndex, day);
+    const date = new Date(year, monthIndex, day);
     return date.toLocaleDateString('fr-FR', { weekday: 'short' });
   }
 
@@ -356,7 +385,7 @@ class PlanningService {
           targetDay = jourNum + 1;
           
           // Gérer le passage au mois suivant
-          const daysInMonth = this.getDaysInMonth(bulletinMonth || currentMonth);
+          const daysInMonth = this.getDaysInMonth(bulletinMonth || currentMonth, bulletinYear);
           if (targetDay > daysInMonth) {
             console.warn(`Service de nuit du ${jourNum} décalé au ${targetDay} (mois suivant) - ignoré`);
             return;

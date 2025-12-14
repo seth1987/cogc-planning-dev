@@ -9,9 +9,17 @@ import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE
  * Permet de modifier ses propres services avec le même popup que le planning général.
  * 
  * v1.3 - Harmonisation couleurs avec Planning complet
+ * v1.4 - FIX: Calcul correct des jours de la semaine (année dynamique)
  */
-const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
+const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear }) => {
+  // FIX v1.4: Utiliser initialYear si fourni, sinon année système
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    if (initialYear) {
+      return new Date(initialYear, now.getMonth(), 1);
+    }
+    return now;
+  });
   const [planningData, setPlanningData] = useState({});
   const [agentInfo, setAgentInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -35,6 +43,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
 
   const currentMonth = currentDate.getMonth();
   const currentYear = currentDate.getFullYear();
+
+  // DEBUG: Log pour vérifier l'année
+  useEffect(() => {
+    console.log(`📅 ModalMonPlanning: month=${currentMonth}, year=${currentYear}, initialYear prop=${initialYear}`);
+  }, [currentMonth, currentYear, initialYear]);
 
   // Charger les infos agent
   const loadAgentInfo = useCallback(async () => {
@@ -90,12 +103,17 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
   // Effets
   useEffect(() => {
     if (isOpen) {
-      // Réinitialiser au mois actuel à chaque ouverture
-      setCurrentDate(new Date());
+      // FIX v1.4: Réinitialiser avec l'année fournie ou l'année système
+      const now = new Date();
+      if (initialYear) {
+        setCurrentDate(new Date(initialYear, now.getMonth(), 1));
+      } else {
+        setCurrentDate(now);
+      }
       loadAgentInfo();
-      hasChanges.current = false; // Reset au moment d'ouvrir
+      hasChanges.current = false;
     }
-  }, [isOpen, loadAgentInfo]);
+  }, [isOpen, loadAgentInfo, initialYear]);
 
   useEffect(() => {
     if (agentInfo) {
@@ -116,22 +134,25 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
     setEditMode(false);
   };
 
-  // Générer les jours du calendrier
+  // Générer les jours du calendrier - FIX v1.4: Utilise currentYear correctement
   const generateCalendarDays = () => {
     const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
     const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
     const daysInMonth = lastDayOfMonth.getDate();
     
+    // getDay() retourne 0=Dimanche, on veut 0=Lundi
     let startDay = firstDayOfMonth.getDay();
     startDay = startDay === 0 ? 6 : startDay - 1;
 
     const days = [];
 
+    // Jours du mois précédent
     const prevMonthLastDay = new Date(currentYear, currentMonth, 0).getDate();
     for (let i = startDay - 1; i >= 0; i--) {
       days.push({ day: prevMonthLastDay - i, currentMonth: false, date: null });
     }
 
+    // Jours du mois actuel
     for (let i = 1; i <= daysInMonth; i++) {
       const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
       days.push({
@@ -142,6 +163,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate }) => {
       });
     }
 
+    // Jours du mois suivant pour compléter la grille
     const remainingDays = 42 - days.length;
     for (let i = 1; i <= remainingDays; i++) {
       days.push({ day: i, currentMonth: false, date: null });

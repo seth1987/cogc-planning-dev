@@ -1,22 +1,142 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, StickyNote, Users } from 'lucide-react';
-import { CODE_COLORS } from '../constants/config';
+import React, { useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users } from 'lucide-react';
+import { CODE_COLORS, MONTHS } from '../constants/config';
 import planningService from '../services/planningService';
 
-const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgentClick, onDayHeaderClick }) => {
-  const daysInMonth = planningService.getDaysInMonth(currentMonth);
-  const [collapsedGroups, setCollapsedGroups] = useState({});
+/**
+ * PlanningTable - Grille mensuelle du planning
+ * 
+ * FIX v2.10: Ajout de currentYear pour calcul correct des jours du mois
+ * FIX v2.11: Scrollbar horizontale toujours visible et stylée
+ * FIX v2.12: Barre navigation via PORTAIL React (fixe bas écran)
+ * FIX v2.13: Calcul correct des jours de la semaine avec l'année dynamique
+ */
+
+// Composant barre de navigation rendu via portail
+const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd }) => {
+  return ReactDOM.createPortal(
+    <div 
+      className="fixed bottom-0 left-0 right-0 z-[9999] bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 flex items-center justify-center gap-4"
+      style={{ 
+        boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.4)',
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 9999,
+      }}
+    >
+      <button
+        onClick={onScrollStart}
+        className="flex items-center gap-1 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm font-medium transition-colors"
+        title="Aller au début du mois (Jour 1)"
+      >
+        <ChevronLeft size={18} />
+        <ChevronLeft size={18} className="-ml-3" />
+        <span>Jour 1</span>
+      </button>
+      
+      <button
+        onClick={onScrollLeft}
+        className="p-3 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+        title="Défiler vers la gauche"
+      >
+        <ChevronLeft size={24} />
+      </button>
+      
+      <span className="text-white text-sm font-medium px-4 hidden sm:block">
+        ◀ Défiler le planning ▶
+      </span>
+      
+      <button
+        onClick={onScrollRight}
+        className="p-3 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+        title="Défiler vers la droite"
+      >
+        <ChevronRight size={24} />
+      </button>
+      
+      <button
+        onClick={onScrollEnd}
+        className="flex items-center gap-1 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm font-medium transition-colors"
+        title="Aller à la fin du mois (Jour 31)"
+      >
+        <span>Jour 31</span>
+        <ChevronRight size={18} />
+        <ChevronRight size={18} className="-ml-3" />
+      </button>
+    </div>,
+    document.body
+  );
+};
+
+const PlanningTable = ({ 
+  currentMonth, 
+  currentYear,  // OBLIGATOIRE - plus de fallback à CURRENT_YEAR
+  planning, 
+  agentsData, 
+  onCellClick, 
+  onAgentClick, 
+  onDayHeaderClick 
+}) => {
+  // FIX v2.13: Calcul de l'année - utiliser la prop OU l'année système si non fournie
+  const year = currentYear || new Date().getFullYear();
   
+  // DEBUG: Log pour vérifier l'année utilisée
+  useEffect(() => {
+    console.log(`📅 PlanningTable: currentMonth=${currentMonth}, currentYear prop=${currentYear}, year utilisé=${year}`);
+  }, [currentMonth, currentYear, year]);
+  
+  const daysInMonth = planningService.getDaysInMonth(currentMonth, year);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [showNavBar, setShowNavBar] = useState(true);
+  const scrollContainerRef = useRef(null);
+  
+  // Afficher/masquer la barre quand on est sur cette page
+  useEffect(() => {
+    setShowNavBar(true);
+    return () => setShowNavBar(false);
+  }, []);
+
   const toggleGroupCollapse = (groupName) => {
     setCollapsedGroups(prev => ({
       ...prev,
       [groupName]: !prev[groupName]
     }));
   };
+
+  // Fonction pour scroller horizontalement
+  const scrollHorizontal = (direction) => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = 300;
+      const currentScroll = scrollContainerRef.current.scrollLeft;
+      scrollContainerRef.current.scrollTo({
+        left: direction === 'left' ? currentScroll - scrollAmount : currentScroll + scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const scrollToStart = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+    }
+  };
+
+  const scrollToEnd = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ 
+        left: scrollContainerRef.current.scrollWidth, 
+        behavior: 'smooth' 
+      });
+    }
+  };
   
   const getDayHeader = (day) => {
-    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth);
-    const dayName = planningService.getDayName(day, currentMonth);
+    // FIX v2.13: Utiliser 'year' calculé, pas currentYear directement
+    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
+    const dayName = planningService.getDayName(day, currentMonth, year);
     
     let className = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] ';
     
@@ -55,7 +175,8 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
   const renderPlanningCell = (agent, day) => {
     const agentName = `${agent.nom} ${agent.prenom}`;
     const planningData = planning[agentName]?.[day];
-    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth);
+    // FIX v2.13: Utiliser 'year' calculé
+    const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
     
     let cellContent = '';
     let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[55px] min-h-[40px] relative ';
@@ -116,9 +237,48 @@ const PlanningTable = ({ currentMonth, planning, agentsData, onCellClick, onAgen
     );
   };
 
+  const scrollContainerStyle = {
+    overflowX: 'scroll',
+    scrollbarWidth: 'auto',
+    scrollbarColor: '#3b82f6 #e5e7eb',
+    paddingBottom: '80px',
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      <div className="overflow-x-auto">
+    <div className="bg-white rounded-lg shadow overflow-hidden relative">
+      {/* Barre de navigation via portail - toujours fixe en bas de l'écran */}
+      {showNavBar && (
+        <NavigationBar 
+          onScrollLeft={() => scrollHorizontal('left')}
+          onScrollRight={() => scrollHorizontal('right')}
+          onScrollStart={scrollToStart}
+          onScrollEnd={scrollToEnd}
+        />
+      )}
+
+      {/* Container avec scrollbar horizontale */}
+      <div 
+        ref={scrollContainerRef}
+        className="planning-scroll-container"
+        style={scrollContainerStyle}
+      >
+        <style>{`
+          .planning-scroll-container::-webkit-scrollbar {
+            height: 14px;
+          }
+          .planning-scroll-container::-webkit-scrollbar-track {
+            background: #e5e7eb;
+            border-radius: 7px;
+          }
+          .planning-scroll-container::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+            border-radius: 7px;
+            border: 2px solid #e5e7eb;
+          }
+          .planning-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+          }
+        `}</style>
         <table className="w-full">
           <tbody>
             {Object.entries(agentsData).map(([groupe, agents], groupIndex) => {

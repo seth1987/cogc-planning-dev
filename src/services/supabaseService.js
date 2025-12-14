@@ -311,15 +311,6 @@ class SupabaseService {
       if (data.length >= 2000) {
         console.warn('⚠️ ATTENTION: Limite de 2000 entrées atteinte! Certaines données peuvent manquer.');
       }
-      
-      // Debug: lister quelques entrées de fin de mois
-      if (endMonthEntries.length > 0 && endMonthEntries.length < 50) {
-        console.log('📋 Détail entrées fin de mois:', endMonthEntries.map(e => ({
-          date: e.date,
-          agent_id: e.agent_id,
-          service: e.service_code
-        })));
-      }
     }
     
     return data || [];
@@ -463,6 +454,121 @@ class SupabaseService {
       console.error('Erreur deletePlanning:', error);
       throw error;
     }
+    return true;
+  }
+
+  // ============================================
+  // CROISEMENTS DE SERVICES
+  // ============================================
+
+  /**
+   * Crée un enregistrement de croisement de services entre deux agents
+   * @param {Object} croisementData - Données du croisement
+   * @param {string} croisementData.date - Date au format YYYY-MM-DD
+   * @param {string} croisementData.agent_1_id - ID du premier agent
+   * @param {string} croisementData.agent_2_id - ID du second agent
+   * @param {string} croisementData.agent_1_original_service - Service original de l'agent 1
+   * @param {string} croisementData.agent_1_original_poste - Poste original de l'agent 1
+   * @param {string} croisementData.agent_2_original_service - Service original de l'agent 2
+   * @param {string} croisementData.agent_2_original_poste - Poste original de l'agent 2
+   * @param {string} croisementData.created_by - Email de l'utilisateur créateur
+   * @returns {Promise<Object>} L'enregistrement créé
+   */
+  async createCroisement(croisementData) {
+    console.log('🔄 Création croisement:', croisementData);
+
+    const { data, error } = await supabase
+      .from('croisements')
+      .insert({
+        date: croisementData.date,
+        agent_1_id: croisementData.agent_1_id,
+        agent_2_id: croisementData.agent_2_id,
+        agent_1_original_service: croisementData.agent_1_original_service || null,
+        agent_1_original_poste: croisementData.agent_1_original_poste || null,
+        agent_2_original_service: croisementData.agent_2_original_service || null,
+        agent_2_original_poste: croisementData.agent_2_original_poste || null,
+        created_by: croisementData.created_by || null
+      })
+      .select();
+    
+    if (error) {
+      console.error('❌ Erreur createCroisement:', error);
+      throw error;
+    }
+    
+    console.log('✅ Croisement créé:', data[0]);
+    return data[0];
+  }
+
+  /**
+   * Récupère l'historique des croisements pour une date donnée
+   * @param {string} date - Date au format YYYY-MM-DD
+   * @returns {Promise<Array>} Liste des croisements
+   */
+  async getCroisementsForDate(date) {
+    const { data, error } = await supabase
+      .from('croisements')
+      .select(`
+        *,
+        agent_1:agents!croisements_agent_1_id_fkey(id, nom, prenom),
+        agent_2:agents!croisements_agent_2_id_fkey(id, nom, prenom)
+      `)
+      .eq('date', date)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Erreur getCroisementsForDate:', error);
+      throw error;
+    }
+    
+    return data || [];
+  }
+
+  /**
+   * Récupère l'historique des croisements pour un agent sur une période
+   * @param {string} agentId - ID de l'agent
+   * @param {string} startDate - Date de début (YYYY-MM-DD)
+   * @param {string} endDate - Date de fin (YYYY-MM-DD)
+   * @returns {Promise<Array>} Liste des croisements
+   */
+  async getCroisementsForAgent(agentId, startDate, endDate) {
+    const { data, error } = await supabase
+      .from('croisements')
+      .select(`
+        *,
+        agent_1:agents!croisements_agent_1_id_fkey(id, nom, prenom),
+        agent_2:agents!croisements_agent_2_id_fkey(id, nom, prenom)
+      `)
+      .or(`agent_1_id.eq.${agentId},agent_2_id.eq.${agentId}`)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: true });
+    
+    if (error) {
+      console.error('Erreur getCroisementsForAgent:', error);
+      throw error;
+    }
+    
+    return data || [];
+  }
+
+  /**
+   * Supprime un croisement (pour annulation)
+   * @param {string} croisementId - ID du croisement
+   * @returns {Promise<boolean>}
+   */
+  async deleteCroisement(croisementId) {
+    const { error } = await supabase
+      .from('croisements')
+      .delete()
+      .eq('id', croisementId);
+    
+    if (error) {
+      console.error('Erreur deleteCroisement:', error);
+      throw error;
+    }
+    
+    console.log('🗑️ Croisement supprimé:', croisementId);
     return true;
   }
 
