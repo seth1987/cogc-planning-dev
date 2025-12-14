@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, StickyNote, Users } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users } from 'lucide-react';
 import { CODE_COLORS, CURRENT_YEAR } from '../constants/config';
 import planningService from '../services/planningService';
 
@@ -8,6 +8,7 @@ import planningService from '../services/planningService';
  * 
  * FIX v2.10: Ajout de currentYear pour calcul correct des jours du mois
  * FIX v2.11: Scrollbar horizontale toujours visible et stylée
+ * FIX v2.12: Boutons navigation gauche/droite flottants en haut
  */
 const PlanningTable = ({ 
   currentMonth, 
@@ -20,12 +21,41 @@ const PlanningTable = ({
 }) => {
   const daysInMonth = planningService.getDaysInMonth(currentMonth, currentYear);
   const [collapsedGroups, setCollapsedGroups] = useState({});
+  const scrollContainerRef = useRef(null);
   
   const toggleGroupCollapse = (groupName) => {
     setCollapsedGroups(prev => ({
       ...prev,
       [groupName]: !prev[groupName]
     }));
+  };
+
+  // Fonction pour scroller horizontalement
+  const scrollHorizontal = (direction) => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = 300; // pixels à scroller
+      const currentScroll = scrollContainerRef.current.scrollLeft;
+      scrollContainerRef.current.scrollTo({
+        left: direction === 'left' ? currentScroll - scrollAmount : currentScroll + scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  // Aller au début ou à la fin du mois
+  const scrollToStart = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+    }
+  };
+
+  const scrollToEnd = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ 
+        left: scrollContainerRef.current.scrollWidth, 
+        behavior: 'smooth' 
+      });
+    }
   };
   
   const getDayHeader = (day) => {
@@ -133,14 +163,60 @@ const PlanningTable = ({
   // Styles pour scrollbar visible et stylée
   const scrollContainerStyle = {
     overflowX: 'scroll',
-    scrollbarWidth: 'auto', // Firefox
-    scrollbarColor: '#3b82f6 #e5e7eb', // Firefox: thumb & track colors
+    scrollbarWidth: 'auto',
+    scrollbarColor: '#3b82f6 #e5e7eb',
   };
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      {/* Container avec scrollbar horizontale toujours visible */}
+    <div className="bg-white rounded-lg shadow overflow-hidden relative">
+      {/* Barre de navigation horizontale en haut */}
+      <div className="sticky top-0 z-20 bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 flex items-center justify-between shadow-md">
+        <button
+          onClick={scrollToStart}
+          className="flex items-center gap-1 px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-white text-sm transition-colors"
+          title="Aller au début du mois"
+        >
+          <ChevronLeft size={16} />
+          <ChevronLeft size={16} className="-ml-3" />
+          <span className="hidden sm:inline">Début</span>
+        </button>
+        
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => scrollHorizontal('left')}
+            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+            title="Défiler vers la gauche"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          
+          <span className="text-white text-sm font-medium px-3">
+            ◀ Navigation horizontale ▶
+          </span>
+          
+          <button
+            onClick={() => scrollHorizontal('right')}
+            className="p-2 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+            title="Défiler vers la droite"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+        
+        <button
+          onClick={scrollToEnd}
+          className="flex items-center gap-1 px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-white text-sm transition-colors"
+          title="Aller à la fin du mois"
+        >
+          <span className="hidden sm:inline">Fin</span>
+          <ChevronRight size={16} />
+          <ChevronRight size={16} className="-ml-3" />
+        </button>
+      </div>
+
+      {/* Container avec scrollbar horizontale */}
       <div 
+        ref={scrollContainerRef}
         className="planning-scroll-container"
         style={scrollContainerStyle}
       >
@@ -242,13 +318,6 @@ const PlanningTable = ({
             })}
           </tbody>
         </table>
-      </div>
-      
-      {/* Indicateur de scroll */}
-      <div className="flex items-center justify-center gap-2 py-2 bg-blue-50 text-blue-700 text-xs border-t">
-        <span>◀</span>
-        <span>Faites défiler horizontalement pour voir tous les jours du mois</span>
-        <span>▶</span>
       </div>
       
       <div className="p-4 bg-gray-50 border-t">
