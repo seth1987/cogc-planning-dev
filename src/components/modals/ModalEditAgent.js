@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Trash2, AlertTriangle, UserPlus, Mail, Phone, RefreshCw, CheckCircle, Loader2 } from 'lucide-react';
 import { GROUPES_PAR_STATUT } from '../../constants/config';
 import { generateSNCFEmail, createAgentAccount, DEFAULT_PASSWORD } from '../../services/userManagementService';
+import { supabase } from '../../lib/supabaseClient';
 
 /**
  * ModalEditAgent - Module central de gestion des agents
@@ -10,9 +11,32 @@ import { generateSNCFEmail, createAgentAccount, DEFAULT_PASSWORD } from '../../s
  * - Création/modification des informations de base (nom, prénom, groupe, site, dates)
  * - Gestion des coordonnées (email auto-généré, téléphone)
  * - Création automatique du compte Auth Supabase à la création
+ * - Ajout automatique dans l'annuaire (groupes_contacts)
  * 
- * v2.0 - Fusion Option A: Module tout-en-un
+ * v2.1 - Ajout insertion annuaire + email obligatoire
  */
+
+/**
+ * Extrait le groupe_code pour l'annuaire à partir du groupe agent
+ * "ACR - ROULEMENT ACR COGC" → "ACR"
+ * "RESERVE REGULATEUR PN" → "RESERVE PN"
+ * "RESERVE PCD - DENFERT" → "PCD"
+ */
+const extractGroupeCode = (groupe) => {
+  if (!groupe) return '';
+  
+  // Cas spéciaux pour les réserves
+  if (groupe.startsWith('RESERVE REGULATEUR')) {
+    return groupe.replace('RESERVE REGULATEUR ', 'RESERVE ');
+  }
+  if (groupe.startsWith('RESERVE PCD')) {
+    return 'PCD';
+  }
+  
+  // Cas standard : extraire le code avant " - "
+  return groupe.split(' - ')[0];
+};
+
 const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) => {
   const [formData, setFormData] = useState({
     nom: '',
@@ -104,14 +128,20 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
   };
 
   const handleSave = async () => {
-    // Validation basique
+    // Validation basique - Email maintenant obligatoire en création
     if (!formData.nom || !formData.prenom || !formData.groupe) {
-      alert('Veuillez remplir tous les champs obligatoires');
+      alert('Veuillez remplir tous les champs obligatoires (nom, prénom, groupe)');
+      return;
+    }
+    
+    // Email obligatoire en mode création
+    if (isCreation && !formData.email) {
+      alert('L\'email est obligatoire pour créer un agent');
       return;
     }
     
     if (isCreation) {
-      // MODE CRÉATION : créer agent + compte Auth automatiquement
+      // MODE CRÉATION : créer agent + compte Auth + annuaire automatiquement
       setCreatingAccount(true);
       setAccountStatus('creating');
       
@@ -140,6 +170,30 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
               setAccountStatus('error');
               setAccountError(accountResult.error);
               console.error(`❌ Erreur création compte: ${accountResult.error}`);
+            }
+            
+            // 3. Ajouter dans l'annuaire (groupes_contacts)
+            try {
+              const groupeCode = extractGroupeCode(formData.groupe);
+              const nomComplet = `${formData.nom} ${formData.prenom}`;
+              
+              const { error: annuaireError } = await supabase
+                .from('groupes_contacts')
+                .insert({
+                  groupe_code: groupeCode,
+                  nom_complet: nomComplet,
+                  email: formData.email,
+                  telephone: formData.telephone || null
+                });
+              
+              if (annuaireError) {
+                console.error(`⚠️ Erreur ajout annuaire: ${annuaireError.message}`);
+              } else {
+                console.log(`✅ Agent ajouté à l'annuaire (groupe: ${groupeCode})`);
+              }
+            } catch (annuaireErr) {
+              console.error(`⚠️ Erreur insertion annuaire:`, annuaireErr);
+              // On ne bloque pas la création si l'annuaire échoue
             }
           }
         }
@@ -174,6 +228,9 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
   };
 
   const groupesDisponibles = GROUPES_PAR_STATUT[formData.statut] || [];
+
+  // Validation pour désactiver le bouton
+  const isFormValid = formData.nom && formData.prenom && formData.groupe && (!isCreation || formData.email);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
@@ -309,14 +366,16 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   <Mail className="inline w-4 h-4 mr-1" />
-                  Email
+                  Email {isCreation && <span className="text-red-500">*</span>}
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="email"
                     value={formData.email}
                     onChange={(e) => handleEmailChange(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                    className={`flex-1 px-3 py-2 border rounded text-sm ${
+                      isCreation && !formData.email ? 'border-red-300' : 'border-gray-300'
+                    }`}
                     placeholder="prenom.nom@reseau.sncf.fr"
                   />
                   {emailManuallyEdited && formData.nom && formData.prenom && (
@@ -334,8 +393,10 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
                   <p className="text-xs text-gray-500 mt-1">
                     {emailManuallyEdited ? (
                       <span className="text-orange-600">✏️ Email modifié manuellement</span>
-                    ) : (
+                    ) : formData.email ? (
                       <span className="text-green-600">✓ Généré automatiquement</span>
+                    ) : (
+                      <span className="text-red-500">⚠️ Email requis pour la connexion</span>
                     )}
                   </p>
                 )}
@@ -367,6 +428,9 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
               <p className="text-xs text-blue-700">
                 Un compte sera créé automatiquement avec le mot de passe : 
                 <code className="bg-blue-100 px-2 py-0.5 rounded ml-1">{DEFAULT_PASSWORD}</code>
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                📇 L'agent sera également ajouté à l'annuaire
               </p>
               {accountStatus === 'creating' && (
                 <p className="text-xs text-blue-600 mt-2 flex items-center">
@@ -416,7 +480,7 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
             </button>
             <button 
               onClick={handleSave}
-              disabled={!formData.nom || !formData.prenom || !formData.groupe || creatingAccount}
+              disabled={!isFormValid || creatingAccount}
               className="flex items-center px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300"
             >
               {creatingAccount ? (
