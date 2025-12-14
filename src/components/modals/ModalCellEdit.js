@@ -1,43 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type } from 'lucide-react';
+import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search } from 'lucide-react';
 import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, POSTES_PAR_GROUPE, GROUPES_AVEC_POSTE } from '../../constants/config';
 
 // Couleurs UNIQUEMENT pour la modal d'édition 
-// CORRIGÉES selon spécifications utilisateur :
-// - MA en ROUGE 🔴
-// - C (congés) en JAUNE/OR 🟡
-// - HAB/FO en ORANGE 🟠
-// - D (DISPO) en BLEU 🔵
-// - RP/RU en VERT 🟢
-// - VT en JAUNE CLAIR 🟨
-// - D2I en GRIS ⬜
-// - Pas de couleur pour -, O, X et les postes de réserve
 const MODAL_COLORS = {
-  'MA': 'bg-red-200 text-red-800 font-semibold',          // Maladie = ROUGE 🔴
-  'C': 'bg-yellow-400 text-yellow-900 font-semibold',     // Congés = JAUNE/OR 🟡
-  'RP': 'bg-green-100 text-green-800',                     // Repos = Vert 🟢
-  'RU': 'bg-green-100 text-green-800',                     // Repos = Vert 🟢
-  'HAB': 'bg-orange-200 text-orange-800',                  // Habilitation = ORANGE 🟠
-  'FO': 'bg-orange-200 text-orange-800',                   // Formation = ORANGE 🟠
-  'D': 'bg-blue-200 text-blue-800',                        // Disponible = BLEU 🔵
-  'I': 'bg-pink-100 text-pink-700',                        // Inactif
-  'NU': 'bg-gray-200 text-gray-600',                       // Non Utilisé
-  'VT': 'bg-yellow-100 text-yellow-800',                   // Temps partiel = JAUNE CLAIR 🟨
-  'D2I': 'bg-gray-300 text-gray-700',                      // D2I = GRIS ⬜
-  // Les autres codes (-, O, X) n'ont pas de couleur (gris par défaut)
+  'MA': 'bg-red-200 text-red-800 font-semibold',
+  'C': 'bg-yellow-400 text-yellow-900 font-semibold',
+  'RP': 'bg-green-100 text-green-800',
+  'RU': 'bg-green-100 text-green-800',
+  'HAB': 'bg-orange-200 text-orange-800',
+  'FO': 'bg-orange-200 text-orange-800',
+  'D': 'bg-blue-200 text-blue-800',
+  'I': 'bg-pink-100 text-pink-700',
+  'NU': 'bg-gray-200 text-gray-600',
+  'VT': 'bg-yellow-100 text-yellow-800',
+  'D2I': 'bg-gray-300 text-gray-700',
 };
 
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 1.2.0 - Support des postes par groupe (RC, EAC)
- * @param {Object} selectedCell - {agent: string, day: number}
- * @param {Object|null} cellData - Données existantes {service, poste, note, texteLibre, postesSupplementaires}
- * @param {Object} agentsData - Données des agents par groupe
- * @param {Function} onUpdateCell - Callback pour sauvegarder (agentName, day, value)
- * @param {Function} onClose - Callback pour fermer le modal
+ * @version 2.3.0 - Fix croisement avec recherche flexible des noms
  */
-const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClose }) => {
+const ModalCellEdit = ({ 
+  selectedCell, 
+  cellData, 
+  agentsData, 
+  allAgents = [],
+  allPlanning = {},
+  currentMonth,
+  currentYear,
+  userEmail,
+  onUpdateCell, 
+  onCroisement,
+  onClose 
+}) => {
   // États pour service, poste et postes supplémentaires
   const [tempService, setTempService] = useState('');
   const [tempPoste, setTempPoste] = useState('');
@@ -55,14 +52,36 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
   const [texteLibreInput, setTexteLibreInput] = useState('');
   const [isTexteLibreEditMode, setIsTexteLibreEditMode] = useState(false);
 
-  // Initialiser les états avec les données existantes (y compris postes supplémentaires)
+  // === ÉTATS CROISEMENT ===
+  const [showCroisementModal, setShowCroisementModal] = useState(false);
+  const [selectedCroisementAgent, setSelectedCroisementAgent] = useState(null);
+  const [croisementSearch, setCroisementSearch] = useState('');
+  const [croisementLoading, setCroisementLoading] = useState(false);
+
+  // DEBUG: Log des props reçues à chaque render
+  useEffect(() => {
+    const planningKeys = Object.keys(allPlanning || {});
+    const agentsWithData = planningKeys.filter(key => {
+      const agentData = allPlanning[key];
+      return agentData && Object.keys(agentData).length > 0;
+    });
+    
+    console.log('🔍 ModalCellEdit - Props reçues:');
+    console.log('   allPlanning type:', typeof allPlanning);
+    console.log('   allPlanning keys count:', planningKeys.length);
+    console.log('   allPlanning sample keys:', planningKeys.slice(0, 5));
+    console.log('   Agents avec données:', agentsWithData.length);
+    console.log('   selectedCell:', selectedCell);
+    console.log('   selectedCell.day type:', typeof selectedCell?.day);
+  }, [allPlanning, selectedCell]);
+
+  // Initialiser les états avec les données existantes
   useEffect(() => {
     if (cellData) {
       setTempService(cellData.service || '');
       setTempPoste(cellData.poste || '');
       setTempNote(cellData.note || '');
       setTempTexteLibre(cellData.texteLibre || '');
-      // ✅ Charger les postes supplémentaires existants depuis la BDD
       setTempPostesSupplementaires(cellData.postesSupplementaires || []);
     } else {
       setTempService('');
@@ -92,13 +111,11 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
 
   // Déterminer les postes disponibles pour cet agent
   const getAvailablePostes = () => {
-    // Vérifier si le groupe a des postes spécifiques définis
     for (const [groupeKey, postes] of Object.entries(POSTES_PAR_GROUPE)) {
       if (agentGroup?.includes(groupeKey) || agentGroup === groupeKey) {
         return postes;
       }
     }
-    // Sinon, tous les postes pour les réserves
     return POSTES_CODES;
   };
 
@@ -118,15 +135,13 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
   // Fonction pour obtenir la couleur d'un code service dans la modal
   const getModalColor = (code, isSelected) => {
     if (isSelected) {
-      // Si sélectionné : bordure bleue + couleur spécifique ou gris clair
       const baseColor = MODAL_COLORS[code] || 'bg-gray-200 text-gray-800';
       return `ring-2 ring-blue-500 ${baseColor}`;
     }
-    // Non sélectionné : couleur spécifique ou gris très clair
     return MODAL_COLORS[code] || 'bg-gray-100 text-gray-700 hover:bg-gray-200';
   };
 
-  // Toggle un poste supplémentaire (ajout/retrait du tableau)
+  // Toggle un poste supplémentaire
   const togglePosteSupplementaire = (code) => {
     setTempPostesSupplementaires(prev => {
       if (prev.includes(code)) {
@@ -137,33 +152,29 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
     });
   };
 
-  // Ouvrir la modal pour AJOUTER une note
+  // === GESTION NOTES ===
   const openAddNoteModal = () => {
     setNoteInput('');
     setIsEditMode(false);
     setShowNoteModal(true);
   };
 
-  // Ouvrir la modal pour MODIFIER une note existante
   const openEditNoteModal = () => {
     setNoteInput(tempNote);
     setIsEditMode(true);
     setShowNoteModal(true);
   };
 
-  // Valider la note
   const handleValidateNote = () => {
     setTempNote(noteInput.trim());
     setShowNoteModal(false);
   };
 
-  // Annuler la note
   const handleCancelNote = () => {
     setNoteInput('');
     setShowNoteModal(false);
   };
 
-  // Supprimer la note
   const handleDeleteNote = () => {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer cette note ?')) {
       setTempNote('');
@@ -171,50 +182,289 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
   };
 
   // === GESTION TEXTE LIBRE ===
-  
-  // Ouvrir la modal pour AJOUTER un texte libre
   const openAddTexteLibreModal = () => {
     setTexteLibreInput('');
     setIsTexteLibreEditMode(false);
     setShowTexteLibreModal(true);
   };
 
-  // Ouvrir la modal pour MODIFIER un texte libre existant
   const openEditTexteLibreModal = () => {
     setTexteLibreInput(tempTexteLibre);
     setIsTexteLibreEditMode(true);
     setShowTexteLibreModal(true);
   };
 
-  // Valider le texte libre
   const handleValidateTexteLibre = () => {
     setTempTexteLibre(texteLibreInput.trim());
     setShowTexteLibreModal(false);
   };
 
-  // Annuler le texte libre
   const handleCancelTexteLibre = () => {
     setTexteLibreInput('');
     setShowTexteLibreModal(false);
   };
 
-  // Supprimer le texte libre
   const handleDeleteTexteLibre = () => {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce texte libre ?')) {
       setTempTexteLibre('');
     }
   };
 
-  // Sélectionner "Texte libre" comme service
   const selectTexteLibre = () => {
     setTempService('LIBRE');
     openAddTexteLibreModal();
   };
 
+  // === GESTION CROISEMENT ===
+
+  const openCroisementModal = () => {
+    // DEBUG: Afficher la structure complète du planning
+    console.log('🔄 ═══════════════════════════════════════════');
+    console.log('🔄 Ouverture modal croisement - DEBUG COMPLET');
+    console.log('🔄 ═══════════════════════════════════════════');
+    console.log('   allPlanning est null?:', allPlanning === null);
+    console.log('   allPlanning est undefined?:', allPlanning === undefined);
+    console.log('   allPlanning type:', typeof allPlanning);
+    
+    const keys = Object.keys(allPlanning || {});
+    console.log('   Nombre de clés dans allPlanning:', keys.length);
+    console.log('   Premières clés (noms agents):', keys.slice(0, 10));
+    
+    // Vérifier la structure pour le premier agent
+    if (keys.length > 0) {
+      const firstKey = keys[0];
+      const firstAgentData = allPlanning[firstKey];
+      console.log(`   Structure agent "${firstKey}":`, firstAgentData);
+      console.log('   Type données premier agent:', typeof firstAgentData);
+      console.log('   Jours disponibles pour cet agent:', Object.keys(firstAgentData || {}));
+    }
+    
+    // Vérifier si selectedCell.day existe dans les données
+    const day = selectedCell.day;
+    console.log('   selectedCell.day:', day, '(type:', typeof day, ')');
+    
+    // Chercher combien d'agents ont des données pour ce jour
+    let agentsWithDayData = 0;
+    keys.forEach(key => {
+      if (allPlanning[key] && allPlanning[key][day] !== undefined) {
+        agentsWithDayData++;
+      }
+    });
+    console.log(`   Agents avec données pour jour ${day}:`, agentsWithDayData);
+    console.log('🔄 ═══════════════════════════════════════════');
+    
+    setSelectedCroisementAgent(null);
+    setCroisementSearch('');
+    setShowCroisementModal(true);
+  };
+
+  const closeCroisementModal = () => {
+    setShowCroisementModal(false);
+    setSelectedCroisementAgent(null);
+    setCroisementSearch('');
+  };
+
+  // Filtrer les agents pour le croisement
+  const getFilteredAgentsForCroisement = () => {
+    const allAgentsList = Object.values(agentsData).flat();
+    
+    return allAgentsList.filter(agent => {
+      const fullName = `${agent.nom} ${agent.prenom}`;
+      if (fullName === selectedCell.agent) return false;
+      if (croisementSearch) {
+        const search = croisementSearch.toLowerCase();
+        return fullName.toLowerCase().includes(search) || 
+               agent.nom.toLowerCase().includes(search) ||
+               agent.prenom.toLowerCase().includes(search);
+      }
+      return true;
+    });
+  };
+
+  /**
+   * Normalise un nom pour la comparaison
+   */
+  const normalizeName = (name) => {
+    return name?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
+  };
+
+  /**
+   * Trouve la clé correspondante dans allPlanning pour un nom d'agent
+   * Recherche flexible pour gérer les variations d'espaces/casse
+   */
+  const findPlanningKey = (agentName) => {
+    if (!allPlanning || !agentName) return null;
+    
+    // Essai 1: Correspondance exacte
+    if (allPlanning[agentName] !== undefined) {
+      return agentName;
+    }
+    
+    // Essai 2: Recherche normalisée
+    const normalizedSearch = normalizeName(agentName);
+    const keys = Object.keys(allPlanning);
+    
+    for (const key of keys) {
+      if (normalizeName(key) === normalizedSearch) {
+        console.log(`   → Clé trouvée par normalisation: "${key}" pour "${agentName}"`);
+        return key;
+      }
+    }
+    
+    // Essai 3: Recherche partielle (nom contient)
+    for (const key of keys) {
+      if (normalizeName(key).includes(normalizedSearch) || 
+          normalizedSearch.includes(normalizeName(key))) {
+        console.log(`   → Clé trouvée par inclusion: "${key}" pour "${agentName}"`);
+        return key;
+      }
+    }
+    
+    return null;
+  };
+
+  /**
+   * Récupérer les données planning d'un agent pour un jour donné
+   * Structure attendue: allPlanning[agentName][day]
+   * @version 2.3.0 - Recherche flexible des clés
+   */
+  const getAgentPlanningForDay = (agentName, day) => {
+    // DEBUG détaillé
+    console.log(`🔍 getAgentPlanningForDay("${agentName}", ${day})`);
+    console.log(`   allPlanning existe:`, !!allPlanning);
+    console.log(`   Nombre de clés:`, Object.keys(allPlanning || {}).length);
+    
+    // Trouver la clé correspondante
+    const planningKey = findPlanningKey(agentName);
+    console.log(`   Clé planning trouvée:`, planningKey);
+    
+    if (!planningKey) {
+      console.log(`   → Résultat: null (agent non trouvé dans planning)`);
+      return null;
+    }
+    
+    const agentData = allPlanning[planningKey];
+    console.log(`   Données agent:`, agentData);
+    console.log(`   Jours disponibles:`, Object.keys(agentData || {}));
+    
+    // Essayer avec day comme number et comme string
+    let cellValue = agentData?.[day];
+    if (cellValue === undefined) {
+      cellValue = agentData?.[String(day)];
+      if (cellValue !== undefined) {
+        console.log(`   → Trouvé avec day comme string`);
+      }
+    }
+    if (cellValue === undefined) {
+      cellValue = agentData?.[Number(day)];
+      if (cellValue !== undefined) {
+        console.log(`   → Trouvé avec day comme number`);
+      }
+    }
+    
+    if (!cellValue) {
+      console.log(`   → Résultat: null (pas de données pour jour ${day})`);
+      return null;
+    }
+    
+    // Si c'est une string simple (juste le code service)
+    if (typeof cellValue === 'string') {
+      console.log(`   → Résultat (string):`, cellValue);
+      return { 
+        service: cellValue, 
+        poste: null, 
+        note: null, 
+        postesSupplementaires: null 
+      };
+    }
+    
+    // Si c'est un objet avec les détails
+    const result = {
+      service: cellValue.service || null,
+      poste: cellValue.poste || null,
+      note: cellValue.note || null,
+      postesSupplementaires: cellValue.postesSupplementaires || null,
+      texteLibre: cellValue.texteLibre || null
+    };
+    console.log(`   → Résultat (object):`, result);
+    return result;
+  };
+
+  // Effectuer le croisement
+  const handleConfirmCroisement = async () => {
+    if (!selectedCroisementAgent) {
+      alert('Veuillez sélectionner un agent pour le croisement');
+      return;
+    }
+
+    setCroisementLoading(true);
+
+    try {
+      const agent1Name = selectedCell.agent;
+      const agent2Name = `${selectedCroisementAgent.nom} ${selectedCroisementAgent.prenom}`;
+      const day = selectedCell.day;
+
+      const agent1Data = cellData || {};
+      const agent2Data = getAgentPlanningForDay(agent2Name, day) || {};
+
+      console.log('🔄 Croisement - Agent 1 data:', agent1Data);
+      console.log('🔄 Croisement - Agent 2 data:', agent2Data);
+
+      const newAgent1Data = {
+        service: agent2Data.service || '',
+        poste: agent2Data.poste || '',
+        postesSupplementaires: agent2Data.postesSupplementaires || [],
+        note: `Croisement avec ${agent2Name}`,
+        texteLibre: agent2Data.texteLibre || ''
+      };
+
+      const newAgent2Data = {
+        service: agent1Data.service || tempService || '',
+        poste: agent1Data.poste || tempPoste || '',
+        postesSupplementaires: agent1Data.postesSupplementaires || tempPostesSupplementaires || [],
+        note: `Croisement avec ${agent1Name}`,
+        texteLibre: agent1Data.texteLibre || tempTexteLibre || ''
+      };
+
+      console.log('🔄 Croisement - New Agent 1 data:', newAgent1Data);
+      console.log('🔄 Croisement - New Agent 2 data:', newAgent2Data);
+
+      if (onCroisement) {
+        await onCroisement({
+          date: day,
+          agent1: { name: agent1Name, id: findAgentId(agent1Name), originalData: agent1Data },
+          agent2: { name: agent2Name, id: selectedCroisementAgent.id, originalData: agent2Data },
+          newAgent1Data,
+          newAgent2Data,
+          createdBy: userEmail
+        });
+      } else {
+        await onUpdateCell(agent1Name, day, newAgent1Data);
+        await onUpdateCell(agent2Name, day, newAgent2Data);
+      }
+
+      closeCroisementModal();
+      onClose();
+
+    } catch (error) {
+      console.error('Erreur lors du croisement:', error);
+      alert(`Erreur lors du croisement: ${error.message}`);
+    } finally {
+      setCroisementLoading(false);
+    }
+  };
+
+  const findAgentId = (fullName) => {
+    for (const agents of Object.values(agentsData)) {
+      const agent = agents.find(a => `${a.nom} ${a.prenom}` === fullName);
+      if (agent) return agent.id;
+    }
+    return null;
+  };
+
   const handleSave = () => {
     let planningData;
     
-    // Si texte libre est sélectionné, utiliser le texte libre comme service
     const finalService = tempService === 'LIBRE' && tempTexteLibre 
       ? tempTexteLibre 
       : tempService;
@@ -243,6 +493,13 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
   const hasExistingNote = Boolean(tempNote);
   const hasExistingTexteLibre = Boolean(tempTexteLibre);
   const hasExistingPostesSupp = tempPostesSupplementaires.length > 0;
+  const hasCroisementNote = tempNote?.toLowerCase().includes('croisement avec');
+
+  // Compter combien d'agents ont des données pour ce jour (pour debug)
+  const agentsWithDataForDay = Object.keys(allPlanning || {}).filter(key => {
+    const data = allPlanning[key];
+    return data && data[selectedCell.day] !== undefined;
+  }).length;
 
   return (
     <>
@@ -258,8 +515,17 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
               )}
               {hasExistingNote && (
                 <div className="flex items-center gap-1 mt-1">
-                  <StickyNote className="w-3 h-3 text-amber-500" />
-                  <span className="text-xs text-amber-600">Note existante</span>
+                  {hasCroisementNote ? (
+                    <>
+                      <ArrowLeftRight className="w-3 h-3 text-purple-500" />
+                      <span className="text-xs text-purple-600 font-medium">{tempNote}</span>
+                    </>
+                  ) : (
+                    <>
+                      <StickyNote className="w-3 h-3 text-amber-500" />
+                      <span className="text-xs text-amber-600">Note existante</span>
+                    </>
+                  )}
                 </div>
               )}
               {hasExistingTexteLibre && (
@@ -295,7 +561,6 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
                 </button>
               ))}
               
-              {/* Bouton Texte Libre */}
               <button
                 onClick={selectTexteLibre}
                 className={`p-2 rounded text-center text-xs transition-all ${
@@ -312,7 +577,6 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
               </button>
             </div>
             
-            {/* Affichage du texte libre si sélectionné */}
             {tempService === 'LIBRE' && hasExistingTexteLibre && (
               <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
                 <div className="flex items-center justify-between">
@@ -321,18 +585,10 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
                     <p className="text-sm text-purple-900 font-medium">{tempTexteLibre}</p>
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      onClick={openEditTexteLibreModal}
-                      className="p-1 text-purple-600 hover:text-purple-800"
-                      title="Modifier"
-                    >
+                    <button onClick={openEditTexteLibreModal} className="p-1 text-purple-600 hover:text-purple-800" title="Modifier">
                       <Edit3 className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={handleDeleteTexteLibre}
-                      className="p-1 text-red-500 hover:text-red-700"
-                      title="Supprimer"
-                    >
+                    <button onClick={handleDeleteTexteLibre} className="p-1 text-red-500 hover:text-red-700" title="Supprimer">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -341,7 +597,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             )}
           </div>
 
-          {/* Section Poste (pour agents avec sélecteur de poste) - SANS COULEUR */}
+          {/* Section Poste */}
           {hasPosteSelector && (
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">{getPosteLabel()}</label>
@@ -363,7 +619,7 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             </div>
           )}
 
-          {/* Section Postes figés / Postes supplémentaires - SANS COULEUR */}
+          {/* Section Postes supplémentaires */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Postes figés / Postes supplémentaires 
@@ -401,69 +657,69 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
             )}
           </div>
 
-          {/* Section Notes */}
+          {/* Section Notes & Croisement */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Notes / Commentaires</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Notes & Croisement</label>
             
             <div className="flex gap-2 mb-3">
               <button
                 onClick={hasExistingNote ? openEditNoteModal : openAddNoteModal}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-sm rounded-lg border-2 transition-all ${
+                className={`flex items-center justify-center gap-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${
                   hasExistingNote 
                     ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100' 
                     : 'bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200'
                 }`}
+                title={hasExistingNote ? "Modifier la note" : "Ajouter une note"}
               >
-                {hasExistingNote ? (
-                  <>
-                    <Edit3 className="w-4 h-4" />
-                    Modifier la note
-                  </>
-                ) : (
-                  <>
-                    <MessageSquarePlus className="w-4 h-4" />
-                    Ajouter une note
-                  </>
-                )}
+                {hasExistingNote ? <Edit3 className="w-4 h-4" /> : <MessageSquarePlus className="w-4 h-4" />}
+                <span>{hasExistingNote ? 'Note' : '+ Note'}</span>
               </button>
 
               <button
                 onClick={handleDeleteNote}
                 disabled={!hasExistingNote}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 text-sm rounded-lg border-2 transition-all ${
+                className={`flex items-center justify-center gap-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${
                   hasExistingNote 
                     ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 cursor-pointer' 
                     : 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
                 }`}
+                title="Supprimer la note"
               >
                 <Trash2 className="w-4 h-4" />
-                Supprimer une note
+                <span>Note</span>
+              </button>
+
+              <button
+                onClick={openCroisementModal}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg border-2 bg-purple-100 border-purple-400 text-purple-800 hover:bg-purple-200 transition-all"
+                title="Échanger le service avec un autre agent"
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+                <span>Croisement</span>
               </button>
             </div>
 
             {hasExistingNote && (
-              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+              <div className={`p-3 rounded-lg border ${hasCroisementNote ? 'bg-purple-50 border-purple-200' : 'bg-amber-50 border-amber-200'}`}>
                 <div className="flex items-start gap-2">
-                  <StickyNote className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-sm text-amber-900 whitespace-pre-wrap">{tempNote}</p>
+                  {hasCroisementNote ? (
+                    <ArrowLeftRight className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <StickyNote className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  )}
+                  <p className={`text-sm whitespace-pre-wrap ${hasCroisementNote ? 'text-purple-900' : 'text-amber-900'}`}>{tempNote}</p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Boutons d'action principaux */}
+          {/* Boutons d'action */}
           <div className="flex justify-between pt-4 border-t">
-            <button 
-              onClick={handleDelete}
-              className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-            >
+            <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700">
               Effacer
             </button>
             <div className="flex space-x-2">
-              <button 
-                onClick={onClose} 
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-              >
+              <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50">
                 Annuler
               </button>
               <button 
@@ -478,29 +734,16 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
         </div>
       </div>
 
-      {/* Sous-modal pour ajouter/modifier une note */}
+      {/* Sous-modal Note */}
       {showNoteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]" onClick={handleCancelNote}>
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                {isEditMode ? (
-                  <>
-                    <Edit3 className="w-5 h-5 text-amber-600" />
-                    Modifier la note
-                  </>
-                ) : (
-                  <>
-                    <MessageSquarePlus className="w-5 h-5 text-amber-600" />
-                    Ajouter une note
-                  </>
-                )}
+                {isEditMode ? <><Edit3 className="w-5 h-5 text-amber-600" />Modifier la note</> : <><MessageSquarePlus className="w-5 h-5 text-amber-600" />Ajouter une note</>}
               </h4>
-              <button onClick={handleCancelNote} className="text-gray-500 hover:text-gray-700">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={handleCancelNote} className="text-gray-500 hover:text-gray-700"><X className="w-5 h-5" /></button>
             </div>
-            
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Commentaire pour <span className="font-semibold">{selectedCell.agent}</span> - Jour {selectedCell.day}
@@ -512,60 +755,33 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
                 className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none text-sm"
                 autoFocus
               />
-              <p className="text-xs text-gray-500 mt-1">
-                {noteInput.length} caractères
-              </p>
+              <p className="text-xs text-gray-500 mt-1">{noteInput.length} caractères</p>
             </div>
-
             <div className="flex justify-end gap-3">
-              <button
-                onClick={handleCancelNote}
-                className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleValidateNote}
-                className="px-5 py-2.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium flex items-center gap-2"
-              >
-                <Check className="w-4 h-4" />
-                Valider
+              <button onClick={handleCancelNote} className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
+              <button onClick={handleValidateNote} className="px-5 py-2.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium flex items-center gap-2">
+                <Check className="w-4 h-4" />Valider
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Sous-modal pour ajouter/modifier un texte libre */}
+      {/* Sous-modal Texte Libre */}
       {showTexteLibreModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]" onClick={handleCancelTexteLibre}>
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                {isTexteLibreEditMode ? (
-                  <>
-                    <Edit3 className="w-5 h-5 text-purple-600" />
-                    Modifier le texte libre
-                  </>
-                ) : (
-                  <>
-                    <Type className="w-5 h-5 text-purple-600" />
-                    Saisir un texte libre
-                  </>
-                )}
+                {isTexteLibreEditMode ? <><Edit3 className="w-5 h-5 text-purple-600" />Modifier le texte libre</> : <><Type className="w-5 h-5 text-purple-600" />Saisir un texte libre</>}
               </h4>
-              <button onClick={handleCancelTexteLibre} className="text-gray-500 hover:text-gray-700">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={handleCancelTexteLibre} className="text-gray-500 hover:text-gray-700"><X className="w-5 h-5" /></button>
             </div>
-            
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Texte personnalisé pour <span className="font-semibold">{selectedCell.agent}</span> - Jour {selectedCell.day}
               </label>
-              <p className="text-xs text-gray-500 mb-3">
-                Ce texte sera affiché directement dans la cellule du planning
-              </p>
+              <p className="text-xs text-gray-500 mb-3">Ce texte sera affiché directement dans la cellule du planning</p>
               <input
                 type="text"
                 value={texteLibreInput}
@@ -575,25 +791,134 @@ const ModalCellEdit = ({ selectedCell, cellData, agentsData, onUpdateCell, onClo
                 autoFocus
                 maxLength={20}
               />
-              <p className="text-xs text-gray-500 mt-1">
-                {texteLibreInput.length}/20 caractères
+              <p className="text-xs text-gray-500 mt-1">{texteLibreInput.length}/20 caractères</p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={handleCancelTexteLibre} className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
+              <button onClick={handleValidateTexteLibre} disabled={!texteLibreInput.trim()} className="px-5 py-2.5 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium flex items-center gap-2 disabled:bg-gray-300">
+                <Check className="w-4 h-4" />Valider
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sous-modal Croisement */}
+      {showCroisementModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]" onClick={closeCroisementModal}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                <ArrowLeftRight className="w-5 h-5 text-purple-600" />
+                Croisement de service
+              </h4>
+              <button onClick={closeCroisementModal} className="text-gray-500 hover:text-gray-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* DEBUG INFO */}
+            <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+              <p>🔍 Debug: {Object.keys(allPlanning || {}).length} agents dans planning</p>
+              <p>📅 Jour: {selectedCell.day} (type: {typeof selectedCell.day})</p>
+              <p>👥 Agents avec données ce jour: {agentsWithDataForDay}</p>
+            </div>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-3">
+                Échanger le service de <span className="font-semibold text-purple-700">{selectedCell.agent}</span> (Jour {selectedCell.day}) avec :
               </p>
+              
+              <div className="relative mb-3">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={croisementSearch}
+                  onChange={(e) => setCroisementSearch(e.target.value)}
+                  placeholder="Rechercher un agent..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                />
+              </div>
+
+              <div className="border border-gray-200 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+                {getFilteredAgentsForCroisement().length === 0 ? (
+                  <div className="p-4 text-center text-gray-500 text-sm">Aucun agent trouvé</div>
+                ) : (
+                  getFilteredAgentsForCroisement().map(agent => {
+                    const fullName = `${agent.nom} ${agent.prenom}`;
+                    const agentPlanning = getAgentPlanningForDay(fullName, selectedCell.day);
+                    const isSelected = selectedCroisementAgent?.id === agent.id;
+                    
+                    return (
+                      <button
+                        key={agent.id}
+                        onClick={() => setSelectedCroisementAgent(agent)}
+                        className={`w-full px-4 py-3 text-left border-b border-gray-100 last:border-b-0 transition-colors ${
+                          isSelected ? 'bg-purple-100 border-l-4 border-l-purple-500' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <div className="font-medium text-gray-800">{fullName}</div>
+                            <div className="text-xs text-gray-500">{agent.groupe}</div>
+                          </div>
+                          <div className="text-right">
+                            {agentPlanning?.service ? (
+                              <span className="inline-block px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
+                                {agentPlanning.service}
+                                {agentPlanning.poste && ` / ${agentPlanning.poste}`}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">Pas de service</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
             </div>
 
-            <div className="flex justify-end gap-3">
+            {selectedCroisementAgent && (
+              <div className="mb-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                <p className="text-xs text-purple-700 font-medium mb-2">Aperçu du croisement :</p>
+                <div className="flex items-center gap-2 text-sm">
+                  <div className="flex-1 text-center">
+                    <div className="font-medium">{selectedCell.agent}</div>
+                    <div className="text-xs text-gray-500">
+                      {cellData?.service || tempService || '-'}
+                      {(cellData?.poste || tempPoste) && ` / ${cellData?.poste || tempPoste}`}
+                    </div>
+                  </div>
+                  <ArrowLeftRight className="w-5 h-5 text-purple-500" />
+                  <div className="flex-1 text-center">
+                    <div className="font-medium">{selectedCroisementAgent.nom} {selectedCroisementAgent.prenom}</div>
+                    <div className="text-xs text-gray-500">
+                      {(() => {
+                        const otherAgentData = getAgentPlanningForDay(`${selectedCroisementAgent.nom} ${selectedCroisementAgent.prenom}`, selectedCell.day);
+                        return otherAgentData?.service 
+                          ? `${otherAgentData.service}${otherAgentData.poste ? ` / ${otherAgentData.poste}` : ''}`
+                          : '-';
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4 border-t mt-auto">
+              <button onClick={closeCroisementModal} className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
               <button
-                onClick={handleCancelTexteLibre}
-                className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
+                onClick={handleConfirmCroisement}
+                disabled={!selectedCroisementAgent || croisementLoading}
+                className="px-5 py-2.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium flex items-center gap-2 disabled:bg-gray-300"
               >
-                Annuler
-              </button>
-              <button
-                onClick={handleValidateTexteLibre}
-                disabled={!texteLibreInput.trim()}
-                className="px-5 py-2.5 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium flex items-center gap-2 disabled:bg-gray-300"
-              >
-                <Check className="w-4 h-4" />
-                Valider
+                {croisementLoading ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />En cours...</>
+                ) : (
+                  <><Check className="w-4 h-4" />Confirmer le croisement</>
+                )}
               </button>
             </div>
           </div>

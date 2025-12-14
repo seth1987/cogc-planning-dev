@@ -41,6 +41,8 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * 
  * Version avec page d'accueil Nexaverse et navigation vers le planning.
  * v3.0 - Ajout signOut sur LandingPage
+ * v3.1 - FIX: Passage de currentYear à PlanningTable
+ * v3.2 - Ajout fonctionnalité Croisement de services
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -270,6 +272,48 @@ const App = () => {
     }
   };
 
+  /**
+   * Handler pour le croisement de services entre deux agents
+   * v3.2: Nouvelle fonctionnalité
+   */
+  const handleCroisement = async (croisementData) => {
+    const { date, agent1, agent2, newAgent1Data, newAgent2Data, createdBy } = croisementData;
+    
+    try {
+      console.log('🔄 Croisement en cours:', { agent1: agent1.name, agent2: agent2.name, date });
+      
+      // Construire la date complète
+      const monthIndex = MONTHS.indexOf(currentMonth);
+      const year = currentYear;
+      const month = String(monthIndex + 1).padStart(2, '0');
+      const dayStr = String(date).padStart(2, '0');
+      const dateStr = `${year}-${month}-${dayStr}`;
+
+      // 1. Enregistrer le croisement dans la table croisements
+      await supabaseService.createCroisement({
+        date: dateStr,
+        agent_1_id: agent1.id,
+        agent_2_id: agent2.id,
+        agent_1_original_service: agent1.originalData?.service || '',
+        agent_1_original_poste: agent1.originalData?.poste || '',
+        agent_2_original_service: agent2.originalData?.service || '',
+        agent_2_original_poste: agent2.originalData?.poste || '',
+        created_by: createdBy
+      });
+
+      // 2. Mettre à jour le planning des deux agents
+      await updateCell(agent1.name, date, newAgent1Data);
+      await updateCell(agent2.name, date, newAgent2Data);
+
+      setConnectionStatus('✅ Croisement effectué avec succès');
+      console.log('✅ Croisement terminé');
+
+    } catch (err) {
+      console.error('❌ Erreur croisement:', err);
+      throw err;
+    }
+  };
+
   // Gestion des agents
   const handleAgentClick = (agent) => {
     openHabilitations(agent);
@@ -491,6 +535,9 @@ const App = () => {
     ? getCellData(selectedCell.agent, selectedCell.day) 
     : null;
 
+  // Index du mois actuel (0-11) pour le croisement
+  const currentMonthIndex = MONTHS.indexOf(currentMonth);
+
   // === APPLICATION PRINCIPALE PLANNING ===
   return (
     <div className="min-h-screen bg-gray-50">
@@ -513,8 +560,10 @@ const App = () => {
       />
       
       <div className="p-4">
+        {/* FIX v3.1: Ajout de currentYear pour calcul correct des jours */}
         <PlanningTable 
           currentMonth={currentMonth}
+          currentYear={currentYear}
           planning={planning}
           agentsData={agentsData}
           onCellClick={handleCellClick}
@@ -548,7 +597,13 @@ const App = () => {
           selectedCell={selectedCell}
           cellData={selectedCellData}
           agentsData={agentsData}
+          allAgents={agents}
+          allPlanning={planning}
+          currentMonth={currentMonthIndex}
+          currentYear={currentYear}
+          userEmail={user?.email}
           onUpdateCell={handleUpdateCell}
+          onCroisement={handleCroisement}
           onClose={() => closeModal('cellEdit')}
         />
       )}

@@ -7,7 +7,7 @@ import { MONTHS, CURRENT_YEAR } from '../constants/config';
  * Hook personnalisé pour la gestion du planning
  * Centralise le chargement, la mise à jour et la suppression des données de planning
  * 
- * @version 1.3.0 - Fix limite Supabase + logs débogage améliorés
+ * @version 1.3.0 - Debug logs pour problème fin décembre
  * @param {Object} user - L'utilisateur authentifié
  * @param {string} currentMonth - Le mois actuellement sélectionné
  * @param {number} currentYear - L'année actuellement sélectionnée
@@ -42,6 +42,16 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
    */
   const loadData = useCallback(async (month = currentMonth) => {
     if (!user) return;
+    
+    // 🔍 DEBUG: Log des paramètres d'entrée
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔍 DEBUG usePlanning.loadData DEBUT');
+    console.log('   → month param:', month);
+    console.log('   → currentMonth state:', currentMonth);
+    console.log('   → currentYear param/state:', currentYear);
+    console.log('   → CURRENT_YEAR (config):', CURRENT_YEAR);
+    console.log('   → user:', user?.email);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     try {
       setLoading(true);
@@ -79,41 +89,21 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       const lastDay = new Date(year, monthIndex + 1, 0).getDate();
       const endDate = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
       
-      console.log(`📅 Chargement planning ${month.toUpperCase()} ${year}: du ${startDate} au ${endDate}`);
+      // 🔍 DEBUG: Log des dates calculées
+      console.log('🔍 DEBUG Dates calculées:');
+      console.log('   → monthIndex:', monthIndex);
+      console.log('   → year utilisé:', year);
+      console.log('   → startDate:', startDate);
+      console.log('   → endDate:', endDate);
+      console.log('   → lastDay (jours dans le mois):', lastDay);
+      
+      console.log(`📅 Chargement planning ${month} ${year}: du ${startDate} au ${endDate}`);
       
       const planningFromDB = await supabaseService.getPlanningForMonth(startDate, endDate);
       
-      // Logs de débogage détaillés
-      console.log(`📊 Entrées récupérées de Supabase: ${planningFromDB?.length || 0}`);
-      
-      if (planningFromDB && planningFromDB.length > 0) {
-        // Compter les entrées par jour pour détecter les problèmes
-        const entriesByDay = {};
-        planningFromDB.forEach(entry => {
-          const day = parseDayFromDateString(entry.date);
-          entriesByDay[day] = (entriesByDay[day] || 0) + 1;
-        });
-        
-        // Vérifier les jours de fin de mois
-        const endMonthDays = Object.keys(entriesByDay)
-          .map(d => parseInt(d))
-          .filter(d => d >= 23);
-        const endMonthCount = endMonthDays.reduce((sum, d) => sum + entriesByDay[d], 0);
-        console.log(`📊 Entrées fin de mois (23-31): ${endMonthCount}`);
-        
-        // Vérifier quelques agents spécifiques (debug)
-        const debugAgents = ['GREVIN', 'LUCHIER'];
-        debugAgents.forEach(nom => {
-          const agent = agentsResult.find(a => a.nom === nom);
-          if (agent) {
-            const agentEntries = planningFromDB.filter(e => e.agent_id === agent.id);
-            console.log(`📊 Entrées ${nom} ${agent.prenom}: ${agentEntries.length}`);
-            if (agentEntries.length < 20) {
-              console.log(`   Détail:`, agentEntries.map(e => `${e.date}: ${e.service_code}`).join(', '));
-            }
-          }
-        });
-      }
+      // 🔍 DEBUG: Log des résultats Supabase
+      console.log('🔍 DEBUG Résultats Supabase:');
+      console.log('   → Nombre total d\'entrées:', planningFromDB?.length || 0);
       
       // Organiser les données de planning AVEC les notes et postes supplémentaires
       const planningData = {};
@@ -122,19 +112,33 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
         planningData[agentName] = {};
       });
       
+      // 🔍 DEBUG: Compteurs pour diagnostic
+      let entriesProcessed = 0;
+      let entriesIgnored = 0;
+      const daysLoaded = new Set();
+      const lateDecemberEntries = []; // Jours 25-31
+      
       if (planningFromDB) {
-        let processedCount = 0;
-        let endMonthProcessed = 0;
-        
         planningFromDB.forEach(entry => {
           const agent = agentsResult.find(a => a.id === entry.agent_id);
           if (agent) {
+            entriesProcessed++;
             const agentName = `${agent.nom} ${agent.prenom}`;
             // FIX: Parse la date directement sans passer par Date object
             // Évite le bug de fuseau horaire (UTC → heure locale = J-1)
             const day = parseDayFromDateString(entry.date);
             
-            if (day >= 23) endMonthProcessed++;
+            daysLoaded.add(day);
+            
+            // 🔍 DEBUG: Log spécifique pour fin décembre
+            if (day >= 25) {
+              lateDecemberEntries.push({
+                agent: agentName,
+                date: entry.date,
+                day: day,
+                service: entry.service_code
+              });
+            }
             
             // Construire l'objet de données de cellule avec note ET postes supplémentaires
             const cellData = {
@@ -153,17 +157,48 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
             } else {
               planningData[agentName][day] = cellData;
             }
-            processedCount++;
+          } else {
+            entriesIgnored++;
+            console.warn('⚠️ Entrée ignorée - agent non trouvé:', entry.agent_id, entry.date);
           }
         });
-        
-        console.log(`✅ Planning chargé: ${processedCount} entrées traitées (fin de mois: ${endMonthProcessed})`);
       }
+      
+      // 🔍 DEBUG: Résumé du chargement
+      console.log('🔍 DEBUG Résumé chargement:');
+      console.log('   → Entrées traitées:', entriesProcessed);
+      console.log('   → Entrées ignorées (agent non trouvé):', entriesIgnored);
+      console.log('   → Jours uniques chargés:', [...daysLoaded].sort((a,b) => a-b).join(', '));
+      console.log('   → Nombre de jours:', daysLoaded.size);
+      
+      // 🔍 DEBUG: Détail fin décembre
+      if (month === 'DECEMBRE') {
+        console.log('🔍 DEBUG FIN DÉCEMBRE (jours 25-31):');
+        console.log('   → Nombre d\'entrées:', lateDecemberEntries.length);
+        if (lateDecemberEntries.length > 0) {
+          console.table(lateDecemberEntries.slice(0, 10)); // Max 10 pour lisibilité
+        } else {
+          console.log('   ⚠️ AUCUNE ENTRÉE POUR FIN DÉCEMBRE !');
+        }
+        
+        // Vérifier si les jours 25-31 sont dans daysLoaded
+        const missingDays = [];
+        for (let d = 25; d <= 31; d++) {
+          if (!daysLoaded.has(d)) {
+            missingDays.push(d);
+          }
+        }
+        if (missingDays.length > 0) {
+          console.log('   ⚠️ Jours manquants:', missingDays.join(', '));
+        }
+      }
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
       setPlanning(planningData);
       
     } catch (err) {
-      console.error('❌ Erreur chargement données:', err);
+      console.error('Erreur chargement données:', err);
       setError(`Erreur de connexion: ${err.message}`);
       setConnectionStatus('❌ Erreur de connexion');
     } finally {
@@ -210,6 +245,9 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
 
       const date = planningService.formatDate(day, currentMonth, currentYear);
       
+      // 🔍 DEBUG: Log de la mise à jour
+      console.log(`🔍 DEBUG updateCell: ${agentName} jour ${day} → date calculée: ${date}`);
+      
       if (value === '') {
         // Suppression de l'entrée
         await supabaseService.deletePlanning(agent.id, date);
@@ -254,6 +292,14 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
 
   // Charger les données quand l'utilisateur, le mois ou l'année change
   useEffect(() => {
+    // 🔍 DEBUG: Log du déclenchement de l'effet
+    console.log('🔍 DEBUG useEffect triggered:', {
+      hasUser: !!user,
+      currentMonth,
+      currentYear,
+      timestamp: new Date().toISOString()
+    });
+    
     if (user) {
       loadData();
     }
