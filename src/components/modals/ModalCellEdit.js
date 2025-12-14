@@ -3,45 +3,24 @@ import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeft
 import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, POSTES_PAR_GROUPE, GROUPES_AVEC_POSTE } from '../../constants/config';
 
 // Couleurs UNIQUEMENT pour la modal d'édition 
-// CORRIGÉES selon spécifications utilisateur :
-// - MA en ROUGE 🔴
-// - C (congés) en JAUNE/OR 🟡
-// - HAB/FO en ORANGE 🟠
-// - D (DISPO) en BLEU 🔵
-// - RP/RU en VERT 🟢
-// - VT en JAUNE CLAIR 🟨
-// - D2I en GRIS ⬜
-// - Pas de couleur pour -, O, X et les postes de réserve
 const MODAL_COLORS = {
-  'MA': 'bg-red-200 text-red-800 font-semibold',          // Maladie = ROUGE 🔴
-  'C': 'bg-yellow-400 text-yellow-900 font-semibold',     // Congés = JAUNE/OR 🟡
-  'RP': 'bg-green-100 text-green-800',                     // Repos = Vert 🟢
-  'RU': 'bg-green-100 text-green-800',                     // Repos = Vert 🟢
-  'HAB': 'bg-orange-200 text-orange-800',                  // Habilitation = ORANGE 🟠
-  'FO': 'bg-orange-200 text-orange-800',                   // Formation = ORANGE 🟠
-  'D': 'bg-blue-200 text-blue-800',                        // Disponible = BLEU 🔵
-  'I': 'bg-pink-100 text-pink-700',                        // Inactif
-  'NU': 'bg-gray-200 text-gray-600',                       // Non Utilisé
-  'VT': 'bg-yellow-100 text-yellow-800',                   // Temps partiel = JAUNE CLAIR 🟨
-  'D2I': 'bg-gray-300 text-gray-700',                      // D2I = GRIS ⬜
-  // Les autres codes (-, O, X) n'ont pas de couleur (gris par défaut)
+  'MA': 'bg-red-200 text-red-800 font-semibold',
+  'C': 'bg-yellow-400 text-yellow-900 font-semibold',
+  'RP': 'bg-green-100 text-green-800',
+  'RU': 'bg-green-100 text-green-800',
+  'HAB': 'bg-orange-200 text-orange-800',
+  'FO': 'bg-orange-200 text-orange-800',
+  'D': 'bg-blue-200 text-blue-800',
+  'I': 'bg-pink-100 text-pink-700',
+  'NU': 'bg-gray-200 text-gray-600',
+  'VT': 'bg-yellow-100 text-yellow-800',
+  'D2I': 'bg-gray-300 text-gray-700',
 };
 
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.1.0 - Fix récupération service pour croisement
- * @param {Object} selectedCell - {agent: string, day: number}
- * @param {Object|null} cellData - Données existantes {service, poste, note, texteLibre, postesSupplementaires}
- * @param {Object} agentsData - Données des agents par groupe
- * @param {Array} allAgents - Liste complète de tous les agents (pour croisement)
- * @param {Object} allPlanning - Données planning complet {agentName: {day: cellData}}
- * @param {number} currentMonth - Mois actuel (index 0-11)
- * @param {number} currentYear - Année actuelle
- * @param {string} userEmail - Email de l'utilisateur connecté
- * @param {Function} onUpdateCell - Callback pour sauvegarder (agentName, day, value)
- * @param {Function} onCroisement - Callback pour effectuer un croisement
- * @param {Function} onClose - Callback pour fermer le modal
+ * @version 2.2.0 - Debug récupération service pour croisement
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -79,14 +58,21 @@ const ModalCellEdit = ({
   const [croisementSearch, setCroisementSearch] = useState('');
   const [croisementLoading, setCroisementLoading] = useState(false);
 
-  // Initialiser les états avec les données existantes (y compris postes supplémentaires)
+  // DEBUG: Log des props reçues
+  useEffect(() => {
+    console.log('🔍 ModalCellEdit - Props reçues:');
+    console.log('   allPlanning keys:', Object.keys(allPlanning || {}));
+    console.log('   allPlanning sample:', Object.entries(allPlanning || {}).slice(0, 2));
+    console.log('   selectedCell:', selectedCell);
+  }, [allPlanning, selectedCell]);
+
+  // Initialiser les états avec les données existantes
   useEffect(() => {
     if (cellData) {
       setTempService(cellData.service || '');
       setTempPoste(cellData.poste || '');
       setTempNote(cellData.note || '');
       setTempTexteLibre(cellData.texteLibre || '');
-      // ✅ Charger les postes supplémentaires existants depuis la BDD
       setTempPostesSupplementaires(cellData.postesSupplementaires || []);
     } else {
       setTempService('');
@@ -116,13 +102,11 @@ const ModalCellEdit = ({
 
   // Déterminer les postes disponibles pour cet agent
   const getAvailablePostes = () => {
-    // Vérifier si le groupe a des postes spécifiques définis
     for (const [groupeKey, postes] of Object.entries(POSTES_PAR_GROUPE)) {
       if (agentGroup?.includes(groupeKey) || agentGroup === groupeKey) {
         return postes;
       }
     }
-    // Sinon, tous les postes pour les réserves
     return POSTES_CODES;
   };
 
@@ -142,15 +126,13 @@ const ModalCellEdit = ({
   // Fonction pour obtenir la couleur d'un code service dans la modal
   const getModalColor = (code, isSelected) => {
     if (isSelected) {
-      // Si sélectionné : bordure bleue + couleur spécifique ou gris clair
       const baseColor = MODAL_COLORS[code] || 'bg-gray-200 text-gray-800';
       return `ring-2 ring-blue-500 ${baseColor}`;
     }
-    // Non sélectionné : couleur spécifique ou gris très clair
     return MODAL_COLORS[code] || 'bg-gray-100 text-gray-700 hover:bg-gray-200';
   };
 
-  // Toggle un poste supplémentaire (ajout/retrait du tableau)
+  // Toggle un poste supplémentaire
   const togglePosteSupplementaire = (code) => {
     setTempPostesSupplementaires(prev => {
       if (prev.includes(code)) {
@@ -161,33 +143,29 @@ const ModalCellEdit = ({
     });
   };
 
-  // Ouvrir la modal pour AJOUTER une note
+  // === GESTION NOTES ===
   const openAddNoteModal = () => {
     setNoteInput('');
     setIsEditMode(false);
     setShowNoteModal(true);
   };
 
-  // Ouvrir la modal pour MODIFIER une note existante
   const openEditNoteModal = () => {
     setNoteInput(tempNote);
     setIsEditMode(true);
     setShowNoteModal(true);
   };
 
-  // Valider la note
   const handleValidateNote = () => {
     setTempNote(noteInput.trim());
     setShowNoteModal(false);
   };
 
-  // Annuler la note
   const handleCancelNote = () => {
     setNoteInput('');
     setShowNoteModal(false);
   };
 
-  // Supprimer la note
   const handleDeleteNote = () => {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer cette note ?')) {
       setTempNote('');
@@ -195,41 +173,34 @@ const ModalCellEdit = ({
   };
 
   // === GESTION TEXTE LIBRE ===
-  
-  // Ouvrir la modal pour AJOUTER un texte libre
   const openAddTexteLibreModal = () => {
     setTexteLibreInput('');
     setIsTexteLibreEditMode(false);
     setShowTexteLibreModal(true);
   };
 
-  // Ouvrir la modal pour MODIFIER un texte libre existant
   const openEditTexteLibreModal = () => {
     setTexteLibreInput(tempTexteLibre);
     setIsTexteLibreEditMode(true);
     setShowTexteLibreModal(true);
   };
 
-  // Valider le texte libre
   const handleValidateTexteLibre = () => {
     setTempTexteLibre(texteLibreInput.trim());
     setShowTexteLibreModal(false);
   };
 
-  // Annuler le texte libre
   const handleCancelTexteLibre = () => {
     setTexteLibreInput('');
     setShowTexteLibreModal(false);
   };
 
-  // Supprimer le texte libre
   const handleDeleteTexteLibre = () => {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce texte libre ?')) {
       setTempTexteLibre('');
     }
   };
 
-  // Sélectionner "Texte libre" comme service
   const selectTexteLibre = () => {
     setTempService('LIBRE');
     openAddTexteLibreModal();
@@ -237,31 +208,32 @@ const ModalCellEdit = ({
 
   // === GESTION CROISEMENT ===
 
-  // Ouvrir la modal de croisement
   const openCroisementModal = () => {
+    // DEBUG: Afficher la structure du planning
+    console.log('🔄 Ouverture modal croisement');
+    console.log('   allPlanning:', allPlanning);
+    console.log('   Nombre d\'agents dans planning:', Object.keys(allPlanning).length);
+    console.log('   Exemple agent:', Object.keys(allPlanning)[0]);
+    console.log('   Données exemple:', allPlanning[Object.keys(allPlanning)[0]]);
+    
     setSelectedCroisementAgent(null);
     setCroisementSearch('');
     setShowCroisementModal(true);
   };
 
-  // Fermer la modal de croisement
   const closeCroisementModal = () => {
     setShowCroisementModal(false);
     setSelectedCroisementAgent(null);
     setCroisementSearch('');
   };
 
-  // Filtrer les agents pour le croisement (exclure l'agent actuel)
+  // Filtrer les agents pour le croisement
   const getFilteredAgentsForCroisement = () => {
-    // Aplatir tous les agents de agentsData
     const allAgentsList = Object.values(agentsData).flat();
     
-    // Filtrer : exclure l'agent actuel et appliquer la recherche
     return allAgentsList.filter(agent => {
       const fullName = `${agent.nom} ${agent.prenom}`;
-      // Exclure l'agent actuel
       if (fullName === selectedCell.agent) return false;
-      // Appliquer le filtre de recherche
       if (croisementSearch) {
         const search = croisementSearch.toLowerCase();
         return fullName.toLowerCase().includes(search) || 
@@ -274,19 +246,29 @@ const ModalCellEdit = ({
 
   /**
    * Récupérer les données planning d'un agent pour un jour donné
-   * FIX v2.1.0: Utilise la bonne structure allPlanning[agentName][day]
-   * @param {string} agentName - Nom complet de l'agent
-   * @param {number} day - Jour du mois
-   * @returns {Object|null} {service, poste, note, postesSupplementaires}
+   * Structure attendue: allPlanning[agentName][day]
    */
   const getAgentPlanningForDay = (agentName, day) => {
-    // Structure correcte: allPlanning[agentName][day]
+    // DEBUG détaillé
+    console.log(`🔍 getAgentPlanningForDay("${agentName}", ${day})`);
+    console.log(`   allPlanning existe:`, !!allPlanning);
+    console.log(`   allPlanning[agentName] existe:`, !!allPlanning[agentName]);
+    
+    if (allPlanning[agentName]) {
+      console.log(`   allPlanning[agentName] keys:`, Object.keys(allPlanning[agentName]));
+      console.log(`   allPlanning[agentName][${day}]:`, allPlanning[agentName][day]);
+    }
+    
     const cellValue = allPlanning[agentName]?.[day];
     
-    if (!cellValue) return null;
+    if (!cellValue) {
+      console.log(`   → Résultat: null (pas de données)`);
+      return null;
+    }
     
     // Si c'est une string simple (juste le code service)
     if (typeof cellValue === 'string') {
+      console.log(`   → Résultat (string):`, cellValue);
       return { 
         service: cellValue, 
         poste: null, 
@@ -296,13 +278,15 @@ const ModalCellEdit = ({
     }
     
     // Si c'est un objet avec les détails
-    return {
+    const result = {
       service: cellValue.service || null,
       poste: cellValue.poste || null,
       note: cellValue.note || null,
       postesSupplementaires: cellValue.postesSupplementaires || null,
       texteLibre: cellValue.texteLibre || null
     };
+    console.log(`   → Résultat (object):`, result);
+    return result;
   };
 
   // Effectuer le croisement
@@ -319,14 +303,12 @@ const ModalCellEdit = ({
       const agent2Name = `${selectedCroisementAgent.nom} ${selectedCroisementAgent.prenom}`;
       const day = selectedCell.day;
 
-      // Récupérer les données actuelles des deux agents
       const agent1Data = cellData || {};
       const agent2Data = getAgentPlanningForDay(agent2Name, day) || {};
 
       console.log('🔄 Croisement - Agent 1 data:', agent1Data);
       console.log('🔄 Croisement - Agent 2 data:', agent2Data);
 
-      // Préparer les nouvelles données avec échange
       const newAgent1Data = {
         service: agent2Data.service || '',
         poste: agent2Data.poste || '',
@@ -346,7 +328,6 @@ const ModalCellEdit = ({
       console.log('🔄 Croisement - New Agent 1 data:', newAgent1Data);
       console.log('🔄 Croisement - New Agent 2 data:', newAgent2Data);
 
-      // Appeler le callback de croisement si disponible
       if (onCroisement) {
         await onCroisement({
           date: day,
@@ -357,12 +338,10 @@ const ModalCellEdit = ({
           createdBy: userEmail
         });
       } else {
-        // Fallback: mise à jour directe via onUpdateCell
         await onUpdateCell(agent1Name, day, newAgent1Data);
         await onUpdateCell(agent2Name, day, newAgent2Data);
       }
 
-      // Fermer les modals
       closeCroisementModal();
       onClose();
 
@@ -374,7 +353,6 @@ const ModalCellEdit = ({
     }
   };
 
-  // Trouver l'ID d'un agent par son nom complet
   const findAgentId = (fullName) => {
     for (const agents of Object.values(agentsData)) {
       const agent = agents.find(a => `${a.nom} ${a.prenom}` === fullName);
@@ -386,7 +364,6 @@ const ModalCellEdit = ({
   const handleSave = () => {
     let planningData;
     
-    // Si texte libre est sélectionné, utiliser le texte libre comme service
     const finalService = tempService === 'LIBRE' && tempTexteLibre 
       ? tempTexteLibre 
       : tempService;
@@ -477,7 +454,6 @@ const ModalCellEdit = ({
                 </button>
               ))}
               
-              {/* Bouton Texte Libre */}
               <button
                 onClick={selectTexteLibre}
                 className={`p-2 rounded text-center text-xs transition-all ${
@@ -494,7 +470,6 @@ const ModalCellEdit = ({
               </button>
             </div>
             
-            {/* Affichage du texte libre si sélectionné */}
             {tempService === 'LIBRE' && hasExistingTexteLibre && (
               <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
                 <div className="flex items-center justify-between">
@@ -503,18 +478,10 @@ const ModalCellEdit = ({
                     <p className="text-sm text-purple-900 font-medium">{tempTexteLibre}</p>
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      onClick={openEditTexteLibreModal}
-                      className="p-1 text-purple-600 hover:text-purple-800"
-                      title="Modifier"
-                    >
+                    <button onClick={openEditTexteLibreModal} className="p-1 text-purple-600 hover:text-purple-800" title="Modifier">
                       <Edit3 className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={handleDeleteTexteLibre}
-                      className="p-1 text-red-500 hover:text-red-700"
-                      title="Supprimer"
-                    >
+                    <button onClick={handleDeleteTexteLibre} className="p-1 text-red-500 hover:text-red-700" title="Supprimer">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -523,7 +490,7 @@ const ModalCellEdit = ({
             )}
           </div>
 
-          {/* Section Poste (pour agents avec sélecteur de poste) - SANS COULEUR */}
+          {/* Section Poste */}
           {hasPosteSelector && (
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">{getPosteLabel()}</label>
@@ -545,7 +512,7 @@ const ModalCellEdit = ({
             </div>
           )}
 
-          {/* Section Postes figés / Postes supplémentaires - SANS COULEUR */}
+          {/* Section Postes supplémentaires */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Postes figés / Postes supplémentaires 
@@ -583,12 +550,11 @@ const ModalCellEdit = ({
             )}
           </div>
 
-          {/* Section Notes & Croisement - BOUTONS COMPACTS */}
+          {/* Section Notes & Croisement */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">Notes & Croisement</label>
             
             <div className="flex gap-2 mb-3">
-              {/* Bouton + Note (compact) */}
               <button
                 onClick={hasExistingNote ? openEditNoteModal : openAddNoteModal}
                 className={`flex items-center justify-center gap-1 px-3 py-2 text-sm rounded-lg border-2 transition-all ${
@@ -598,15 +564,10 @@ const ModalCellEdit = ({
                 }`}
                 title={hasExistingNote ? "Modifier la note" : "Ajouter une note"}
               >
-                {hasExistingNote ? (
-                  <Edit3 className="w-4 h-4" />
-                ) : (
-                  <MessageSquarePlus className="w-4 h-4" />
-                )}
+                {hasExistingNote ? <Edit3 className="w-4 h-4" /> : <MessageSquarePlus className="w-4 h-4" />}
                 <span>{hasExistingNote ? 'Note' : '+ Note'}</span>
               </button>
 
-              {/* Bouton 🗑️ Note (compact) */}
               <button
                 onClick={handleDeleteNote}
                 disabled={!hasExistingNote}
@@ -621,7 +582,6 @@ const ModalCellEdit = ({
                 <span>Note</span>
               </button>
 
-              {/* Bouton Croisement */}
               <button
                 onClick={openCroisementModal}
                 className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg border-2 bg-purple-100 border-purple-400 text-purple-800 hover:bg-purple-200 transition-all"
@@ -646,19 +606,13 @@ const ModalCellEdit = ({
             )}
           </div>
 
-          {/* Boutons d'action principaux */}
+          {/* Boutons d'action */}
           <div className="flex justify-between pt-4 border-t">
-            <button 
-              onClick={handleDelete}
-              className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-            >
+            <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700">
               Effacer
             </button>
             <div className="flex space-x-2">
-              <button 
-                onClick={onClose} 
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-              >
+              <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50">
                 Annuler
               </button>
               <button 
@@ -673,29 +627,16 @@ const ModalCellEdit = ({
         </div>
       </div>
 
-      {/* Sous-modal pour ajouter/modifier une note */}
+      {/* Sous-modal Note */}
       {showNoteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]" onClick={handleCancelNote}>
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                {isEditMode ? (
-                  <>
-                    <Edit3 className="w-5 h-5 text-amber-600" />
-                    Modifier la note
-                  </>
-                ) : (
-                  <>
-                    <MessageSquarePlus className="w-5 h-5 text-amber-600" />
-                    Ajouter une note
-                  </>
-                )}
+                {isEditMode ? <><Edit3 className="w-5 h-5 text-amber-600" />Modifier la note</> : <><MessageSquarePlus className="w-5 h-5 text-amber-600" />Ajouter une note</>}
               </h4>
-              <button onClick={handleCancelNote} className="text-gray-500 hover:text-gray-700">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={handleCancelNote} className="text-gray-500 hover:text-gray-700"><X className="w-5 h-5" /></button>
             </div>
-            
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Commentaire pour <span className="font-semibold">{selectedCell.agent}</span> - Jour {selectedCell.day}
@@ -707,60 +648,33 @@ const ModalCellEdit = ({
                 className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none text-sm"
                 autoFocus
               />
-              <p className="text-xs text-gray-500 mt-1">
-                {noteInput.length} caractères
-              </p>
+              <p className="text-xs text-gray-500 mt-1">{noteInput.length} caractères</p>
             </div>
-
             <div className="flex justify-end gap-3">
-              <button
-                onClick={handleCancelNote}
-                className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleValidateNote}
-                className="px-5 py-2.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium flex items-center gap-2"
-              >
-                <Check className="w-4 h-4" />
-                Valider
+              <button onClick={handleCancelNote} className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
+              <button onClick={handleValidateNote} className="px-5 py-2.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium flex items-center gap-2">
+                <Check className="w-4 h-4" />Valider
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Sous-modal pour ajouter/modifier un texte libre */}
+      {/* Sous-modal Texte Libre */}
       {showTexteLibreModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]" onClick={handleCancelTexteLibre}>
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                {isTexteLibreEditMode ? (
-                  <>
-                    <Edit3 className="w-5 h-5 text-purple-600" />
-                    Modifier le texte libre
-                  </>
-                ) : (
-                  <>
-                    <Type className="w-5 h-5 text-purple-600" />
-                    Saisir un texte libre
-                  </>
-                )}
+                {isTexteLibreEditMode ? <><Edit3 className="w-5 h-5 text-purple-600" />Modifier le texte libre</> : <><Type className="w-5 h-5 text-purple-600" />Saisir un texte libre</>}
               </h4>
-              <button onClick={handleCancelTexteLibre} className="text-gray-500 hover:text-gray-700">
-                <X className="w-5 h-5" />
-              </button>
+              <button onClick={handleCancelTexteLibre} className="text-gray-500 hover:text-gray-700"><X className="w-5 h-5" /></button>
             </div>
-            
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Texte personnalisé pour <span className="font-semibold">{selectedCell.agent}</span> - Jour {selectedCell.day}
               </label>
-              <p className="text-xs text-gray-500 mb-3">
-                Ce texte sera affiché directement dans la cellule du planning
-              </p>
+              <p className="text-xs text-gray-500 mb-3">Ce texte sera affiché directement dans la cellule du planning</p>
               <input
                 type="text"
                 value={texteLibreInput}
@@ -770,32 +684,19 @@ const ModalCellEdit = ({
                 autoFocus
                 maxLength={20}
               />
-              <p className="text-xs text-gray-500 mt-1">
-                {texteLibreInput.length}/20 caractères
-              </p>
+              <p className="text-xs text-gray-500 mt-1">{texteLibreInput.length}/20 caractères</p>
             </div>
-
             <div className="flex justify-end gap-3">
-              <button
-                onClick={handleCancelTexteLibre}
-                className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleValidateTexteLibre}
-                disabled={!texteLibreInput.trim()}
-                className="px-5 py-2.5 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium flex items-center gap-2 disabled:bg-gray-300"
-              >
-                <Check className="w-4 h-4" />
-                Valider
+              <button onClick={handleCancelTexteLibre} className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
+              <button onClick={handleValidateTexteLibre} disabled={!texteLibreInput.trim()} className="px-5 py-2.5 text-sm bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium flex items-center gap-2 disabled:bg-gray-300">
+                <Check className="w-4 h-4" />Valider
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Sous-modal pour le croisement */}
+      {/* Sous-modal Croisement */}
       {showCroisementModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]" onClick={closeCroisementModal}>
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -809,12 +710,17 @@ const ModalCellEdit = ({
               </button>
             </div>
             
+            {/* DEBUG INFO */}
+            <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+              <p>🔍 Debug: {Object.keys(allPlanning).length} agents dans planning</p>
+              <p>📅 Jour: {selectedCell.day}</p>
+            </div>
+            
             <div className="mb-4">
               <p className="text-sm text-gray-600 mb-3">
                 Échanger le service de <span className="font-semibold text-purple-700">{selectedCell.agent}</span> (Jour {selectedCell.day}) avec :
               </p>
               
-              {/* Barre de recherche */}
               <div className="relative mb-3">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
@@ -826,12 +732,9 @@ const ModalCellEdit = ({
                 />
               </div>
 
-              {/* Liste des agents */}
               <div className="border border-gray-200 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
                 {getFilteredAgentsForCroisement().length === 0 ? (
-                  <div className="p-4 text-center text-gray-500 text-sm">
-                    Aucun agent trouvé
-                  </div>
+                  <div className="p-4 text-center text-gray-500 text-sm">Aucun agent trouvé</div>
                 ) : (
                   getFilteredAgentsForCroisement().map(agent => {
                     const fullName = `${agent.nom} ${agent.prenom}`;
@@ -843,9 +746,7 @@ const ModalCellEdit = ({
                         key={agent.id}
                         onClick={() => setSelectedCroisementAgent(agent)}
                         className={`w-full px-4 py-3 text-left border-b border-gray-100 last:border-b-0 transition-colors ${
-                          isSelected 
-                            ? 'bg-purple-100 border-l-4 border-l-purple-500' 
-                            : 'hover:bg-gray-50'
+                          isSelected ? 'bg-purple-100 border-l-4 border-l-purple-500' : 'hover:bg-gray-50'
                         }`}
                       >
                         <div className="flex justify-between items-center">
@@ -855,12 +756,12 @@ const ModalCellEdit = ({
                           </div>
                           <div className="text-right">
                             {agentPlanning?.service ? (
-                              <span className="inline-block px-2 py-1 text-xs font-medium bg-gray-100 rounded">
+                              <span className="inline-block px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded">
                                 {agentPlanning.service}
                                 {agentPlanning.poste && ` / ${agentPlanning.poste}`}
                               </span>
                             ) : (
-                              <span className="text-xs text-gray-400">Pas de service</span>
+                              <span className="text-xs text-gray-400 italic">Pas de service</span>
                             )}
                           </div>
                         </div>
@@ -871,7 +772,6 @@ const ModalCellEdit = ({
               </div>
             </div>
 
-            {/* Aperçu du croisement */}
             {selectedCroisementAgent && (
               <div className="mb-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
                 <p className="text-xs text-purple-700 font-medium mb-2">Aperçu du croisement :</p>
@@ -900,27 +800,16 @@ const ModalCellEdit = ({
             )}
 
             <div className="flex justify-end gap-3 pt-4 border-t mt-auto">
-              <button
-                onClick={closeCroisementModal}
-                className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
-              >
-                Annuler
-              </button>
+              <button onClick={closeCroisementModal} className="px-5 py-2.5 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">Annuler</button>
               <button
                 onClick={handleConfirmCroisement}
                 disabled={!selectedCroisementAgent || croisementLoading}
                 className="px-5 py-2.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium flex items-center gap-2 disabled:bg-gray-300"
               >
                 {croisementLoading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    En cours...
-                  </>
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />En cours...</>
                 ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    Confirmer le croisement
-                  </>
+                  <><Check className="w-4 h-4" />Confirmer le croisement</>
                 )}
               </button>
             </div>
