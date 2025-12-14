@@ -263,18 +263,65 @@ class SupabaseService {
   // PLANNING
   // ============================================
 
+  /**
+   * Récupère les entrées de planning pour une période donnée
+   * FIX v2.9.1: Augmentation limite de 1000 (défaut) à 2000 pour éviter troncature
+   * Avec 45 agents × 31 jours = 1395 entrées par mois
+   * 
+   * @param {string} startDate - Date de début (YYYY-MM-DD)
+   * @param {string} endDate - Date de fin (YYYY-MM-DD)
+   * @returns {Promise<Array>} Entrées de planning
+   */
   async getPlanningForMonth(startDate, endDate) {
-    const { data, error } = await supabase
+    console.log(`🔍 getPlanningForMonth: ${startDate} → ${endDate}`);
+    
+    const { data, error, count } = await supabase
       .from('planning')
-      .select('*, commentaire, postes_supplementaires')
+      .select('*, commentaire, postes_supplementaires', { count: 'exact' })
       .gte('date', startDate)
       .lte('date', endDate)
-      .order('date');
+      .order('date')
+      .limit(2000); // FIX: Supabase limite par défaut à 1000 lignes!
     
     if (error) {
-      console.error('Erreur getPlanningForMonth:', error);
+      console.error('❌ Erreur getPlanningForMonth:', error);
       throw error;
     }
+    
+    // Logs de débogage détaillés
+    console.log(`📊 getPlanningForMonth: ${data?.length || 0} entrées récupérées (count exact: ${count})`);
+    
+    if (data && data.length > 0) {
+      // Analyser la répartition par jour
+      const byDay = {};
+      data.forEach(entry => {
+        const day = parseInt(entry.date.split('-')[2], 10);
+        byDay[day] = (byDay[day] || 0) + 1;
+      });
+      console.log('📊 Répartition par jour:', byDay);
+      
+      // Vérifier spécifiquement les jours 23-31
+      const endMonthEntries = data.filter(entry => {
+        const day = parseInt(entry.date.split('-')[2], 10);
+        return day >= 23;
+      });
+      console.log(`📊 Entrées jours 23-31: ${endMonthEntries.length}`);
+      
+      // Vérifier si la limite a été atteinte
+      if (data.length >= 2000) {
+        console.warn('⚠️ ATTENTION: Limite de 2000 entrées atteinte! Certaines données peuvent manquer.');
+      }
+      
+      // Debug: lister quelques entrées de fin de mois
+      if (endMonthEntries.length > 0 && endMonthEntries.length < 50) {
+        console.log('📋 Détail entrées fin de mois:', endMonthEntries.map(e => ({
+          date: e.date,
+          agent_id: e.agent_id,
+          service: e.service_code
+        })));
+      }
+    }
+    
     return data || [];
   }
 
