@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LogOut } from 'lucide-react';
 import './LandingPage.css';
 import ModalAnnuaire from './modals/ModalAnnuaire';
 import ModalDocuments from './modals/ModalDocuments';
@@ -12,9 +13,9 @@ import ModalStatistiques from './modals/ModalStatistiques';
  * Design inspiré du template Nexaverse avec adaptations pour COGC Planning.
  * Affiche un menu moderne avec accès au planning et autres fonctionnalités.
  * 
- * v3.0 - Passage à 9 boutons avec Mon Planning et Statistiques
+ * v3.1 - Ajout bouton déconnexion
  */
-const LandingPage = ({ onNavigate, user }) => {
+const LandingPage = ({ onNavigate, user, onSignOut }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [menuVisible, setMenuVisible] = useState(false);
   const [showAnnuaire, setShowAnnuaire] = useState(false);
@@ -182,15 +183,52 @@ const LandingPage = ({ onNavigate, user }) => {
             <span className="sncf-badge-text">SNCF Réseau</span>
           </div>
 
-          {/* User info if logged in */}
+          {/* User info with logout button */}
           {user && (
             <div style={{ 
               marginTop: '15px', 
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
               fontSize: '13px', 
               color: 'rgba(255,255,255,0.6)',
               letterSpacing: '1px'
             }}>
-              Connecté : {user.email}
+              <span>Connecté : {user.email}</span>
+              {onSignOut && (
+                <button
+                  onClick={onSignOut}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    color: 'rgba(255,255,255,0.8)',
+                    backgroundColor: 'rgba(255,255,255,0.1)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    letterSpacing: '0.5px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.target.style.backgroundColor = 'rgba(201, 25, 50, 0.3)';
+                    e.target.style.borderColor = 'rgba(201, 25, 50, 0.5)';
+                    e.target.style.color = '#fff';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.target.style.backgroundColor = 'rgba(255,255,255,0.1)';
+                    e.target.style.borderColor = 'rgba(255,255,255,0.2)';
+                    e.target.style.color = 'rgba(255,255,255,0.8)';
+                  }}
+                  title="Se déconnecter"
+                >
+                  <LogOut size={14} />
+                  Déconnexion
+                </button>
+              )}
             </div>
           )}
         </header>
