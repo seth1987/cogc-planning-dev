@@ -14,6 +14,7 @@ import { supabase } from '../../lib/supabaseClient';
  * 
  * v1.2 - Ajout décompte mensuel/annuel des postes supplémentaires
  * v1.3 - Support statut_conge (C, CNA) - C? non compté car transitoire
+ * v1.4 - Sections détails repliables par défaut, suppression doublon Répartition Vacations
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -23,8 +24,12 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     byMonth: {},
     annual: {},
     supplements: {},
-    conges: {}  // v1.3: Statistiques congé (C et CNA uniquement)
+    conges: {}
   });
+  
+  // v1.4: États pour les sections repliables (fermées par défaut)
+  const [showDetailMois, setShowDetailMois] = useState(false);
+  const [showDetailSupplements, setShowDetailSupplements] = useState(false);
 
   const months = [
     'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
@@ -228,6 +233,9 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   useEffect(() => {
     if (isOpen) {
       loadAgentInfo();
+      // v1.4: Réinitialiser les sections repliables à la fermeture
+      setShowDetailMois(false);
+      setShowDetailSupplements(false);
     }
   }, [isOpen, loadAgentInfo]);
 
@@ -450,68 +458,77 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               </div>
             </div>
 
-            {/* Tableau mensuel vacations */}
+            {/* v1.4: Tableau mensuel vacations - REPLIABLE */}
             <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>📆 Détail par Mois</h3>
-              <div style={styles.tableContainer}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>Mois</th>
-                      <th style={{...styles.th, color: '#FFC107'}}>-</th>
-                      <th style={{...styles.th, color: '#FF5722'}}>O</th>
-                      <th style={{...styles.th, color: '#3F51B5'}}>X</th>
-                      <th style={{...styles.th, color: '#4CAF50'}}>RP</th>
-                      <th style={{...styles.th, color: '#facc15'}}>C</th>
-                      <th style={{...styles.th, color: '#fca5a5'}}>CNA</th>
-                      <th style={{...styles.th, color: '#f44336'}}>MA</th>
-                      <th style={styles.th}>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {months.map((month, idx) => (
-                      <tr key={idx} style={styles.tr}>
-                        <td style={styles.td}>{month}</td>
-                        <td style={{...styles.td, color: '#FFC107', fontWeight: 'bold'}}>
-                          {stats.byMonth[idx]?.matin || 0}
-                        </td>
-                        <td style={{...styles.td, color: '#FF5722', fontWeight: 'bold'}}>
-                          {stats.byMonth[idx]?.soiree || 0}
-                        </td>
-                        <td style={{...styles.td, color: '#3F51B5', fontWeight: 'bold'}}>
-                          {stats.byMonth[idx]?.nuit || 0}
-                        </td>
-                        <td style={styles.td}>{stats.byMonth[idx]?.rp || 0}</td>
-                        <td style={{...styles.td, color: '#facc15', fontWeight: stats.conges?.['C']?.byMonth[idx] > 0 ? 'bold' : 'normal'}}>
-                          {stats.conges?.['C']?.byMonth[idx] || 0}
-                        </td>
-                        <td style={{...styles.td, color: '#fca5a5', fontWeight: stats.conges?.['CNA']?.byMonth[idx] > 0 ? 'bold' : 'normal'}}>
-                          {stats.conges?.['CNA']?.byMonth[idx] || 0}
-                        </td>
-                        <td style={styles.td}>{stats.byMonth[idx]?.ma || 0}</td>
-                        <td style={{...styles.td, fontWeight: 'bold'}}>
-                          {stats.byMonth[idx]?.total || 0}
-                        </td>
+              <h3 
+                style={styles.sectionTitleClickable} 
+                onClick={() => setShowDetailMois(!showDetailMois)}
+              >
+                <span style={styles.toggleIcon}>{showDetailMois ? '▼' : '▶'}</span>
+                📆 Détail par Mois
+              </h3>
+              
+              {showDetailMois && (
+                <div style={styles.tableContainer}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Mois</th>
+                        <th style={{...styles.th, color: '#FFC107'}}>-</th>
+                        <th style={{...styles.th, color: '#FF5722'}}>O</th>
+                        <th style={{...styles.th, color: '#3F51B5'}}>X</th>
+                        <th style={{...styles.th, color: '#4CAF50'}}>RP</th>
+                        <th style={{...styles.th, color: '#facc15'}}>C</th>
+                        <th style={{...styles.th, color: '#fca5a5'}}>CNA</th>
+                        <th style={{...styles.th, color: '#f44336'}}>MA</th>
+                        <th style={styles.th}>Total</th>
                       </tr>
-                    ))}
-                    {/* Ligne totaux */}
-                    <tr style={{...styles.tr, backgroundColor: 'rgba(0, 240, 255, 0.1)'}}>
-                      <td style={{...styles.td, fontWeight: 'bold'}}>TOTAL</td>
-                      <td style={{...styles.td, color: '#FFC107', fontWeight: 'bold'}}>{stats.annual.matin}</td>
-                      <td style={{...styles.td, color: '#FF5722', fontWeight: 'bold'}}>{stats.annual.soiree}</td>
-                      <td style={{...styles.td, color: '#3F51B5', fontWeight: 'bold'}}>{stats.annual.nuit}</td>
-                      <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.rp}</td>
-                      <td style={{...styles.td, color: '#facc15', fontWeight: 'bold'}}>{stats.conges?.['C']?.count || 0}</td>
-                      <td style={{...styles.td, color: '#fca5a5', fontWeight: 'bold'}}>{stats.conges?.['CNA']?.count || 0}</td>
-                      <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.ma}</td>
-                      <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.total}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {months.map((month, idx) => (
+                        <tr key={idx} style={styles.tr}>
+                          <td style={styles.td}>{month}</td>
+                          <td style={{...styles.td, color: '#FFC107', fontWeight: 'bold'}}>
+                            {stats.byMonth[idx]?.matin || 0}
+                          </td>
+                          <td style={{...styles.td, color: '#FF5722', fontWeight: 'bold'}}>
+                            {stats.byMonth[idx]?.soiree || 0}
+                          </td>
+                          <td style={{...styles.td, color: '#3F51B5', fontWeight: 'bold'}}>
+                            {stats.byMonth[idx]?.nuit || 0}
+                          </td>
+                          <td style={styles.td}>{stats.byMonth[idx]?.rp || 0}</td>
+                          <td style={{...styles.td, color: '#facc15', fontWeight: stats.conges?.['C']?.byMonth[idx] > 0 ? 'bold' : 'normal'}}>
+                            {stats.conges?.['C']?.byMonth[idx] || 0}
+                          </td>
+                          <td style={{...styles.td, color: '#fca5a5', fontWeight: stats.conges?.['CNA']?.byMonth[idx] > 0 ? 'bold' : 'normal'}}>
+                            {stats.conges?.['CNA']?.byMonth[idx] || 0}
+                          </td>
+                          <td style={styles.td}>{stats.byMonth[idx]?.ma || 0}</td>
+                          <td style={{...styles.td, fontWeight: 'bold'}}>
+                            {stats.byMonth[idx]?.total || 0}
+                          </td>
+                        </tr>
+                      ))}
+                      {/* Ligne totaux */}
+                      <tr style={{...styles.tr, backgroundColor: 'rgba(0, 240, 255, 0.1)'}}>
+                        <td style={{...styles.td, fontWeight: 'bold'}}>TOTAL</td>
+                        <td style={{...styles.td, color: '#FFC107', fontWeight: 'bold'}}>{stats.annual.matin}</td>
+                        <td style={{...styles.td, color: '#FF5722', fontWeight: 'bold'}}>{stats.annual.soiree}</td>
+                        <td style={{...styles.td, color: '#3F51B5', fontWeight: 'bold'}}>{stats.annual.nuit}</td>
+                        <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.rp}</td>
+                        <td style={{...styles.td, color: '#facc15', fontWeight: 'bold'}}>{stats.conges?.['C']?.count || 0}</td>
+                        <td style={{...styles.td, color: '#fca5a5', fontWeight: 'bold'}}>{stats.conges?.['CNA']?.count || 0}</td>
+                        <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.ma}</td>
+                        <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.total}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
-            {/* === NOUVELLE SECTION : Positions Supplémentaires Détaillées === */}
+            {/* === SECTION : Positions Supplémentaires Détaillées === */}
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>⚡ Positions Supplémentaires {selectedYear}</h3>
               
@@ -545,101 +562,78 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               )}
             </div>
 
-            {/* Tableau mensuel des positions supplémentaires */}
+            {/* v1.4: Tableau mensuel des positions supplémentaires - REPLIABLE */}
             {totalSupplements > 0 && (
               <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>📆 Détail Postes Supplémentaires par Mois</h3>
-                <div style={styles.tableContainer}>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr>
-                        <th style={styles.th}>Mois</th>
-                        {activeSupplements.map(([sup]) => (
-                          <th key={sup} style={{
-                            ...styles.th, 
-                            color: supplementColors[sup] || '#FFD700',
-                            fontSize: '11px'
-                          }}>
-                            {sup}
-                          </th>
-                        ))}
-                        <th style={styles.th}>Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {months.map((month, idx) => {
-                        const monthTotal = getMonthSupplementTotal(idx);
-                        return (
-                          <tr key={idx} style={styles.tr}>
-                            <td style={styles.td}>{month}</td>
-                            {activeSupplements.map(([sup, data]) => (
-                              <td key={sup} style={{
-                                ...styles.td, 
-                                color: supplementColors[sup] || '#FFD700',
-                                fontWeight: data.byMonth[idx] > 0 ? 'bold' : 'normal'
-                              }}>
-                                {data.byMonth[idx] || 0}
+                <h3 
+                  style={styles.sectionTitleClickable}
+                  onClick={() => setShowDetailSupplements(!showDetailSupplements)}
+                >
+                  <span style={styles.toggleIcon}>{showDetailSupplements ? '▼' : '▶'}</span>
+                  📆 Détail Postes Supplémentaires par Mois
+                </h3>
+                
+                {showDetailSupplements && (
+                  <div style={styles.tableContainer}>
+                    <table style={styles.table}>
+                      <thead>
+                        <tr>
+                          <th style={styles.th}>Mois</th>
+                          {activeSupplements.map(([sup]) => (
+                            <th key={sup} style={{
+                              ...styles.th, 
+                              color: supplementColors[sup] || '#FFD700',
+                              fontSize: '11px'
+                            }}>
+                              {sup}
+                            </th>
+                          ))}
+                          <th style={styles.th}>Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {months.map((month, idx) => {
+                          const monthTotal = getMonthSupplementTotal(idx);
+                          return (
+                            <tr key={idx} style={styles.tr}>
+                              <td style={styles.td}>{month}</td>
+                              {activeSupplements.map(([sup, data]) => (
+                                <td key={sup} style={{
+                                  ...styles.td, 
+                                  color: supplementColors[sup] || '#FFD700',
+                                  fontWeight: data.byMonth[idx] > 0 ? 'bold' : 'normal'
+                                }}>
+                                  {data.byMonth[idx] || 0}
+                                </td>
+                              ))}
+                              <td style={{...styles.td, fontWeight: monthTotal > 0 ? 'bold' : 'normal'}}>
+                                {monthTotal}
                               </td>
-                            ))}
-                            <td style={{...styles.td, fontWeight: monthTotal > 0 ? 'bold' : 'normal'}}>
-                              {monthTotal}
+                            </tr>
+                          );
+                        })}
+                        {/* Ligne totaux */}
+                        <tr style={{...styles.tr, backgroundColor: 'rgba(255, 215, 0, 0.1)'}}>
+                          <td style={{...styles.td, fontWeight: 'bold'}}>TOTAL</td>
+                          {activeSupplements.map(([sup, data]) => (
+                            <td key={sup} style={{
+                              ...styles.td, 
+                              color: supplementColors[sup] || '#FFD700',
+                              fontWeight: 'bold'
+                            }}>
+                              {data.count}
                             </td>
-                          </tr>
-                        );
-                      })}
-                      {/* Ligne totaux */}
-                      <tr style={{...styles.tr, backgroundColor: 'rgba(255, 215, 0, 0.1)'}}>
-                        <td style={{...styles.td, fontWeight: 'bold'}}>TOTAL</td>
-                        {activeSupplements.map(([sup, data]) => (
-                          <td key={sup} style={{
-                            ...styles.td, 
-                            color: supplementColors[sup] || '#FFD700',
-                            fontWeight: 'bold'
-                          }}>
-                            {data.count}
+                          ))}
+                          <td style={{...styles.td, fontWeight: 'bold', color: '#FFD700'}}>
+                            {totalSupplements}
                           </td>
-                        ))}
-                        <td style={{...styles.td, fontWeight: 'bold', color: '#FFD700'}}>
-                          {totalSupplements}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
-
-            {/* Graphique visuel Vacations */}
-            <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>📈 Répartition Vacations</h3>
-              <div style={styles.barChart}>
-                {[
-                  { key: 'matin', label: 'Matinées (-)', color: '#FFC107' },
-                  { key: 'soiree', label: 'Soirées (O)', color: '#FF5722' },
-                  { key: 'nuit', label: 'Nuits (X)', color: '#3F51B5' }
-                ].map(cat => {
-                  const value = stats.annual[cat.key] || 0;
-                  const max = Math.max(stats.annual.matin, stats.annual.soiree, stats.annual.nuit, 1);
-                  const width = (value / max) * 100;
-                  
-                  return (
-                    <div key={cat.key} style={styles.barRow}>
-                      <span style={styles.barLabel}>{cat.label}</span>
-                      <div style={styles.barContainer}>
-                        <div 
-                          style={{
-                            ...styles.bar,
-                            width: `${width}%`,
-                            backgroundColor: cat.color
-                          }}
-                        />
-                      </div>
-                      <span style={styles.barValue}>{value}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* v1.3: Graphique visuel Congés (si données) */}
             {totalConges > 0 && (
@@ -770,6 +764,27 @@ const styles = {
   sectionTitle: {
     color: '#00f0ff', fontSize: '16px', marginBottom: '15px',
     paddingBottom: '10px', borderBottom: '1px solid rgba(0, 240, 255, 0.2)'
+  },
+  // v1.4: Titre de section cliquable (accordéon)
+  sectionTitleClickable: {
+    color: '#00f0ff', 
+    fontSize: '16px', 
+    marginBottom: '15px',
+    paddingBottom: '10px', 
+    borderBottom: '1px solid rgba(0, 240, 255, 0.2)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+    userSelect: 'none',
+    transition: 'color 0.2s ease'
+  },
+  // v1.4: Icône toggle
+  toggleIcon: {
+    fontSize: '12px',
+    color: '#00f0ff',
+    width: '16px',
+    display: 'inline-block'
   },
   // v1.3: Note info
   infoNote: {
