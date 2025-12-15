@@ -1,8 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users } from 'lucide-react';
-import { CODE_COLORS, MONTHS } from '../constants/config';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users, Palette } from 'lucide-react';
+import { MONTHS } from '../constants/config';
+import { DEFAULT_COLORS } from '../constants/defaultColors';
+import useColors from '../hooks/useColors';
 import planningService from '../services/planningService';
+import ModalCouleurs from './modals/ModalCouleurs';
 
 /**
  * PlanningTable - Grille mensuelle du planning
@@ -12,10 +15,11 @@ import planningService from '../services/planningService';
  * FIX v2.12: Barre navigation via PORTAIL React (fixe bas écran)
  * FIX v2.13: Calcul correct des jours de la semaine avec l'année dynamique
  * FIX v2.14: Réduction hauteur barre navigation (moins intrusive sur mobile)
+ * NEW v2.15: Personnalisation des couleurs via ModalCouleurs
  */
 
 // Composant barre de navigation rendu via portail - VERSION COMPACTE
-const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd }) => {
+const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd, onOpenColors }) => {
   return ReactDOM.createPortal(
     <div 
       className="fixed bottom-0 left-0 right-0 z-[9999] bg-gradient-to-r from-blue-600 to-blue-700 px-2 py-1.5 flex items-center justify-center gap-2"
@@ -28,6 +32,15 @@ const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd
         zIndex: 9999,
       }}
     >
+      {/* Bouton couleurs à gauche */}
+      <button
+        onClick={onOpenColors}
+        className="p-1.5 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors mr-2"
+        title="Personnaliser les couleurs"
+      >
+        <Palette size={18} />
+      </button>
+
       <button
         onClick={onScrollStart}
         className="flex items-center gap-0.5 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-white text-xs font-medium transition-colors"
@@ -74,17 +87,21 @@ const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd
 
 const PlanningTable = ({ 
   currentMonth, 
-  currentYear,  // OBLIGATOIRE - plus de fallback à CURRENT_YEAR
+  currentYear,
   planning, 
   agentsData, 
   onCellClick, 
   onAgentClick, 
   onDayHeaderClick 
 }) => {
-  // FIX v2.13: Calcul de l'année - utiliser la prop OU l'année système si non fournie
   const year = currentYear || new Date().getFullYear();
   
-  // DEBUG: Log pour vérifier l'année utilisée
+  // Hook pour les couleurs personnalisées
+  const { colors, getServiceColor } = useColors();
+  
+  // State pour la modal couleurs
+  const [showColorModal, setShowColorModal] = useState(false);
+  
   useEffect(() => {
     console.log(`📅 PlanningTable: currentMonth=${currentMonth}, currentYear prop=${currentYear}, year utilisé=${year}`);
   }, [currentMonth, currentYear, year]);
@@ -94,7 +111,6 @@ const PlanningTable = ({
   const [showNavBar, setShowNavBar] = useState(true);
   const scrollContainerRef = useRef(null);
   
-  // Afficher/masquer la barre quand on est sur cette page
   useEffect(() => {
     setShowNavBar(true);
     return () => setShowNavBar(false);
@@ -107,7 +123,6 @@ const PlanningTable = ({
     }));
   };
 
-  // Fonction pour scroller horizontalement
   const scrollHorizontal = (direction) => {
     if (scrollContainerRef.current) {
       const scrollAmount = 300;
@@ -134,8 +149,19 @@ const PlanningTable = ({
     }
   };
   
+  // Fonction pour obtenir le style de couleur d'une cellule
+  const getCellColorStyle = (serviceCode) => {
+    if (!serviceCode) return {};
+    const colorConfig = getServiceColor(serviceCode);
+    if (!colorConfig) return {};
+    
+    return {
+      backgroundColor: colorConfig.bg === 'transparent' ? 'transparent' : colorConfig.bg,
+      color: colorConfig.text,
+    };
+  };
+  
   const getDayHeader = (day) => {
-    // FIX v2.13: Utiliser 'year' calculé, pas currentYear directement
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
     const dayName = planningService.getDayName(day, currentMonth, year);
     
@@ -176,17 +202,17 @@ const PlanningTable = ({
   const renderPlanningCell = (agent, day) => {
     const agentName = `${agent.nom} ${agent.prenom}`;
     const planningData = planning[agentName]?.[day];
-    // FIX v2.13: Utiliser 'year' calculé
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
     
     let cellContent = '';
-    let cellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:bg-gray-100 transition-colors min-w-[55px] min-h-[40px] relative ';
+    let cellStyle = {};
+    let baseCellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:opacity-80 transition-all min-w-[55px] min-h-[40px] relative ';
     let hasNote = false;
     
     if (planningData) {
       if (typeof planningData === 'string') {
         cellContent = planningData;
-        cellClass += CODE_COLORS[planningData] || 'bg-gray-100 text-gray-600';
+        cellStyle = getCellColorStyle(planningData);
       } else if (typeof planningData === 'object') {
         const service = planningData.service || '';
         const poste = planningData.poste || '';
@@ -194,6 +220,10 @@ const PlanningTable = ({
           (planningData.posteSupplementaire ? [planningData.posteSupplementaire] : []);
         
         hasNote = Boolean(planningData.note);
+        cellStyle = getCellColorStyle(service);
+        
+        // Couleur des postes supplémentaires
+        const postesColor = colors.postesSupp?.text || '#8b5cf6';
         
         cellContent = (
           <div className="flex flex-col h-full justify-between">
@@ -208,29 +238,33 @@ const PlanningTable = ({
             </div>
             {postesSupplementaires.length > 0 && (
               <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
-                <span className="text-[9px] italic text-purple-700 font-medium">
+                <span 
+                  className="text-[9px] italic font-medium"
+                  style={{ color: postesColor }}
+                >
                   {postesSupplementaires.join(' ')}
                 </span>
               </div>
             )}
           </div>
         );
-        cellClass += CODE_COLORS[service] || 'bg-gray-100 text-gray-600';
       }
     } else {
+      // Cellule vide - couleurs de fond selon jour
       if (isFerier) {
-        cellClass += 'bg-red-50';
+        cellStyle = { backgroundColor: '#fef2f2' }; // red-50
       } else if (isWeekend) {
-        cellClass += 'bg-green-50';
+        cellStyle = { backgroundColor: '#f0fdf4' }; // green-50
       } else {
-        cellClass += 'bg-white';
+        cellStyle = { backgroundColor: '#ffffff' };
       }
     }
     
     return (
       <td 
         key={`${agentName}_${day}`}
-        className={cellClass}
+        className={baseCellClass}
+        style={cellStyle}
         onClick={() => onCellClick(agentName, day)}
       >
         {cellContent}
@@ -242,18 +276,25 @@ const PlanningTable = ({
     overflowX: 'scroll',
     scrollbarWidth: 'auto',
     scrollbarColor: '#3b82f6 #e5e7eb',
-    paddingBottom: '50px', // Réduit de 80px à 50px
+    paddingBottom: '50px',
   };
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden relative">
-      {/* Barre de navigation via portail - toujours fixe en bas de l'écran */}
+      {/* Modal personnalisation couleurs */}
+      <ModalCouleurs 
+        isOpen={showColorModal} 
+        onClose={() => setShowColorModal(false)} 
+      />
+      
+      {/* Barre de navigation via portail */}
       {showNavBar && (
         <NavigationBar 
           onScrollLeft={() => scrollHorizontal('left')}
           onScrollRight={() => scrollHorizontal('right')}
           onScrollStart={scrollToStart}
           onScrollEnd={scrollToEnd}
+          onOpenColors={() => setShowColorModal(true)}
         />
       )}
 
@@ -370,15 +411,24 @@ const PlanningTable = ({
             <p className="font-medium mb-1">Services :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="inline-block w-6 h-4 bg-white border border-gray-300 rounded text-center text-[10px] font-semibold">-</span>
+                <span 
+                  className="inline-block w-6 h-4 border border-gray-300 rounded text-center text-[10px] font-semibold"
+                  style={getCellColorStyle('-')}
+                >-</span>
                 <span>Matin (06h-14h)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-6 h-4 bg-white border border-gray-300 rounded text-center text-[10px] font-semibold">O</span>
+                <span 
+                  className="inline-block w-6 h-4 border border-gray-300 rounded text-center text-[10px] font-semibold"
+                  style={getCellColorStyle('O')}
+                >O</span>
                 <span>Soir (14h-22h)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-6 h-4 bg-white border border-gray-300 rounded text-center text-[10px] font-semibold">X</span>
+                <span 
+                  className="inline-block w-6 h-4 border border-gray-300 rounded text-center text-[10px] font-semibold"
+                  style={getCellColorStyle('X')}
+                >X</span>
                 <span>Nuit (22h-06h)</span>
               </div>
             </div>
@@ -387,11 +437,17 @@ const PlanningTable = ({
             <p className="font-medium mb-1">Repos / Conges :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-green-100 rounded"></span>
+                <span 
+                  className="inline-block w-4 h-4 rounded"
+                  style={{ backgroundColor: getServiceColor('RP').bg }}
+                ></span>
                 <span>RP = Repos</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-yellow-400 rounded"></span>
+                <span 
+                  className="inline-block w-4 h-4 rounded"
+                  style={{ backgroundColor: getServiceColor('C').bg }}
+                ></span>
                 <span>C = Conges</span>
               </div>
             </div>
@@ -400,15 +456,24 @@ const PlanningTable = ({
             <p className="font-medium mb-1">Etats :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-blue-200 rounded"></span>
+                <span 
+                  className="inline-block w-4 h-4 rounded"
+                  style={{ backgroundColor: getServiceColor('D').bg }}
+                ></span>
                 <span>D = Disponible</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-red-200 rounded"></span>
+                <span 
+                  className="inline-block w-4 h-4 rounded"
+                  style={{ backgroundColor: getServiceColor('MA').bg }}
+                ></span>
                 <span>MA = Maladie</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-block w-4 h-4 bg-orange-200 rounded"></span>
+                <span 
+                  className="inline-block w-4 h-4 rounded"
+                  style={{ backgroundColor: getServiceColor('FO').bg }}
+                ></span>
                 <span>HAB/FO = Formation</span>
               </div>
             </div>
@@ -417,7 +482,10 @@ const PlanningTable = ({
             <p className="font-medium mb-1">Postes supplementaires :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="inline-block px-1 border-t border-dashed border-gray-400 text-[8px] italic text-purple-700">+ACR +RO</span>
+                <span 
+                  className="inline-block px-1 border-t border-dashed border-gray-400 text-[8px] italic"
+                  style={{ color: colors.postesSupp?.text || '#8b5cf6' }}
+                >+ACR +RO</span>
               </div>
               <p className="text-gray-500 text-xs">En bas de cellule, italique</p>
               <p className="text-gray-500 text-xs">Selection multiple possible</p>
