@@ -16,6 +16,7 @@ import ModalCouleurs from './ModalCouleurs';
  * v1.5 - FIX: Responsive mobile + utilisation CODE_COLORS
  * v1.6 - NEW: Bouton palette + ModalCouleurs (même système que planning général)
  * v1.7 - FIX: Synchronisation couleurs - reloadColors() à la fermeture du panneau
+ * v1.8 - Couleurs séparées du planning général (contexte 'perso')
  */
 const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear }) => {
   // FIX v1.4: Utiliser initialYear si fourni, sinon année système
@@ -31,8 +32,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
   
-  // v1.7: Hook pour les couleurs personnalisées avec reloadColors
-  const { colors, getServiceColor, reloadColors } = useColors();
+  // v1.8: Hook pour les couleurs personnalisées avec contexte 'perso' (séparé du général)
+  const { colors, getServiceColor, reloadColors } = useColors('perso');
   const [showColorModal, setShowColorModal] = useState(false);
   
   // Tracker si des modifications ont été faites
@@ -221,7 +222,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     setShowColorModal(false);
     // Recharger les couleurs depuis localStorage pour synchroniser
     reloadColors();
-    console.log('🎨 Couleurs rechargées après fermeture du panneau');
+    console.log('🎨 Couleurs perso rechargées après fermeture du panneau');
   };
 
   // Sauvegarder modification
@@ -343,7 +344,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
             <button 
               style={styles.paletteBtn} 
               onClick={() => setShowColorModal(true)}
-              title="Personnaliser les couleurs"
+              title="Personnaliser les couleurs (Mon Planning)"
             >
               <Palette size={18} />
             </button>
@@ -439,10 +440,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
         </div>
       </div>
 
-      {/* Modal Couleurs - v1.7: Utilise handleCloseColorModal pour recharger */}
+      {/* Modal Couleurs - v1.8: contexte 'perso' pour couleurs séparées */}
       <ModalCouleurs 
         isOpen={showColorModal} 
-        onClose={handleCloseColorModal} 
+        onClose={handleCloseColorModal}
+        context="perso"
       />
 
       {/* Modal d'édition (comme ModalCellEdit) */}
