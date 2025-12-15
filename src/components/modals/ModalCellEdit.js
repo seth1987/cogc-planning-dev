@@ -20,7 +20,7 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.4.0 - Ajout édition multiple (plage de dates)
+ * @version 2.4.1 - Fix useEffect placement (ESLint)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -101,6 +101,27 @@ const ModalCellEdit = ({
     setDateRangeWarning('');
   }, [cellData, selectedCell]);
 
+  // useEffect pour validation automatique de la plage de dates
+  useEffect(() => {
+    if (applyToMultipleDays && endDate && selectedCell) {
+      const [, , day] = endDate.split('-').map(Number);
+      const currentDay = selectedCell.day;
+      const daysCount = day - currentDay + 1;
+      
+      if (day < currentDay) {
+        setDateRangeWarning('❌ La date de fin doit être >= à la date de début');
+      } else if (daysCount > 31) {
+        setDateRangeWarning('⚠️ Maximum 31 jours');
+      } else if (daysCount > 7) {
+        setDateRangeWarning(`⚠️ ${daysCount} jours seront modifiés`);
+      } else {
+        setDateRangeWarning(`✅ ${daysCount} jour${daysCount > 1 ? 's' : ''} sera${daysCount > 1 ? 'nt' : ''} modifié${daysCount > 1 ? 's' : ''}`);
+      }
+    } else {
+      setDateRangeWarning('');
+    }
+  }, [endDate, applyToMultipleDays, selectedCell]);
+
   if (!selectedCell) return null;
 
 // === FONCTIONS HELPER POUR ÉDITION MULTIPLE ===
@@ -146,17 +167,6 @@ const ModalCellEdit = ({
       setDateRangeWarning(`✅ ${daysCount} jour${daysCount > 1 ? 's' : ''} sera${daysCount > 1 ? 'nt' : ''} modifié${daysCount > 1 ? 's' : ''}`);
     }
   };
-
-  // useEffect pour validation automatique
-  useEffect(() => {
-    if (applyToMultipleDays && endDate) {
-      const [, , day] = endDate.split('-').map(Number);
-      validateDateRange(selectedCell.day, day);
-    } else {
-      setDateRangeWarning('');
-    }
-  }, [endDate, applyToMultipleDays, selectedCell.day]);
-
 
   // Trouver le groupe de l'agent sélectionné
   const findAgentGroup = () => {
