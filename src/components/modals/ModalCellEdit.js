@@ -29,7 +29,7 @@ const MODAL_COLORS = {
   // Sous-groupe Congés (C,CP)
   'C': 'bg-yellow-400 text-yellow-900 font-semibold',
   'C?': 'bg-yellow-200 text-yellow-800 font-semibold',
-  'C̶': 'bg-red-300 text-red-900 font-semibold',
+  'CNA': 'bg-red-300 text-red-900 font-semibold',
   // Service de jour (bleu clair)
   'VL': 'bg-blue-100 text-blue-800',
   'D': 'bg-blue-100 text-blue-800',
@@ -609,7 +609,7 @@ const ModalCellEdit = ({
       
       if (daysCount > 7) {
         const confirm = window.confirm(
-          `⚠️ Vous allez modifier ${daysCount} jours (du ${startDay} au ${endDay} ${currentMonth}).\\n\\nConfirmer ?`
+          `⚠️ Vous allez modifier ${daysCount} jours (du ${startDay} au ${endDay} ${currentMonth}).\n\nConfirmer ?`
         );
         if (!confirm) return;
       }
