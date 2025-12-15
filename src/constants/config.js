@@ -45,9 +45,14 @@ export const CODE_COLORS = {
   
   // === CONGES : JAUNE/OR ===
   'C': 'bg-yellow-400 text-yellow-900 font-semibold',
+  'C?': 'bg-yellow-200 text-yellow-800 font-semibold',    // Congé en attente
+  'C̶': 'bg-red-300 text-red-900 font-semibold',           // Congé refusé
   
   // === MALADIE : ROUGE ===
   'MA': 'bg-red-200 text-red-800 font-semibold',
+  
+  // === FERIE : VIOLET/MAUVE ===
+  'F': 'bg-purple-200 text-purple-800 font-semibold',
   
   // === INACTIF ===
   'INAC': 'bg-pink-100 text-pink-700',
@@ -81,7 +86,6 @@ export const CODE_COLORS = {
   // === JOURS RH : JAUNE CLAIR ===
   'VT': 'bg-yellow-100 text-yellow-800',
   'D2I': 'bg-yellow-100 text-yellow-800',
-  'F': 'bg-yellow-100 text-yellow-800',
   'RA': 'bg-yellow-100 text-yellow-800',
   'RN': 'bg-yellow-100 text-yellow-800',
   'TY': 'bg-yellow-100 text-yellow-800',
@@ -178,7 +182,6 @@ export const JOURS_RH_CODES = [
   { code: 'VT', desc: 'Temps partiel' },
   { code: 'D2I', desc: 'D2I' },
   { code: 'RU', desc: 'RU' },
-  { code: 'F', desc: 'F' },
   { code: 'RA', desc: 'RA' },
   { code: 'RN', desc: 'RN' },
   { code: 'TY', desc: 'TY' },
@@ -187,10 +190,18 @@ export const JOURS_RH_CODES = [
   { code: 'DD', desc: 'DD' }
 ];
 
-// Absences (MA, C) - combinables avec horaire OU utilisables seuls
+// Absences - combinables avec horaire OU utilisables seuls
+// MA et F séparés, puis sous-groupe C,CP pour les congés
 export const ABSENCES_CODES = [
   { code: 'MA', desc: 'Maladie' },
-  { code: 'C', desc: 'Congés' }
+  { code: 'F', desc: 'Férié' }
+];
+
+// Sous-groupe C,CP - Congés et dérivés
+export const CONGES_CODES = [
+  { code: 'C', desc: 'Congés' },
+  { code: 'C?', desc: 'Congé en attente' },
+  { code: 'C̶', desc: 'Congé refusé' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)
