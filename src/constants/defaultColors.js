@@ -1,6 +1,6 @@
 /**
  * Couleurs par défaut pour les services et éléments du planning
- * VERSION 3.7 - Ajout catégorie PCD avec CCCBO et CBVD
+ * VERSION 3.8 - Ajout RQ dans Jours RH
  */
 
 // Horaires de base pour les combinaisons
@@ -234,7 +234,7 @@ export const COLOR_CATEGORIES = {
   joursRH: {
     id: 'joursRH',
     label: 'Jours RH',
-    description: 'VT, D2I, RU, RA, RN, TY...',
+    description: 'VT, D2I, RU, RA, RN, RQ, TY...',
     defaultOpen: false,
     defaultColor: { bg: '#fef9c3', text: '#854d0e' },
     items: {
@@ -243,6 +243,7 @@ export const COLOR_CATEGORIES = {
       'RU': { label: 'RU' },
       'RA': { label: 'RA' },
       'RN': { label: 'RN' },
+      'RQ': { label: 'RQ' },
       'TY': { label: 'TY' },
       'AY': { label: 'AY' },
       'AH': { label: 'AH' },
