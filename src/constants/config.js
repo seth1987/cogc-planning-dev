@@ -181,6 +181,7 @@ export const POSTES_SUPPLEMENTAIRES = [
   { code: '+RE', desc: 'Poste RE supplémentaire' },
   { code: '+RC', desc: 'Poste RC supplémentaire' },
   { code: '+CCU', desc: 'Poste CCU supplémentaire' },
+  { code: '+CAC', desc: 'Poste CAC supplémentaire' },
   { code: '+OV', desc: 'Poste OV supplémentaire' }
 ];
 
