@@ -10,7 +10,8 @@ import {
   SERVICE_JOUR_CODES,
   HABILITATION_CODES,
   JOURS_RH_CODES,
-  ABSENCES_CODES
+  ABSENCES_CODES,
+  CONGES_CODES
 } from '../../constants/config';
 
 // Couleurs pour la modal d'édition - par catégorie
@@ -24,7 +25,11 @@ const MODAL_COLORS = {
   'NU': 'bg-gray-200 text-gray-600',
   // Absences
   'MA': 'bg-red-200 text-red-800 font-semibold',
+  'F': 'bg-purple-200 text-purple-800 font-semibold',
+  // Sous-groupe Congés (C,CP)
   'C': 'bg-yellow-400 text-yellow-900 font-semibold',
+  'C?': 'bg-yellow-200 text-yellow-800 font-semibold',
+  'C̶': 'bg-red-300 text-red-900 font-semibold',
   // Service de jour (bleu clair)
   'VL': 'bg-blue-100 text-blue-800',
   'D': 'bg-blue-100 text-blue-800',
@@ -45,7 +50,6 @@ const MODAL_COLORS = {
   'VT': 'bg-yellow-100 text-yellow-800',
   'D2I': 'bg-yellow-100 text-yellow-800',
   'RU': 'bg-yellow-100 text-yellow-800',
-  'F': 'bg-yellow-100 text-yellow-800',
   'RA': 'bg-yellow-100 text-yellow-800',
   'RN': 'bg-yellow-100 text-yellow-800',
   'TY': 'bg-yellow-100 text-yellow-800',
@@ -57,10 +61,9 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 4.1.0 - Fix recherche + Horaires simplifié
- *   - Horaires toujours visible (même pendant recherche) pour permettre combinaisons
- *   - RP et NU dans Horaires (pas de catégorie séparée)
- *   - Barre de recherche pour filtrer les autres catégories
+ * @version 4.2.0 - Ajout F (Férié) + sous-groupe C,CP (Congés)
+ *   - F (Férié) ajouté dans Absences
+ *   - Sous-groupe C,CP avec C, C?, C̶ (congé, attente, refusé)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -77,7 +80,7 @@ const ModalCellEdit = ({
 }) => {
   // États pour service, poste et postes supplémentaires
   const [tempService, setTempService] = useState('');      // Horaire (-, O, X, I, RP, NU)
-  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, C)
+  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, C, F, etc.)
   const [tempPoste, setTempPoste] = useState('');
   const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
   
@@ -112,12 +115,13 @@ const ModalCellEdit = ({
     joursRH: false
   });
 
-  // Liste de tous les codes de catégorie pour détection
+  // Liste de tous les codes de catégorie pour détection (incluant les nouveaux)
   const ALL_CATEGORIE_CODES = [
     ...SERVICE_JOUR_CODES.map(c => c.code),
     ...HABILITATION_CODES.map(c => c.code),
     ...JOURS_RH_CODES.map(c => c.code),
-    ...ABSENCES_CODES.map(c => c.code)
+    ...ABSENCES_CODES.map(c => c.code),
+    ...CONGES_CODES.map(c => c.code)
   ];
 
   // Liste des codes horaire (incluant RP et NU)
@@ -780,13 +784,35 @@ const ModalCellEdit = ({
             </div>
           )}
 
-          {/* === SECTION ABSENCES (TOUJOURS VISIBLE - jamais filtrée) === */}
+          {/* === SECTION ABSENCES (MA, F) === */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Absences <span className="text-xs text-gray-500">(combinable avec horaire)</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               {ABSENCES_CODES.map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectCategorie(code)}
+                  className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempCategorie === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-xs mt-0.5">{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* === SOUS-GROUPE C,CP (Congés) === */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <span className="inline-flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-semibold">C,CP</span>
+                <span>Congés</span>
+              </span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {CONGES_CODES.map(({ code, desc }) => (
                 <button
                   key={code}
                   onClick={() => selectCategorie(code)}
