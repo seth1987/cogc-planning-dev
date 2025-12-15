@@ -25,6 +25,10 @@ const extractGroupeCode = (groupeComplet) => {
   return groupeComplet;
 };
 
+/**
+ * Service Supabase pour COGC Planning
+ * @version 2.5.0 - Support complet texte libre (lecture/écriture)
+ */
 class SupabaseService {
   // Exposer le client Supabase pour accès direct si nécessaire
   get client() {
@@ -265,8 +269,7 @@ class SupabaseService {
 
   /**
    * Récupère les entrées de planning pour une période donnée
-   * FIX v2.9.1: Augmentation limite de 1000 (défaut) à 2000 pour éviter troncature
-   * Avec 45 agents × 31 jours = 1395 entrées par mois
+   * @version 2.5.0 - Inclut texte_libre dans le SELECT
    * 
    * @param {string} startDate - Date de début (YYYY-MM-DD)
    * @param {string} endDate - Date de fin (YYYY-MM-DD)
@@ -275,9 +278,10 @@ class SupabaseService {
   async getPlanningForMonth(startDate, endDate) {
     console.log(`🔍 getPlanningForMonth: ${startDate} → ${endDate}`);
     
+    // ✅ FIX v2.5.0: Inclure texte_libre dans le SELECT
     const { data, error, count } = await supabase
       .from('planning')
-      .select('*, commentaire, postes_supplementaires', { count: 'exact' })
+      .select('*, commentaire, postes_supplementaires, texte_libre', { count: 'exact' })
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date')
@@ -294,11 +298,14 @@ class SupabaseService {
     if (data && data.length > 0) {
       // Analyser la répartition par jour
       const byDay = {};
+      let texteLibreCount = 0;
       data.forEach(entry => {
         const day = parseInt(entry.date.split('-')[2], 10);
         byDay[day] = (byDay[day] || 0) + 1;
+        if (entry.texte_libre) texteLibreCount++;
       });
       console.log('📊 Répartition par jour:', byDay);
+      console.log(`📝 Entrées avec texte_libre: ${texteLibreCount}`);
       
       // Vérifier spécifiquement les jours 23-31
       const endMonthEntries = data.filter(entry => {
@@ -317,15 +324,18 @@ class SupabaseService {
   }
 
   /**
-   * Sauvegarde une entrée de planning avec support des notes et postes supplémentaires
+   * Sauvegarde une entrée de planning avec support des notes, postes supplémentaires et texte libre
+   * @version 2.5.0 - Support texte_libre
+   * 
    * @param {string} agentId - ID de l'agent
    * @param {string} date - Date au format YYYY-MM-DD
-   * @param {string} serviceCode - Code du service (-, O, X, RP, etc.)
+   * @param {string} serviceCode - Code du service (-, O, X, RP, LIBRE, etc.)
    * @param {string|null} posteCode - Code du poste pour les réserves (CRC, CCU, etc.)
    * @param {string|null} note - Note/commentaire associé à cette cellule
    * @param {string[]|null} postesSupplementaires - Liste des postes supplémentaires (italique)
+   * @param {string|null} texteLibre - Texte libre personnalisé
    */
-  async savePlanning(agentId, date, serviceCode, posteCode = null, note = null, postesSupplementaires = null) {
+  async savePlanning(agentId, date, serviceCode, posteCode = null, note = null, postesSupplementaires = null, texteLibre = null) {
     // Chercher si une entrée existe déjà
     const { data: existing } = await supabase
       .from('planning')
@@ -343,9 +353,13 @@ class SupabaseService {
       postes_supplementaires: postesSupplementaires && postesSupplementaires.length > 0 
         ? postesSupplementaires 
         : null,
+      // ✅ FIX v2.5.0: Sauvegarder texte_libre
+      texte_libre: texteLibre || null,
       statut: 'actif',
       updated_at: new Date().toISOString()
     };
+
+    console.log('💾 savePlanning data:', planningData);
 
     if (existing) {
       // Mettre à jour
