@@ -1,6 +1,6 @@
 /**
  * Couleurs par défaut pour les services et éléments du planning
- * VERSION 3.1 - Catégories avec état ouvert/fermé par défaut
+ * VERSION 3.2 - Ajout catégorie Poste (Réserve)
  */
 
 // Horaires de base pour les combinaisons
@@ -18,9 +18,9 @@ export const COLOR_CATEGORIES = {
   // Horaires : OUVERT par défaut
   horaires: {
     id: 'horaires',
-    label: 'Horaires',
-    description: 'Services de base (matin, soir, nuit, repos)',
-    defaultOpen: true, // Ouvert par défaut
+    label: 'Horaire',
+    description: 'Matin, Soir, Nuit, Repos, Non utilisé',
+    defaultOpen: true,
     defaultColor: { bg: '#ffffff', text: '#1e40af' },
     items: {
       '-': { label: 'Matin (06h-14h)' },
@@ -32,13 +32,32 @@ export const COLOR_CATEGORIES = {
     }
   },
   
+  // Poste (Réserve) : OUVERT par défaut
+  posteReserve: {
+    id: 'posteReserve',
+    label: 'Poste (Réserve)',
+    description: 'CRC, ACR, RC, RO, CCU, RE, CAC, SOUF',
+    defaultOpen: true,
+    defaultColor: { bg: '#e0e7ff', text: '#3730a3' }, // Indigo clair
+    items: {
+      'CRC': { label: 'CRC - Coordinateur Régional' },
+      'ACR': { label: 'ACR - Agent Circulation' },
+      'RC': { label: 'RC - Régulateur Centre' },
+      'RO': { label: 'RO - Régulateur Ouest' },
+      'CCU': { label: 'CCU - Centre Commandement Unifié' },
+      'RE': { label: 'RE - Régulateur Est' },
+      'CAC': { label: 'CAC - Denfert' },
+      'SOUF': { label: 'SOUF - Soufflerie' }
+    }
+  },
+  
   // Absences : OUVERT par défaut
   absences: {
     id: 'absences',
     label: 'Absences',
     description: 'Maladie, Congés',
-    defaultOpen: true, // Ouvert par défaut
-    defaultColor: { bg: '#fecaca', text: '#991b1b' }, // Rouge clair
+    defaultOpen: true,
+    defaultColor: { bg: '#fecaca', text: '#991b1b' },
     items: {
       'MA': { label: 'Maladie' },
       'C': { label: 'Congés', defaultColor: { bg: '#fde047', text: '#713f12' } }
@@ -50,8 +69,8 @@ export const COLOR_CATEGORIES = {
     id: 'serviceJour',
     label: 'Service de jour',
     description: 'VL, Disponible, EIA, DPX, PSE...',
-    defaultOpen: false, // Fermé par défaut
-    defaultColor: { bg: '#dbeafe', text: '#1e40af' }, // Bleu clair
+    defaultOpen: false,
+    defaultColor: { bg: '#dbeafe', text: '#1e40af' },
     items: {
       'VL': { label: 'VL' },
       'D': { label: 'Disponible' },
@@ -70,8 +89,8 @@ export const COLOR_CATEGORIES = {
     id: 'habilitationFormation',
     label: 'Habilitation / Formation',
     description: 'HAB, FO RO, FO RC, FO CRC... avec horaires',
-    defaultOpen: false, // Fermé par défaut
-    defaultColor: { bg: '#fed7aa', text: '#9a3412' }, // Orange
+    defaultOpen: false,
+    defaultColor: { bg: '#fed7aa', text: '#9a3412' },
     hasSubCategories: true,
     subCategories: {
       'HAB': {
@@ -119,8 +138,8 @@ export const COLOR_CATEGORIES = {
     id: 'joursRH',
     label: 'Jours RH',
     description: 'VT, D2I, RU, F, RA, RN, TY...',
-    defaultOpen: false, // Fermé par défaut
-    defaultColor: { bg: '#fef9c3', text: '#854d0e' }, // Jaune clair
+    defaultOpen: false,
+    defaultColor: { bg: '#fef9c3', text: '#854d0e' },
     items: {
       'VT': { label: 'Temps partiel' },
       'D2I': { label: 'D2I' },
