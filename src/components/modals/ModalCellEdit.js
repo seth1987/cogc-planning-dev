@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search, Calendar, AlertCircle } from 'lucide-react';
-import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, POSTES_PAR_GROUPE, GROUPES_AVEC_POSTE, MONTHS } from '../../constants/config';
+import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, POSTES_PAR_GROUPE, GROUPES_AVEC_POSTE, MONTHS, PCD_CODES } from '../../constants/config';
 
 // Couleurs UNIQUEMENT pour la modal d'édition 
 const MODAL_COLORS = {
@@ -15,12 +15,15 @@ const MODAL_COLORS = {
   'NU': 'bg-gray-200 text-gray-600',
   'VT': 'bg-yellow-100 text-yellow-800',
   'D2I': 'bg-gray-300 text-gray-700',
+  // PCD codes
+  'CCC BO': 'bg-sky-100 text-sky-800',
+  'CBVD': 'bg-sky-100 text-sky-800',
 };
 
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.4.4 - Fix chargement texteLibre depuis cellData
+ * @version 2.5.0 - Ajout catégorie PCD (CCC BO, CBVD)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -80,6 +83,9 @@ const ModalCellEdit = ({
     console.log('   selectedCell.day type:', typeof selectedCell?.day);
   }, [allPlanning, selectedCell]);
 
+  // Liste des codes PCD pour vérification
+  const pcdCodesList = PCD_CODES.map(p => p.code);
+
   // Initialiser les états avec les données existantes
   useEffect(() => {
     if (cellData) {
@@ -92,9 +98,11 @@ const ModalCellEdit = ({
       const hasExplicitTexteLibre = cellData.texteLibre && cellData.texteLibre.trim() !== '';
       
       // Cas 2: service non standard (mais PAS 'LIBRE' lui-même qui est juste un marqueur)
+      // Exclure aussi les codes PCD qui sont des services valides
       const isNonStandardService = cellData.service && 
         cellData.service !== 'LIBRE' && 
-        !SERVICE_CODES.some(sc => sc.code === cellData.service);
+        !SERVICE_CODES.some(sc => sc.code === cellData.service) &&
+        !pcdCodesList.includes(cellData.service);
       
       // Cas 3: Service est LIBRE mais pas de texteLibre (état transitoire ou erreur)
       const isLibreWithoutText = cellData.service === 'LIBRE' && !hasExplicitTexteLibre;
@@ -121,7 +129,7 @@ const ModalCellEdit = ({
         setTempService('LIBRE');
         setTempTexteLibre('');
       } else {
-        // Service standard
+        // Service standard ou PCD
         console.log('📋 Service standard:', cellData.service);
         setTempService(cellData.service || '');
         setTempTexteLibre('');
@@ -142,7 +150,7 @@ const ModalCellEdit = ({
     setApplyToMultipleDays(false);
     setEndDate('');
     setDateRangeWarning('');
-  }, [cellData, selectedCell]);
+  }, [cellData, selectedCell, pcdCodesList]);
 
   // useEffect pour validation automatique de la plage de dates
   useEffect(() => {
@@ -582,6 +590,9 @@ const ModalCellEdit = ({
   const hasExistingPostesSupp = tempPostesSupplementaires.length > 0;
   const hasCroisementNote = tempNote?.toLowerCase().includes('croisement avec');
 
+  // Vérifier si un code PCD est sélectionné
+  const isPCDSelected = pcdCodesList.includes(tempService);
+
   // Compter combien d'agents ont des données pour ce jour (pour debug)
   const agentsWithDataForDay = Object.keys(allPlanning || {}).filter(key => {
     const data = allPlanning[key];
@@ -699,6 +710,28 @@ const ModalCellEdit = ({
                 </p>
               </div>
             )}
+          </div>
+
+          {/* === SECTION PCD === */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              PCD (Personnel Conduite Denfert)
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {PCD_CODES.map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => {
+                    setTempService(code);
+                    setTempTexteLibre('');
+                  }}
+                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempService === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-xs mt-1">{desc}</div>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Section Poste */}
