@@ -22,12 +22,22 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * FIX v2.19: Support des codes combinés (ex: "FO CRC -", "MA O")
  * FIX v2.20: Affichage 2 lignes pour codes combinés (horaire en haut, catégorie en bas)
  * FIX v2.21: Couleur basée sur POSTE+SERVICE combiné (réserve vs roulement)
+ * NEW v4.5.0: Support statut_conge combinable (C, C?, CNA) avec service/poste
  */
 
 // Horaires simples pour détecter les combinaisons
 const HORAIRES_SIMPLES = ['-', 'O', 'X', 'I'];
 // Codes spéciaux qui ne sont PAS des horaires (repos, absences, etc.)
-const CODES_NON_HORAIRES = ['RP', 'NU', 'C', 'C?', 'CNA', 'F', 'MA', 'D', 'DISPO', 'VL', 'INAC', 'INACTIN', 'VM', 'EIA', 'DPX', 'PSE', 'VT', 'D2I', 'RU', 'RA', 'RN', 'TY', 'AY', 'AH', 'DD', 'HAB', 'FO', 'LIBRE'];
+const CODES_NON_HORAIRES = ['RP', 'NU', 'F', 'MA', 'D', 'DISPO', 'VL', 'INAC', 'INACTIN', 'VM', 'EIA', 'DPX', 'PSE', 'VT', 'D2I', 'RU', 'RA', 'RN', 'RQ', 'TY', 'AY', 'AH', 'DD', 'HAB', 'FO', 'LIBRE'];
+// Codes statut congé (stockés dans statut_conge, pas dans service_code)
+const STATUT_CONGE_CODES = ['C', 'C?', 'CNA'];
+
+// Couleurs pour les statuts congé
+const STATUT_CONGE_COLORS = {
+  'C': { bg: '#facc15', text: '#713f12' },      // Jaune vif - Congé accordé
+  'C?': { bg: '#fef08a', text: '#854d0e' },     // Jaune clair - En attente
+  'CNA': { bg: '#fca5a5', text: '#991b1b' }     // Rouge clair - Refusé
+};
 
 /**
  * Parse un code combiné et retourne horaire + catégorie séparés
@@ -249,6 +259,15 @@ const PlanningTable = ({
       color: colorConfig.text,
     };
   };
+
+  // Fonction pour obtenir le style de couleur d'un statut congé
+  const getStatutCongeStyle = (statutConge) => {
+    if (!statutConge || !STATUT_CONGE_COLORS[statutConge]) return {};
+    return {
+      backgroundColor: STATUT_CONGE_COLORS[statutConge].bg,
+      color: STATUT_CONGE_COLORS[statutConge].text,
+    };
+  };
   
   const getDayHeader = (day) => {
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
@@ -318,10 +337,11 @@ const PlanningTable = ({
           cellContent = planningData;
         }
       } else if (typeof planningData === 'object') {
-        // ===== Objet: service + poste + extras =====
+        // ===== Objet: service + poste + statut_conge + extras =====
         const service = planningData.service || '';
         const poste = planningData.poste || '';
         const texteLibre = planningData.texteLibre || '';
+        const statutConge = planningData.statut_conge || planningData.statutConge || '';
         const postesSupplementaires = planningData.postesSupplementaires || 
           (planningData.posteSupplementaire ? [planningData.posteSupplementaire] : []);
         
@@ -329,8 +349,6 @@ const PlanningTable = ({
         isTexteLibre = service === 'LIBRE' && texteLibre;
         
         // ===== v2.21: Construire le code complet pour la couleur =====
-        // Si service est un horaire (-, O, X) ET poste défini → "POSTE SERVICE"
-        // Sinon → service seul
         const colorCode = buildColorCode(service, poste);
         
         // Couleur selon le type
@@ -340,6 +358,9 @@ const PlanningTable = ({
             backgroundColor: texteLibreColors.bg,
             color: texteLibreColors.text,
           };
+        } else if (statutConge && !service) {
+          // Statut congé seul (ex: C? en attente de commande)
+          cellStyle = getStatutCongeStyle(statutConge);
         } else {
           cellStyle = getCellColorStyle(colorCode);
         }
@@ -353,34 +374,97 @@ const PlanningTable = ({
         // La catégorie du service combiné OU le poste existant
         const displayCategorie = categorie || poste;
         
-        cellContent = (
-          <div className="flex flex-col h-full justify-between">
-            {hasNote && (
-              <div className="absolute top-0 right-0 p-0.5" title="Note existante">
-                <StickyNote className="w-3 h-3 text-amber-500" />
-              </div>
-            )}
-            {isTexteLibre && (
-              <div className="absolute top-0 left-0 p-0.5" title="Texte libre">
-                <Type className="w-3 h-3 text-purple-500" />
-              </div>
-            )}
-            <div className="flex flex-col">
-              <span className={`font-medium ${isTexteLibre ? 'text-[10px]' : ''}`}>{displayText}</span>
-              {displayCategorie && <span className="text-xs font-bold">{displayCategorie}</span>}
-            </div>
-            {postesSupplementaires.length > 0 && (
-              <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
+        // ===== v4.5.0: Affichage avec statut congé =====
+        const renderBottomLine = () => {
+          // Cas 1: Statut congé seul (pas de service ni poste)
+          if (statutConge && !service && !poste) {
+            return null; // Centré, géré plus bas
+          }
+          
+          // Cas 2: Service + Poste + Statut congé → "Poste | Statut"
+          if (displayCategorie && statutConge) {
+            return (
+              <div className="flex items-center justify-center gap-0.5">
+                <span className="text-xs font-bold">{displayCategorie}</span>
+                <span className="text-gray-400 mx-0.5">|</span>
                 <span 
-                  className="text-[9px] italic font-medium"
-                  style={{ color: postesColor }}
+                  className="text-[10px] font-semibold px-1 rounded"
+                  style={getStatutCongeStyle(statutConge)}
                 >
-                  {postesSupplementaires.join(' ')}
+                  {statutConge}
                 </span>
               </div>
-            )}
-          </div>
-        );
+            );
+          }
+          
+          // Cas 3: Service + Statut congé (sans poste) → Statut en bas
+          if (statutConge && !displayCategorie) {
+            return (
+              <span 
+                className="text-[10px] font-semibold px-1 rounded"
+                style={getStatutCongeStyle(statutConge)}
+              >
+                {statutConge}
+              </span>
+            );
+          }
+          
+          // Cas 4: Poste seul (pas de statut congé)
+          if (displayCategorie) {
+            return <span className="text-xs font-bold">{displayCategorie}</span>;
+          }
+          
+          return null;
+        };
+        
+        // Statut congé seul → centré
+        if (statutConge && !service && !poste) {
+          cellContent = (
+            <div className="flex flex-col h-full justify-center items-center">
+              {hasNote && (
+                <div className="absolute top-0 right-0 p-0.5" title="Note existante">
+                  <StickyNote className="w-3 h-3 text-amber-500" />
+                </div>
+              )}
+              <span 
+                className="text-sm font-bold px-1.5 py-0.5 rounded"
+                style={getStatutCongeStyle(statutConge)}
+              >
+                {statutConge}
+              </span>
+            </div>
+          );
+        } else {
+          // Affichage normal avec service/poste et éventuellement statut congé
+          cellContent = (
+            <div className="flex flex-col h-full justify-between">
+              {hasNote && (
+                <div className="absolute top-0 right-0 p-0.5" title="Note existante">
+                  <StickyNote className="w-3 h-3 text-amber-500" />
+                </div>
+              )}
+              {isTexteLibre && (
+                <div className="absolute top-0 left-0 p-0.5" title="Texte libre">
+                  <Type className="w-3 h-3 text-purple-500" />
+                </div>
+              )}
+              <div className="flex flex-col">
+                {displayText && <span className={`font-medium ${isTexteLibre ? 'text-[10px]' : ''}`}>{displayText}</span>}
+                {renderBottomLine()}
+              </div>
+              {postesSupplementaires.length > 0 && (
+                <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
+                  <span 
+                    className="text-[9px] italic font-medium"
+                    style={{ color: postesColor }}
+                  >
+                    {postesSupplementaires.join(' ')}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        }
       }
     } else {
       // Cellule vide - couleurs de fond selon jour
@@ -581,9 +665,23 @@ const PlanningTable = ({
               <div className="flex items-center gap-2">
                 <span 
                   className="inline-block w-4 h-4 rounded"
-                  style={{ backgroundColor: getServiceColor('C').bg }}
+                  style={{ backgroundColor: STATUT_CONGE_COLORS['C'].bg }}
                 ></span>
                 <span>C = Conges</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span 
+                  className="inline-block w-4 h-4 rounded"
+                  style={{ backgroundColor: STATUT_CONGE_COLORS['C?'].bg }}
+                ></span>
+                <span>C? = En attente</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span 
+                  className="inline-block w-4 h-4 rounded"
+                  style={{ backgroundColor: STATUT_CONGE_COLORS['CNA'].bg }}
+                ></span>
+                <span>CNA = Refusé</span>
               </div>
             </div>
           </div>
