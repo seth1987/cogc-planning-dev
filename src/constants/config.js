@@ -93,10 +93,6 @@ export const CODE_COLORS = {
   'AH': 'bg-yellow-100 text-yellow-800',
   'DD': 'bg-yellow-100 text-yellow-800',
   
-  // === PCD : INDIGO ===
-  'CCC BO': 'bg-indigo-200 text-indigo-800',
-  'CBVD': 'bg-indigo-200 text-indigo-800',
-  
   // === SPECIAL ===
   'TQ': 'bg-pink-500 text-white',
   'figé': 'bg-gray-500 text-white',
@@ -205,12 +201,6 @@ export const CONGES_CODES = [
   { code: 'C', desc: 'Congés' },
   { code: 'C?', desc: 'Congé en attente' },
   { code: 'CNA', desc: 'Congé Non Accordé' }
-];
-
-// PCD - Codes spécifiques PCD
-export const PCD_CODES = [
-  { code: 'CCC BO', desc: 'CCC BO' },
-  { code: 'CBVD', desc: 'CBVD' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)
