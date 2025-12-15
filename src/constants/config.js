@@ -73,10 +73,6 @@ export const CODE_COLORS = {
   // === D2I : GRIS ===
   'D2I': 'bg-gray-300 text-gray-700',
   
-  // === PCD : BLEU CIEL ===
-  'CCC BO': 'bg-sky-100 text-sky-800',
-  'CBVD': 'bg-sky-100 text-sky-800',
-  
   // === SPECIAL ===
   'TQ': 'bg-pink-500 text-white',
   'figé': 'bg-gray-500 text-white',
@@ -142,12 +138,6 @@ export const SERVICE_CODES = [
   { code: 'FO', desc: 'Formation' },
   { code: 'VT', desc: 'Temps partiel' },
   { code: 'D2I', desc: 'D2I' }
-];
-
-// Codes PCD (Personnel de Conduite Denfert)
-export const PCD_CODES = [
-  { code: 'CCC BO', desc: 'CCC BO' },
-  { code: 'CBVD', desc: 'CBVD' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)

@@ -16,9 +16,6 @@ export const DEFAULT_COLORS = {
     'DISPO': { bg: '#bfdbfe', text: '#1e40af' },      // Disponible
     'INACTIN': { bg: '#e5e7eb', text: '#6b7280' },    // Inactif
     'VT': { bg: '#99f6e4', text: '#0f766e' },         // VT - fond turquoise, texte teal
-    // === PCD CODES ===
-    'CCC BO': { bg: '#e0f2fe', text: '#0369a1' },     // PCD - fond bleu ciel, texte bleu
-    'CBVD': { bg: '#e0f2fe', text: '#0369a1' },       // PCD - fond bleu ciel, texte bleu
   },
   postesSupp: { text: '#8b5cf6' },                    // Violet pour +ACR, +RO, etc.
   texteLibre: { bg: '#fef3c7', text: '#92400e' },     // Fond ambre pour notes/commentaires
@@ -39,9 +36,6 @@ export const SERVICE_LABELS = {
   'DISPO': 'Disponible (DISPO)',
   'INACTIN': 'Inactif',
   'VT': 'VT',
-  // === PCD CODES ===
-  'CCC BO': 'CCC BO (PCD)',
-  'CBVD': 'CBVD (PCD)',
 };
 
 // Clé localStorage
