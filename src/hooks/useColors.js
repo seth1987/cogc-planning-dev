@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabaseClient';
 
 /**
  * Hook pour gérer les couleurs personnalisées du planning
- * VERSION 3.3 - Support des sous-catégories avec horaires variables
+ * VERSION 4.0 - Toggle Groupe/Individuel sur TOUTES les catégories
  * 
  * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
  * @param {string} userEmail - Email de l'utilisateur pour la sync (optionnel)
@@ -35,6 +35,7 @@ export const useColors = (context = 'general', userEmail = null) => {
         return {
           services: { ...DEFAULT_COLORS.services, ...parsed?.services },
           groups: { ...DEFAULT_COLORS.groups, ...parsed?.groups },
+          categoryModes: { ...parsed?.categoryModes }, // v4.0: modes des catégories
           subCategoryModes: { ...DEFAULT_COLORS.subCategoryModes, ...parsed?.subCategoryModes },
           postesSupp: { ...DEFAULT_COLORS.postesSupp, ...parsed?.postesSupp },
           texteLibre: { ...DEFAULT_COLORS.texteLibre, ...parsed?.texteLibre },
@@ -64,6 +65,7 @@ export const useColors = (context = 'general', userEmail = null) => {
     return {
       services: { ...DEFAULT_COLORS.services, ...stored?.services },
       groups: { ...DEFAULT_COLORS.groups, ...stored?.groups },
+      categoryModes: { ...stored?.categoryModes },
       subCategoryModes: { ...DEFAULT_COLORS.subCategoryModes, ...stored?.subCategoryModes },
       postesSupp: { ...DEFAULT_COLORS.postesSupp, ...stored?.postesSupp },
       texteLibre: { ...DEFAULT_COLORS.texteLibre, ...stored?.texteLibre },
@@ -189,7 +191,10 @@ export const useColors = (context = 'general', userEmail = null) => {
     }
   }, [storageKey, context, syncEnabled, userEmail, saveToSupabase]);
 
-  // Mettre à jour une couleur de service (élément individuel)
+  /**
+   * v4.0: Mettre à jour une couleur de service (élément individuel)
+   * Passe automatiquement en mode "individual" pour la catégorie concernée
+   */
   const updateServiceColor = useCallback((serviceCode, colorType, value) => {
     setColors(prev => {
       const updated = {
@@ -203,7 +208,16 @@ export const useColors = (context = 'general', userEmail = null) => {
         }
       };
       
-      // Si c'est un élément de sous-catégorie, passer en mode individuel
+      // v4.0: Trouver la catégorie et passer en mode individuel
+      const category = findCategoryForCode(serviceCode);
+      if (category) {
+        updated.categoryModes = {
+          ...updated.categoryModes,
+          [category.key]: 'individual'
+        };
+      }
+      
+      // Si c'est un élément de sous-catégorie, passer aussi en mode individuel pour la sous-cat
       const parentSubCat = findParentSubCategory(serviceCode);
       if (parentSubCat && parentSubCat !== serviceCode) {
         updated.subCategoryModes = {
@@ -218,7 +232,9 @@ export const useColors = (context = 'general', userEmail = null) => {
     });
   }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
-  // Mettre à jour la couleur d'un groupe (catégorie)
+  /**
+   * Mettre à jour la couleur d'un groupe (catégorie) - pour le header
+   */
   const updateGroupColor = useCallback((groupKey, colorType, value) => {
     setColors(prev => {
       const updated = {
@@ -238,9 +254,101 @@ export const useColors = (context = 'general', userEmail = null) => {
   }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
   /**
+   * v4.0: Mettre à jour la couleur d'une catégorie entière
+   * Applique la couleur à TOUS les éléments de la catégorie
+   */
+  const updateCategoryColor = useCallback((categoryKey, colorType, value) => {
+    setColors(prev => {
+      const category = COLOR_CATEGORIES[categoryKey];
+      if (!category) return prev;
+      
+      const newServices = { ...prev.services };
+      const newGroups = {
+        ...prev.groups,
+        [categoryKey]: {
+          ...prev.groups?.[categoryKey],
+          [colorType]: value
+        }
+      };
+      
+      // Appliquer à tous les éléments de la catégorie
+      if (category.items) {
+        Object.keys(category.items).forEach(code => {
+          newServices[code] = {
+            ...newServices[code],
+            [colorType]: value
+          };
+        });
+      }
+      
+      // Pour les catégories avec sous-catégories, appliquer aussi aux sous-catégories
+      if (category.subCategories) {
+        Object.keys(category.subCategories).forEach(subCatCode => {
+          newServices[subCatCode] = {
+            ...newServices[subCatCode],
+            [colorType]: value
+          };
+          // Et aux combinaisons horaires
+          const horaires = getHorairesForSubCategory(subCatCode);
+          horaires.forEach(h => {
+            const combinedCode = `${subCatCode} ${h.code}`;
+            newServices[combinedCode] = {
+              ...newServices[combinedCode],
+              [colorType]: value
+            };
+          });
+        });
+      }
+      
+      const updated = {
+        ...prev,
+        services: newServices,
+        groups: newGroups,
+        categoryModes: {
+          ...prev.categoryModes,
+          [categoryKey]: 'group' // Rester/passer en mode groupe
+        }
+      };
+      
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      if (syncEnabled && userEmail) saveToSupabase(updated);
+      return updated;
+    });
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
+
+  /**
+   * v4.0: Définir le mode d'une catégorie (groupe/individual)
+   */
+  const setCategoryMode = useCallback((categoryKey, mode) => {
+    setColors(prev => {
+      const updated = {
+        ...prev,
+        categoryModes: {
+          ...prev.categoryModes,
+          [categoryKey]: mode
+        }
+      };
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      if (syncEnabled && userEmail) saveToSupabase(updated);
+      return updated;
+    });
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
+
+  /**
+   * v4.0: Obtenir le mode d'une catégorie
+   */
+  const getCategoryMode = useCallback((categoryKey) => {
+    // Si explicitement défini
+    if (colors.categoryModes?.[categoryKey]) {
+      return colors.categoryModes[categoryKey];
+    }
+    // Par défaut : groupe
+    return 'group';
+  }, [colors]);
+
+  /**
    * v3.3: Mettre à jour la couleur d'une sous-catégorie (ex: FO RO, CRC, etc.)
    * Applique la couleur à tous les éléments combinés avec les bons horaires
-   * (RO, SOUF, CAC = Matin/Soir seulement, autres = Matin/Soir/Nuit)
    */
   const updateSubCategoryColor = useCallback((subCatCode, colorType, value) => {
     setColors(prev => {
@@ -428,6 +536,9 @@ export const useColors = (context = 'general', userEmail = null) => {
     saveColors,
     updateServiceColor,
     updateGroupColor,
+    updateCategoryColor,      // v4.0
+    setCategoryMode,          // v4.0
+    getCategoryMode,          // v4.0
     updateSubCategoryColor,
     setSubCategoryMode,
     getSubCategoryMode,
