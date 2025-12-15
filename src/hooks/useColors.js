@@ -13,7 +13,7 @@ import { supabase } from '../lib/supabaseClient';
 
 /**
  * Hook pour gérer les couleurs personnalisées du planning
- * VERSION 4.0 - Toggle Groupe/Individuel sur TOUTES les catégories
+ * VERSION 4.1 - Fix: getServiceColor respecte le mode Groupe/Individuel
  * 
  * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
  * @param {string} userEmail - Email de l'utilisateur pour la sync (optionnel)
@@ -113,7 +113,7 @@ export const useColors = (context = 'general', userEmail = null) => {
         }, { onConflict: 'user_email,context' });
 
       if (error) throw error;
-      console.log(`☁️ Couleurs synchronisées (${context})`);
+      console.log(`☁️ Couleurs synchronisées (${context})`, Object.keys(newColors.categoryModes || {}).length);
       return true;
     } catch (error) {
       console.error(`🎨 Erreur sauvegarde Supabase (${context}):`, error);
@@ -484,39 +484,73 @@ export const useColors = (context = 'general', userEmail = null) => {
   }, [saveColors, mergeWithDefaults]);
 
   /**
-   * Obtenir la couleur d'un service avec logique de fallback complète
+   * v4.1 FIX: Obtenir la couleur d'un service avec respect du mode Groupe/Individuel
+   * 
+   * LOGIQUE:
+   * 1. Trouver la catégorie du code
+   * 2. Vérifier le mode de la catégorie (group/individual)
+   * 3. Si MODE GROUPE: utiliser directement la couleur du groupe (ignorer couleurs individuelles)
+   * 4. Si MODE INDIVIDUEL: cascade classique (service > sous-cat > groupe > défaut)
    */
   const getServiceColor = useCallback((serviceCode) => {
     if (!serviceCode) return { bg: 'transparent', text: '#000000' };
     
-    // 1. Couleur personnalisée de l'élément
-    const customService = colors.services?.[serviceCode];
-    if (customService?.bg && customService.bg !== 'transparent') {
-      return customService;
-    }
-    
-    // 2. Couleur de la sous-catégorie parent (pour habilitation/formation et postes)
-    const parentSubCat = findParentSubCategory(serviceCode);
-    if (parentSubCat && parentSubCat !== serviceCode) {
-      const parentColor = colors.services?.[parentSubCat];
-      if (parentColor?.bg && parentColor.bg !== 'transparent') {
-        return parentColor;
-      }
-    }
-    
-    // 3. Trouver la catégorie
+    // 1. Trouver la catégorie pour ce code
     const category = findCategoryForCode(serviceCode);
+    
     if (category) {
-      // 4. Couleur personnalisée du groupe
-      if (colors.groups?.[category.key]?.bg) {
+      // 2. Vérifier le mode de la catégorie
+      const categoryMode = colors.categoryModes?.[category.key] || 'group';
+      
+      // 3. MODE GROUPE: utiliser la couleur du groupe directement
+      if (categoryMode === 'group') {
+        // Priorité: couleur groupe personnalisée > couleur par défaut du groupe
+        if (colors.groups?.[category.key]?.bg && colors.groups[category.key].bg !== 'transparent') {
+          return colors.groups[category.key];
+        }
+        // Sinon couleur par défaut de la catégorie
+        return category.defaultColor || { bg: 'transparent', text: '#000000' };
+      }
+      
+      // 4. MODE INDIVIDUEL: cascade classique
+      // 4a. Couleur personnalisée de l'élément individuel
+      const customService = colors.services?.[serviceCode];
+      if (customService?.bg && customService.bg !== 'transparent') {
+        return customService;
+      }
+      
+      // 4b. Couleur de la sous-catégorie parent (pour habilitation/formation et postes)
+      const parentSubCat = findParentSubCategory(serviceCode);
+      if (parentSubCat && parentSubCat !== serviceCode) {
+        // Vérifier le mode de la sous-catégorie
+        const subCatMode = colors.subCategoryModes?.[parentSubCat] || 'group';
+        
+        if (subCatMode === 'group') {
+          // En mode groupe pour la sous-cat, utiliser sa couleur
+          const parentColor = colors.services?.[parentSubCat];
+          if (parentColor?.bg && parentColor.bg !== 'transparent') {
+            return parentColor;
+          }
+        } else {
+          // En mode individuel, vérifier la couleur spécifique
+          const parentColor = colors.services?.[parentSubCat];
+          if (parentColor?.bg && parentColor.bg !== 'transparent') {
+            return parentColor;
+          }
+        }
+      }
+      
+      // 4c. Couleur personnalisée du groupe (fallback)
+      if (colors.groups?.[category.key]?.bg && colors.groups[category.key].bg !== 'transparent') {
         return colors.groups[category.key];
       }
-      // 5. Couleur par défaut de l'item ou du groupe
+      
+      // 4d. Couleur par défaut de l'item ou du groupe
       const itemDefault = category.items?.[serviceCode]?.defaultColor;
-      return itemDefault || category.defaultColor;
+      return itemDefault || category.defaultColor || { bg: 'transparent', text: '#000000' };
     }
     
-    // 6. Fallback dans DEFAULT_COLORS
+    // 5. Code non trouvé dans les catégories - fallback dans DEFAULT_COLORS
     if (DEFAULT_COLORS.services?.[serviceCode]) {
       return DEFAULT_COLORS.services[serviceCode];
     }
