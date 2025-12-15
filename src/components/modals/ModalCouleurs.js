@@ -6,12 +6,12 @@ import useColors from '../../hooks/useColors';
 /**
  * ModalCouleurs - Panneau de personnalisation des couleurs
  * 
- * VERSION 3.3 - Poste (Réserve) avec sous-catégories et horaires variables
+ * VERSION 4.0 - Toggle Groupe/Individuel sur TOUTES les catégories
  * 
- * - Barre de recherche pour filtrer les codes
- * - Horaires, Poste (Réserve) et Absences ouverts par défaut
- * - Autres catégories fermées par défaut
- * - Horaires variables par sous-catégorie (all ou jour)
+ * - Toggle Groupe/Individuel pour chaque catégorie
+ * - Mode Groupe : 1 couleur pour toute la catégorie
+ * - Mode Individuel : personnalisation élément par élément
+ * - Modification d'un élément → repasse auto en Individuel
  */
 const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null }) => {
   const {
@@ -19,6 +19,9 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
     updateServiceColor,
     updateGroupColor,
     updateSubCategoryColor,
+    updateCategoryColor,
+    setCategoryMode,
+    getCategoryMode,
     setSubCategoryMode,
     getSubCategoryMode,
     updatePostesSupp,
@@ -220,10 +223,18 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
     );
   };
 
-  // Rendu d'une catégorie normale (sans sous-catégories)
+  /**
+   * v4.0: Rendu d'une catégorie normale AVEC toggle Groupe/Individuel
+   */
   const renderNormalCategory = (groupKey, category) => {
     const isExpanded = expandedGroups[groupKey];
     const groupColor = getGroupColor(groupKey);
+    const mode = getCategoryMode(groupKey);
+    const isGroupMode = mode === 'group';
+    
+    // Filtrer les items (exclure sous-catégories si présentes)
+    const items = Object.entries(category.items || {})
+      .filter(([_, item]) => !item.isSubCategory && !item.parentSubCategory);
     
     return (
       <div key={groupKey} style={categoryContainerStyle}>
@@ -235,59 +246,103 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
               <div style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>{category.description}</div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
+          
+          {/* Toggle + Color pickers dans le header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }} onClick={(e) => e.stopPropagation()}>
+            {/* Toggle Groupe/Individuel */}
+            <div style={{ 
+              display: 'flex', alignItems: 'center', gap: '6px',
+              backgroundColor: 'rgba(0, 0, 0, 0.3)',
+              borderRadius: '20px', padding: '4px'
+            }}>
+              <button
+                onClick={() => setCategoryMode(groupKey, 'group')}
+                style={toggleBtnStyle(isGroupMode, accentColor)}
+              >
+                Groupe
+              </button>
+              <button
+                onClick={() => setCategoryMode(groupKey, 'individual')}
+                style={toggleBtnStyle(!isGroupMode, accentColor)}
+              >
+                Individuel
+              </button>
+            </div>
+            
+            {/* Color pickers pour le groupe */}
             <input
               type="color"
               value={groupColor.bg || '#1a1a2e'}
-              onChange={(e) => updateGroupColor(groupKey, 'bg', e.target.value)}
+              onChange={(e) => updateCategoryColor(groupKey, 'bg', e.target.value)}
               style={colorPickerStyle}
-              title="Fond du groupe"
+              title={isGroupMode ? "Couleur pour toute la catégorie" : "Couleur par défaut"}
             />
             <input
               type="color"
               value={groupColor.text || '#000000'}
-              onChange={(e) => updateGroupColor(groupKey, 'text', e.target.value)}
+              onChange={(e) => updateCategoryColor(groupKey, 'text', e.target.value)}
               style={colorPickerStyle}
-              title="Texte du groupe"
+              title={isGroupMode ? "Texte pour toute la catégorie" : "Texte par défaut"}
             />
           </div>
         </div>
 
-        {isExpanded && category.items && (
+        {/* Contenu : affiché seulement en mode Individuel ET si expanded */}
+        {isExpanded && !isGroupMode && items.length > 0 && (
           <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
-            {Object.entries(category.items)
-              .filter(([_, item]) => !item.isSubCategory && !item.parentSubCategory)
-              .map(([code, item], index, arr) => {
-                const serviceColor = colors.services?.[code] || {};
-                return (
-                  <div key={code} style={itemRowStyle(index, arr.length)}>
-                    <span style={codeStyle}>{code}</span>
-                    <span style={labelStyle}>{item.label}</span>
-                    <input
-                      type="color"
-                      value={serviceColor.bg || groupColor.bg || '#1a1a2e'}
-                      onChange={(e) => updateServiceColor(code, 'bg', e.target.value)}
-                      style={smallPickerStyle}
-                    />
-                    <input
-                      type="color"
-                      value={serviceColor.text || groupColor.text || '#000000'}
-                      onChange={(e) => updateServiceColor(code, 'text', e.target.value)}
-                      style={smallPickerStyle}
-                    />
-                  </div>
-                );
-              })}
+            {items.map(([code, item], index) => {
+              const serviceColor = colors.services?.[code] || {};
+              return (
+                <div key={code} style={itemRowStyle(index, items.length)}>
+                  <span style={codeStyle}>{code}</span>
+                  <span style={labelStyle}>{item.label}</span>
+                  <input
+                    type="color"
+                    value={serviceColor.bg || groupColor.bg || '#1a1a2e'}
+                    onChange={(e) => updateServiceColor(code, 'bg', e.target.value)}
+                    style={smallPickerStyle}
+                  />
+                  <input
+                    type="color"
+                    value={serviceColor.text || groupColor.text || '#000000'}
+                    onChange={(e) => updateServiceColor(code, 'text', e.target.value)}
+                    style={smallPickerStyle}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+        
+        {/* Message mode groupe */}
+        {isExpanded && isGroupMode && items.length > 0 && (
+          <div style={{ 
+            padding: '12px', 
+            color: '#888', 
+            fontSize: '12px', 
+            textAlign: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+          }}>
+            Mode groupe : tous les éléments utilisent la même couleur
+            <div style={{ marginTop: '6px', color: '#666', fontSize: '10px' }}>
+              {items.map(([code]) => code).join(' • ')}
+            </div>
           </div>
         )}
       </div>
     );
   };
 
-  // Rendu d'une catégorie avec sous-catégories (Poste Réserve, Habilitation/Formation)
+  /**
+   * v4.0: Rendu d'une catégorie avec sous-catégories (Poste Réserve, Habilitation/Formation)
+   * Chaque sous-catégorie a aussi son toggle Groupe/Individuel
+   */
   const renderSubCategoryGroup = (groupKey, category) => {
     const isExpanded = expandedGroups[groupKey];
     const groupColor = getGroupColor(groupKey);
+    const categoryMode = getCategoryMode(groupKey);
+    const isCategoryGroupMode = categoryMode === 'group';
     
     return (
       <div key={groupKey} style={categoryContainerStyle}>
@@ -299,29 +354,68 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
               <div style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>{category.description}</div>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
+          
+          {/* Toggle + Color pickers pour la catégorie entière */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ 
+              display: 'flex', alignItems: 'center', gap: '6px',
+              backgroundColor: 'rgba(0, 0, 0, 0.3)',
+              borderRadius: '20px', padding: '4px'
+            }}>
+              <button
+                onClick={() => setCategoryMode(groupKey, 'group')}
+                style={toggleBtnStyle(isCategoryGroupMode, accentColor)}
+              >
+                Groupe
+              </button>
+              <button
+                onClick={() => setCategoryMode(groupKey, 'individual')}
+                style={toggleBtnStyle(!isCategoryGroupMode, accentColor)}
+              >
+                Individuel
+              </button>
+            </div>
+            
             <input
               type="color"
               value={groupColor.bg || '#e0e7ff'}
-              onChange={(e) => updateGroupColor(groupKey, 'bg', e.target.value)}
+              onChange={(e) => updateCategoryColor(groupKey, 'bg', e.target.value)}
               style={colorPickerStyle}
-              title="Fond par défaut"
+              title={isCategoryGroupMode ? "Couleur pour toute la catégorie" : "Couleur par défaut"}
             />
             <input
               type="color"
               value={groupColor.text || '#3730a3'}
-              onChange={(e) => updateGroupColor(groupKey, 'text', e.target.value)}
+              onChange={(e) => updateCategoryColor(groupKey, 'text', e.target.value)}
               style={colorPickerStyle}
-              title="Texte par défaut"
+              title={isCategoryGroupMode ? "Texte pour toute la catégorie" : "Texte par défaut"}
             />
           </div>
         </div>
 
-        {isExpanded && category.subCategories && (
+        {/* Mode groupe pour toute la catégorie */}
+        {isExpanded && isCategoryGroupMode && (
+          <div style={{ 
+            padding: '12px', 
+            color: '#888', 
+            fontSize: '12px', 
+            textAlign: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+            borderTop: '1px solid rgba(255, 255, 255, 0.1)'
+          }}>
+            Mode groupe : tous les postes utilisent la même couleur
+            <div style={{ marginTop: '6px', color: '#666', fontSize: '10px' }}>
+              {Object.keys(category.subCategories || {}).join(' • ')}
+            </div>
+          </div>
+        )}
+
+        {/* Mode individuel : afficher les sous-catégories */}
+        {isExpanded && !isCategoryGroupMode && category.subCategories && (
           <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
             {Object.entries(category.subCategories).map(([subCatCode, subCat]) => {
-              const mode = getSubCategoryMode(subCatCode);
-              const isGroupMode = mode === 'group';
+              const subMode = getSubCategoryMode(subCatCode);
+              const isSubGroupMode = subMode === 'group';
               const subCatColor = colors.services?.[subCatCode] || subCat.defaultColor || groupColor;
               
               // Récupérer les horaires spécifiques à cette sous-catégorie
@@ -337,7 +431,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
                     display: 'flex', 
                     alignItems: 'center', 
                     justifyContent: 'space-between',
-                    marginBottom: isGroupMode ? 0 : '10px'
+                    marginBottom: isSubGroupMode ? 0 : '10px'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '13px' }}>{subCatCode}</span>
@@ -363,13 +457,13 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
                       }}>
                         <button
                           onClick={() => setSubCategoryMode(subCatCode, 'group')}
-                          style={toggleBtnStyle(isGroupMode, accentColor)}
+                          style={toggleBtnStyle(isSubGroupMode, accentColor)}
                         >
                           Groupe
                         </button>
                         <button
                           onClick={() => setSubCategoryMode(subCatCode, 'individual')}
-                          style={toggleBtnStyle(!isGroupMode, accentColor)}
+                          style={toggleBtnStyle(!isSubGroupMode, accentColor)}
                         >
                           Individuel
                         </button>
@@ -381,20 +475,20 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
                           value={subCatColor.bg || groupColor.bg || '#e0e7ff'}
                           onChange={(e) => updateSubCategoryColor(subCatCode, 'bg', e.target.value)}
                           style={colorPickerStyle}
-                          title={isGroupMode ? "Couleur pour tout le groupe" : "Couleur de base"}
+                          title={isSubGroupMode ? "Couleur pour tout le groupe" : "Couleur de base"}
                         />
                         <input
                           type="color"
                           value={subCatColor.text || groupColor.text || '#3730a3'}
                           onChange={(e) => updateSubCategoryColor(subCatCode, 'text', e.target.value)}
                           style={colorPickerStyle}
-                          title={isGroupMode ? "Texte pour tout le groupe" : "Texte de base"}
+                          title={isSubGroupMode ? "Texte pour tout le groupe" : "Texte de base"}
                         />
                       </div>
                     </div>
                   </div>
                   
-                  {!isGroupMode && (
+                  {!isSubGroupMode && (
                     <div style={{ 
                       marginTop: '10px', paddingTop: '10px',
                       borderTop: '1px dashed rgba(255, 255, 255, 0.1)'
