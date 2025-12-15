@@ -37,6 +37,7 @@ export const CODE_COLORS = {
   '-': '',
   'O': '', 
   'X': '',
+  'I': '',
   
   // === REPOS ===
   'RP': 'bg-green-100 text-green-700',
@@ -49,7 +50,7 @@ export const CODE_COLORS = {
   'MA': 'bg-red-200 text-red-800 font-semibold',
   
   // === INACTIF ===
-  'I': 'bg-pink-100 text-pink-700',
+  'INAC': 'bg-pink-100 text-pink-700',
   'INACTIN': 'bg-gray-300 text-gray-700',
   
   // === DISPO : BLEU ===
@@ -61,17 +62,32 @@ export const CODE_COLORS = {
   
   // === HAB/FO : ORANGE ===
   'FO': 'bg-orange-200 text-orange-800',
-  'VL': 'bg-orange-200 text-orange-800', 
-  'VM': 'bg-orange-200 text-orange-800',
   'HAB': 'bg-orange-200 text-orange-800',
-  'HAB-QF': 'bg-orange-200 text-orange-800',
-  'EIA': 'bg-orange-200 text-orange-800',
+  'FO RO': 'bg-orange-200 text-orange-800',
+  'FO RC': 'bg-orange-200 text-orange-800',
+  'FO RE': 'bg-orange-200 text-orange-800',
+  'FO ACR': 'bg-orange-200 text-orange-800',
+  'FO CRC': 'bg-orange-200 text-orange-800',
+  'FO CAC': 'bg-orange-200 text-orange-800',
+  'FO CCU': 'bg-orange-200 text-orange-800',
   
-  // === VT : JAUNE CLAIR ===
+  // === SERVICE DE JOUR : BLEU CLAIR ===
+  'VL': 'bg-blue-100 text-blue-800',
+  'EIA': 'bg-blue-100 text-blue-800',
+  'DPX': 'bg-blue-100 text-blue-800',
+  'PSE': 'bg-blue-100 text-blue-800',
+  'VM': 'bg-blue-100 text-blue-800',
+  
+  // === JOURS RH : JAUNE CLAIR ===
   'VT': 'bg-yellow-100 text-yellow-800',
-  
-  // === D2I : GRIS ===
-  'D2I': 'bg-gray-300 text-gray-700',
+  'D2I': 'bg-yellow-100 text-yellow-800',
+  'F': 'bg-yellow-100 text-yellow-800',
+  'RA': 'bg-yellow-100 text-yellow-800',
+  'RN': 'bg-yellow-100 text-yellow-800',
+  'TY': 'bg-yellow-100 text-yellow-800',
+  'AY': 'bg-yellow-100 text-yellow-800',
+  'AH': 'bg-yellow-100 text-yellow-800',
+  'DD': 'bg-yellow-100 text-yellow-800',
   
   // === SPECIAL ===
   'TQ': 'bg-pink-500 text-white',
@@ -123,21 +139,58 @@ export const GROUPES_PAR_STATUT = {
   ]
 };
 
-// SERVICE_CODES - Le texte libre est géré par un bouton séparé dans ModalCellEdit
+// SERVICE_CODES - Horaires uniquement (-, O, X, I, RP, NU)
 export const SERVICE_CODES = [
   { code: '-', desc: 'Matin (06h-14h)' },
   { code: 'O', desc: 'Soir (14h-22h)' },
   { code: 'X', desc: 'Nuit (22h-06h)' },
+  { code: 'I', desc: 'Jour' },
   { code: 'RP', desc: 'Repos programmé' },
-  { code: 'C', desc: 'Congés' },
-  { code: 'MA', desc: 'Maladie' },
+  { code: 'NU', desc: 'Non Utilisé' }
+];
+
+// === NOUVELLES CATÉGORIES ===
+
+// Service de jour (bleu clair) - combinable avec horaire
+export const SERVICE_JOUR_CODES = [
+  { code: 'VL', desc: 'VL' },
   { code: 'D', desc: 'Disponible' },
-  { code: 'NU', desc: 'Non Utilisé' },
-  { code: 'I', desc: 'Inactif/Visite' },
-  { code: 'HAB', desc: 'Habilitation/Formation' },
-  { code: 'FO', desc: 'Formation' },
+  { code: 'EIA', desc: 'EIA' },
+  { code: 'DPX', desc: 'DPX' },
+  { code: 'PSE', desc: 'PSE' },
+  { code: 'INAC', desc: 'Inactif' },
+  { code: 'VM', desc: 'VM' }
+];
+
+// Habilitation/Formation (orange) - combinable avec horaire
+export const HABILITATION_CODES = [
+  { code: 'HAB', desc: 'Habilitation' },
+  { code: 'FO RO', desc: 'FO RO' },
+  { code: 'FO RC', desc: 'FO RC' },
+  { code: 'FO CAC', desc: 'FO CAC' },
+  { code: 'FO CRC', desc: 'FO CRC' },
+  { code: 'FO ACR', desc: 'FO ACR' },
+  { code: 'FO CCU', desc: 'FO CCU' }
+];
+
+// Jours RH (jaune clair) - combinable avec horaire
+export const JOURS_RH_CODES = [
   { code: 'VT', desc: 'Temps partiel' },
-  { code: 'D2I', desc: 'D2I' }
+  { code: 'D2I', desc: 'D2I' },
+  { code: 'RU', desc: 'RU' },
+  { code: 'F', desc: 'F' },
+  { code: 'RA', desc: 'RA' },
+  { code: 'RN', desc: 'RN' },
+  { code: 'TY', desc: 'TY' },
+  { code: 'AY', desc: 'AY' },
+  { code: 'AH', desc: 'AH' },
+  { code: 'DD', desc: 'DD' }
+];
+
+// Absences (MA, C) - combinables avec horaire OU utilisables seuls
+export const ABSENCES_CODES = [
+  { code: 'MA', desc: 'Maladie' },
+  { code: 'C', desc: 'Congés' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)
