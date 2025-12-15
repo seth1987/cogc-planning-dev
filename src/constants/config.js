@@ -94,8 +94,7 @@ export const CODE_COLORS = {
   'DD': 'bg-yellow-100 text-yellow-800',
   
   // === PCD (Cyan/Turquoise) ===
-  'CCC': 'bg-cyan-200 text-cyan-800',
-  'BO': 'bg-cyan-200 text-cyan-800',
+  'CCCBO': 'bg-cyan-200 text-cyan-800',
   'CBVD': 'bg-cyan-200 text-cyan-800',
   
   // === SPECIAL ===
@@ -197,8 +196,7 @@ export const JOURS_RH_CODES = [
 
 // PCD (cyan/turquoise) - codes spécifiques PCD
 export const PCD_CODES = [
-  { code: 'CCC', desc: 'CCC' },
-  { code: 'BO', desc: 'BO' },
+  { code: 'CCCBO', desc: 'CCCBO' },
   { code: 'CBVD', desc: 'CBVD' }
 ];
 
