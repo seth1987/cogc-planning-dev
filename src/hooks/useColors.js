@@ -1,31 +1,35 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DEFAULT_COLORS, COLORS_STORAGE_KEY } from '../constants/defaultColors';
+import { supabase } from '../lib/supabaseClient';
 
 /**
  * Hook pour gérer les couleurs personnalisées du planning
- * Stockage dans localStorage avec fallback sur les valeurs par défaut
+ * Stockage dans localStorage avec option de synchronisation Supabase
  * 
  * v1.1 - Ajout reloadColors() pour synchroniser entre composants
  * v1.2 - Support de contextes séparés (general / perso)
  * v1.3 - Fix: stabilisation storageKey + logs debug
+ * v1.4 - NEW: Synchronisation multi-appareils via Supabase (optionnel)
  * 
  * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
+ * @param {string} userEmail - Email de l'utilisateur pour la sync (optionnel)
  */
-export const useColors = (context = 'general') => {
+export const useColors = (context = 'general', userEmail = null) => {
   // Mémoriser la clé de stockage pour éviter les re-renders
   const storageKey = useMemo(() => {
     const key = context === 'perso' 
       ? `${COLORS_STORAGE_KEY}-perso` 
       : COLORS_STORAGE_KEY;
-    console.log(`🎨 useColors init - context: ${context}, storageKey: ${key}`);
     return key;
   }, [context]);
+
+  // Clé pour le flag de sync dans localStorage
+  const syncFlagKey = useMemo(() => `${storageKey}-sync`, [storageKey]);
 
   // Fonction de chargement initiale (appelée une seule fois)
   const getInitialColors = () => {
     try {
       const stored = localStorage.getItem(storageKey);
-      console.log(`🎨 getInitialColors - storageKey: ${storageKey}, found:`, stored ? 'OUI' : 'NON');
       if (stored) {
         const parsed = JSON.parse(stored);
         const merged = {
@@ -33,19 +37,29 @@ export const useColors = (context = 'general') => {
           postesSupp: { ...DEFAULT_COLORS.postesSupp, ...parsed?.postesSupp },
           texteLibre: { ...DEFAULT_COLORS.texteLibre, ...parsed?.texteLibre },
         };
-        console.log(`🎨 Couleurs chargées depuis localStorage (${context}):`, Object.keys(parsed.services || {}).length, 'services');
         return merged;
       }
     } catch (error) {
       console.error(`🎨 Erreur chargement couleurs (${context}):`, error);
     }
-    console.log(`🎨 Utilisation couleurs par défaut (${context})`);
     return DEFAULT_COLORS;
+  };
+
+  // Charger l'état sync depuis localStorage
+  const getInitialSyncState = () => {
+    try {
+      const stored = localStorage.getItem(syncFlagKey);
+      return stored === 'true';
+    } catch {
+      return false;
+    }
   };
 
   // État initialisé directement avec les couleurs du localStorage
   const [colors, setColors] = useState(getInitialColors);
   const [isLoaded, setIsLoaded] = useState(true);
+  const [syncEnabled, setSyncEnabled] = useState(getInitialSyncState);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Fusionner les couleurs stockées avec les défauts
   const mergeWithDefaults = useCallback((stored) => {
@@ -56,6 +70,122 @@ export const useColors = (context = 'general') => {
     };
   }, []);
 
+  // ========== SUPABASE SYNC FUNCTIONS ==========
+
+  // Charger les couleurs depuis Supabase
+  const loadFromSupabase = useCallback(async () => {
+    if (!userEmail) return null;
+    
+    try {
+      const { data, error } = await supabase
+        .from('user_color_preferences')
+        .select('colors, sync_enabled')
+        .eq('user_email', userEmail)
+        .eq('context', context)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Pas de données trouvées, c'est normal pour un nouvel utilisateur
+          return null;
+        }
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error(`🎨 Erreur chargement Supabase (${context}):`, error);
+      return null;
+    }
+  }, [userEmail, context]);
+
+  // Sauvegarder les couleurs dans Supabase
+  const saveToSupabase = useCallback(async (newColors) => {
+    if (!userEmail || !syncEnabled) return false;
+    
+    try {
+      setIsSyncing(true);
+      const { error } = await supabase
+        .from('user_color_preferences')
+        .upsert({
+          user_email: userEmail,
+          context: context,
+          colors: newColors,
+          sync_enabled: true,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_email,context'
+        });
+
+      if (error) throw error;
+      console.log(`☁️ Couleurs synchronisées vers Supabase (${context})`);
+      return true;
+    } catch (error) {
+      console.error(`🎨 Erreur sauvegarde Supabase (${context}):`, error);
+      return false;
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [userEmail, context, syncEnabled]);
+
+  // Supprimer les données de Supabase (quand on désactive la sync)
+  const deleteFromSupabase = useCallback(async () => {
+    if (!userEmail) return;
+    
+    try {
+      await supabase
+        .from('user_color_preferences')
+        .delete()
+        .eq('user_email', userEmail)
+        .eq('context', context);
+      
+      console.log(`🗑️ Données Supabase supprimées (${context})`);
+    } catch (error) {
+      console.error(`🎨 Erreur suppression Supabase (${context}):`, error);
+    }
+  }, [userEmail, context]);
+
+  // ========== SYNC TOGGLE ==========
+
+  // Activer/désactiver la synchronisation
+  const toggleSync = useCallback(async (enabled) => {
+    setSyncEnabled(enabled);
+    localStorage.setItem(syncFlagKey, enabled ? 'true' : 'false');
+    
+    if (enabled && userEmail) {
+      // Activer : sauvegarder les couleurs actuelles vers Supabase
+      await saveToSupabase(colors);
+      console.log(`☁️ Synchronisation activée (${context})`);
+    } else if (!enabled) {
+      // Désactiver : supprimer les données Supabase (garder local)
+      await deleteFromSupabase();
+      console.log(`📱 Synchronisation désactivée - données locales uniquement (${context})`);
+    }
+  }, [syncFlagKey, userEmail, saveToSupabase, deleteFromSupabase, colors, context]);
+
+  // ========== EFFECT: Charger depuis Supabase au montage ==========
+
+  useEffect(() => {
+    const initFromSupabase = async () => {
+      if (!userEmail) return;
+      
+      const data = await loadFromSupabase();
+      if (data && data.sync_enabled && data.colors) {
+        // Supabase a des données sync activées -> les utiliser
+        const merged = mergeWithDefaults(data.colors);
+        setColors(merged);
+        setSyncEnabled(true);
+        localStorage.setItem(storageKey, JSON.stringify(merged));
+        localStorage.setItem(syncFlagKey, 'true');
+        console.log(`☁️ Couleurs chargées depuis Supabase (${context})`);
+      }
+    };
+
+    initFromSupabase();
+  }, [userEmail, context, loadFromSupabase, mergeWithDefaults, storageKey, syncFlagKey]);
+
+  // ========== EXISTING FUNCTIONS (UPDATED) ==========
+
   // Recharger les couleurs depuis localStorage (pour synchronisation entre composants)
   const reloadColors = useCallback(() => {
     try {
@@ -64,7 +194,6 @@ export const useColors = (context = 'general') => {
         const parsed = JSON.parse(stored);
         const merged = mergeWithDefaults(parsed);
         setColors(merged);
-        console.log(`🎨 reloadColors (${context}) - rechargé depuis localStorage`);
         return merged;
       }
     } catch (error) {
@@ -73,18 +202,23 @@ export const useColors = (context = 'general') => {
     return DEFAULT_COLORS;
   }, [storageKey, context, mergeWithDefaults]);
 
-  // Sauvegarder les couleurs
+  // Sauvegarder les couleurs (local + Supabase si sync activé)
   const saveColors = useCallback((newColors) => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(newColors));
       setColors(newColors);
-      console.log(`🎨 saveColors (${context}) - sauvegardé dans localStorage`);
+      
+      // Sync vers Supabase si activé
+      if (syncEnabled && userEmail) {
+        saveToSupabase(newColors);
+      }
+      
       return true;
     } catch (error) {
       console.error(`🎨 Erreur sauvegarde couleurs (${context}):`, error);
       return false;
     }
-  }, [storageKey, context]);
+  }, [storageKey, context, syncEnabled, userEmail, saveToSupabase]);
 
   // Mettre à jour une couleur de service
   const updateServiceColor = useCallback((serviceCode, colorType, value) => {
@@ -100,10 +234,15 @@ export const useColors = (context = 'general') => {
         }
       };
       localStorage.setItem(storageKey, JSON.stringify(updated));
-      console.log(`🎨 updateServiceColor (${context}) - ${serviceCode}.${colorType} = ${value}`);
+      
+      // Sync vers Supabase si activé
+      if (syncEnabled && userEmail) {
+        saveToSupabase(updated);
+      }
+      
       return updated;
     });
-  }, [storageKey, context]);
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
   // Mettre à jour la couleur des postes supplémentaires
   const updatePostesSupp = useCallback((value) => {
@@ -113,10 +252,15 @@ export const useColors = (context = 'general') => {
         postesSupp: { text: value }
       };
       localStorage.setItem(storageKey, JSON.stringify(updated));
-      console.log(`🎨 updatePostesSupp (${context}) - ${value}`);
+      
+      // Sync vers Supabase si activé
+      if (syncEnabled && userEmail) {
+        saveToSupabase(updated);
+      }
+      
       return updated;
     });
-  }, [storageKey, context]);
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
   // Mettre à jour les couleurs du texte libre
   const updateTexteLibre = useCallback((colorType, value) => {
@@ -129,17 +273,31 @@ export const useColors = (context = 'general') => {
         }
       };
       localStorage.setItem(storageKey, JSON.stringify(updated));
-      console.log(`🎨 updateTexteLibre (${context}) - ${colorType} = ${value}`);
+      
+      // Sync vers Supabase si activé
+      if (syncEnabled && userEmail) {
+        saveToSupabase(updated);
+      }
+      
       return updated;
     });
-  }, [storageKey, context]);
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
   // Réinitialiser aux valeurs par défaut
-  const resetColors = useCallback(() => {
+  const resetColors = useCallback(async () => {
     localStorage.removeItem(storageKey);
     setColors(DEFAULT_COLORS);
+    
+    // Supprimer aussi de Supabase si sync activé
+    if (syncEnabled && userEmail) {
+      await deleteFromSupabase();
+      // Désactiver la sync après reset
+      setSyncEnabled(false);
+      localStorage.setItem(syncFlagKey, 'false');
+    }
+    
     console.log(`🎨 resetColors (${context}) - couleurs réinitialisées`);
-  }, [storageKey, context]);
+  }, [storageKey, context, syncEnabled, userEmail, deleteFromSupabase, syncFlagKey]);
 
   // Exporter la configuration
   const exportColors = useCallback(() => {
@@ -159,7 +317,7 @@ export const useColors = (context = 'general') => {
   const importColors = useCallback((file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
         try {
           const imported = JSON.parse(e.target.result);
           // Valider la structure
@@ -197,6 +355,10 @@ export const useColors = (context = 'general') => {
     getServiceColor,
     reloadColors,
     context,
+    // Nouvelles fonctions de sync
+    syncEnabled,
+    isSyncing,
+    toggleSync,
   };
 };
 
