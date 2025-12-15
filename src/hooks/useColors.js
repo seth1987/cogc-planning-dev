@@ -3,17 +3,17 @@ import {
   DEFAULT_COLORS, 
   COLORS_STORAGE_KEY, 
   COLOR_CATEGORIES,
-  HORAIRES_BASE,
   findCategoryForCode,
   findParentSubCategory,
   isSubCategoryUniform,
+  getHorairesForSubCategory,
   resolveColorForCode 
 } from '../constants/defaultColors';
 import { supabase } from '../lib/supabaseClient';
 
 /**
  * Hook pour gérer les couleurs personnalisées du planning
- * VERSION 3.0 - Support des sous-catégories avec toggle groupe/individuel
+ * VERSION 3.3 - Support des sous-catégories avec horaires variables
  * 
  * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
  * @param {string} userEmail - Email de l'utilisateur pour la sync (optionnel)
@@ -238,8 +238,9 @@ export const useColors = (context = 'general', userEmail = null) => {
   }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
   /**
-   * NEW v3.0: Mettre à jour la couleur d'une sous-catégorie (ex: FO RO)
-   * Applique la couleur à tous les éléments combinés (FO RO -, FO RO O, FO RO X)
+   * v3.3: Mettre à jour la couleur d'une sous-catégorie (ex: FO RO, CRC, etc.)
+   * Applique la couleur à tous les éléments combinés avec les bons horaires
+   * (RO, SOUF, CAC = Matin/Soir seulement, autres = Matin/Soir/Nuit)
    */
   const updateSubCategoryColor = useCallback((subCatCode, colorType, value) => {
     setColors(prev => {
@@ -251,8 +252,11 @@ export const useColors = (context = 'general', userEmail = null) => {
         [colorType]: value
       };
       
+      // Récupérer les horaires spécifiques à cette sous-catégorie
+      const horaires = getHorairesForSubCategory(subCatCode);
+      
       // Mettre à jour toutes les combinaisons avec horaires
-      HORAIRES_BASE.forEach(horaire => {
+      horaires.forEach(horaire => {
         const combinedCode = `${subCatCode} ${horaire.code}`;
         newServices[combinedCode] = {
           ...newServices[combinedCode],
@@ -276,7 +280,7 @@ export const useColors = (context = 'general', userEmail = null) => {
   }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
   /**
-   * NEW v3.0: Changer le mode d'une sous-catégorie (groupe/individuel)
+   * Changer le mode d'une sous-catégorie (groupe/individuel)
    */
   const setSubCategoryMode = useCallback((subCatCode, mode) => {
     setColors(prev => {
@@ -294,7 +298,7 @@ export const useColors = (context = 'general', userEmail = null) => {
   }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
   /**
-   * NEW v3.0: Obtenir le mode d'une sous-catégorie
+   * Obtenir le mode d'une sous-catégorie
    */
   const getSubCategoryMode = useCallback((subCatCode) => {
     // Si explicitement défini
@@ -383,7 +387,7 @@ export const useColors = (context = 'general', userEmail = null) => {
       return customService;
     }
     
-    // 2. Couleur de la sous-catégorie parent (pour habilitation/formation)
+    // 2. Couleur de la sous-catégorie parent (pour habilitation/formation et postes)
     const parentSubCat = findParentSubCategory(serviceCode);
     if (parentSubCat && parentSubCat !== serviceCode) {
       const parentColor = colors.services?.[parentSubCat];
@@ -424,9 +428,9 @@ export const useColors = (context = 'general', userEmail = null) => {
     saveColors,
     updateServiceColor,
     updateGroupColor,
-    updateSubCategoryColor, // NEW v3.0
-    setSubCategoryMode,      // NEW v3.0
-    getSubCategoryMode,      // NEW v3.0
+    updateSubCategoryColor,
+    setSubCategoryMode,
+    getSubCategoryMode,
     updatePostesSupp,
     updateTexteLibre,
     resetColors,
