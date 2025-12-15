@@ -15,6 +15,7 @@ export const DEFAULT_COLORS = {
     'NU': { bg: '#f3f4f6', text: '#374151' },         // Non utilisé
     'DISPO': { bg: '#bfdbfe', text: '#1e40af' },      // Disponible
     'INACTIN': { bg: '#e5e7eb', text: '#6b7280' },    // Inactif
+    'VT': { bg: '#99f6e4', text: '#0f766e' },         // VT - fond turquoise, texte teal
   },
   postesSupp: { text: '#8b5cf6' },                    // Violet pour +ACR, +RO, etc.
   texteLibre: { bg: '#fef3c7', text: '#92400e' },     // Fond ambre pour notes/commentaires
@@ -34,6 +35,7 @@ export const SERVICE_LABELS = {
   'NU': 'Non utilisé',
   'DISPO': 'Disponible (DISPO)',
   'INACTIN': 'Inactif',
+  'VT': 'VT',
 };
 
 // Clé localStorage
