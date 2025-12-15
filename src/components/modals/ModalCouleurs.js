@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { X, Download, Upload, RotateCcw, Palette, Save } from 'lucide-react';
+import { X, Download, Upload, RotateCcw, Palette, Save, Cloud, CloudOff, Loader } from 'lucide-react';
 import { SERVICE_LABELS } from '../../constants/defaultColors';
 import useColors from '../../hooks/useColors';
 
@@ -8,16 +8,15 @@ import useColors from '../../hooks/useColors';
  * 
  * v1.1 - Support du prop context pour couleurs séparées (general/perso)
  * v1.2 - Ajout logs debug pour tracer les changements
+ * v1.3 - NEW: Case à cocher pour synchronisation multi-appareils
  * 
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {function} onClose - Callback de fermeture
  * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
+ * @param {string} userEmail - Email de l'utilisateur pour la synchronisation
  */
-const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
-  // DEBUG: Log à chaque render
-  console.log(`🎨 [ModalCouleurs] Render - context: ${context}, isOpen: ${isOpen}`);
-  
-  // Utilise le hook avec le contexte passé en prop
+const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null }) => {
+  // Utilise le hook avec le contexte et l'email utilisateur
   const {
     colors,
     updateServiceColor,
@@ -26,10 +25,10 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
     resetColors,
     exportColors,
     importColors,
-  } = useColors(context);
-  
-  // DEBUG: Log les couleurs actuelles
-  console.log(`🎨 [ModalCouleurs] Couleurs chargées:`, Object.keys(colors.services).length, 'services');
+    syncEnabled,
+    isSyncing,
+    toggleSync,
+  } = useColors(context, userEmail);
   
   const fileInputRef = useRef(null);
 
@@ -48,14 +47,40 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
   };
 
   const handleReset = () => {
-    if (window.confirm('Réinitialiser toutes les couleurs aux valeurs par défaut ?')) {
+    if (window.confirm('Réinitialiser toutes les couleurs aux valeurs par défaut ?\n\nCela désactivera aussi la synchronisation.')) {
       resetColors();
     }
   };
 
-  // DEBUG: Wrapper pour updateServiceColor
+  const handleSyncToggle = async () => {
+    if (!userEmail) {
+      alert('Vous devez être connecté pour activer la synchronisation.');
+      return;
+    }
+    
+    const newState = !syncEnabled;
+    if (newState) {
+      // Activer
+      const confirm = window.confirm(
+        '☁️ Activer la synchronisation ?\n\n' +
+        'Vos couleurs personnalisées seront sauvegardées dans le cloud et synchronisées sur tous vos appareils.'
+      );
+      if (confirm) {
+        await toggleSync(true);
+      }
+    } else {
+      // Désactiver
+      const confirm = window.confirm(
+        '📱 Désactiver la synchronisation ?\n\n' +
+        'Vos couleurs resteront uniquement sur cet appareil.\nLes données cloud seront supprimées.'
+      );
+      if (confirm) {
+        await toggleSync(false);
+      }
+    }
+  };
+
   const handleColorChange = (code, colorType, value) => {
-    console.log(`🎨 [ModalCouleurs] handleColorChange APPELÉ - code: ${code}, type: ${colorType}, value: ${value}`);
     updateServiceColor(code, colorType, value);
   };
 
@@ -74,6 +99,9 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
   const modalTitle = context === 'perso' 
     ? 'Couleurs - Mon Planning' 
     : 'Couleurs - Planning général';
+
+  // Couleur accent selon contexte
+  const accentColor = context === 'perso' ? '#a855f7' : '#00f0ff';
 
   return (
     <div 
@@ -122,10 +150,18 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Palette size={24} color={context === 'perso' ? '#a855f7' : '#00f0ff'} />
+            <Palette size={24} color={accentColor} />
             <h2 style={{ margin: 0, color: '#ffffff', fontSize: '18px' }}>
               {modalTitle}
             </h2>
+            {/* Indicateur de sync en cours */}
+            {isSyncing && (
+              <Loader 
+                size={16} 
+                color={accentColor} 
+                style={{ animation: 'spin 1s linear infinite' }}
+              />
+            )}
           </div>
           <button
             onClick={onClose}
@@ -136,8 +172,79 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
         </div>
 
         <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+          
+          {/* ========== SECTION SYNCHRONISATION ========== */}
+          <div style={{
+            backgroundColor: syncEnabled 
+              ? 'rgba(34, 197, 94, 0.1)' 
+              : 'rgba(255, 255, 255, 0.05)',
+            border: syncEnabled 
+              ? '1px solid rgba(34, 197, 94, 0.3)' 
+              : '1px solid rgba(255, 255, 255, 0.1)',
+            borderRadius: '8px',
+            padding: '12px 16px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {syncEnabled ? (
+                <Cloud size={20} color="#22c55e" />
+              ) : (
+                <CloudOff size={20} color="#666" />
+              )}
+              <div>
+                <div style={{ 
+                  color: syncEnabled ? '#22c55e' : '#999', 
+                  fontSize: '13px', 
+                  fontWeight: 'bold' 
+                }}>
+                  {syncEnabled ? 'Synchronisation activée' : 'Stockage local uniquement'}
+                </div>
+                <div style={{ color: '#666', fontSize: '11px', marginTop: '2px' }}>
+                  {syncEnabled 
+                    ? 'Vos couleurs sont synchronisées sur tous vos appareils'
+                    : 'Activer pour retrouver vos couleurs sur tous vos appareils'}
+                </div>
+              </div>
+            </div>
+            
+            {/* Toggle switch */}
+            <button
+              onClick={handleSyncToggle}
+              disabled={isSyncing || !userEmail}
+              style={{
+                position: 'relative',
+                width: '50px',
+                height: '26px',
+                borderRadius: '13px',
+                border: 'none',
+                backgroundColor: syncEnabled ? '#22c55e' : '#444',
+                cursor: !userEmail ? 'not-allowed' : 'pointer',
+                transition: 'background-color 0.2s',
+                opacity: !userEmail ? 0.5 : 1,
+              }}
+              title={!userEmail ? 'Connexion requise' : (syncEnabled ? 'Désactiver la sync' : 'Activer la sync')}
+            >
+              <span style={{
+                position: 'absolute',
+                top: '3px',
+                left: syncEnabled ? '27px' : '3px',
+                width: '20px',
+                height: '20px',
+                borderRadius: '50%',
+                backgroundColor: '#fff',
+                transition: 'left 0.2s',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              }} />
+            </button>
+          </div>
+
+          {/* ========== SECTION SERVICES ========== */}
           <h3 style={{ 
-            color: context === 'perso' ? '#a855f7' : '#00f0ff', 
+            color: accentColor, 
             marginTop: 0, 
             marginBottom: '12px', 
             fontSize: '14px', 
@@ -160,7 +267,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                   : '1px solid rgba(0, 240, 255, 0.2)',
                 fontSize: '12px',
                 fontWeight: 'bold',
-                color: context === 'perso' ? '#a855f7' : '#00f0ff',
+                color: accentColor,
               }}
             >
               <span>Code</span>
@@ -202,8 +309,9 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
             ))}
           </div>
 
+          {/* ========== SECTION AUTRES ÉLÉMENTS ========== */}
           <h3 style={{ 
-            color: context === 'perso' ? '#a855f7' : '#00f0ff', 
+            color: accentColor, 
             marginBottom: '12px', 
             fontSize: '14px', 
             textTransform: 'uppercase' 
@@ -219,10 +327,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                 <input
                   type="color"
                   value={colors.postesSupp?.text || '#8b5cf6'}
-                  onChange={(e) => {
-                    console.log(`🎨 [ModalCouleurs] updatePostesSupp APPELÉ - value: ${e.target.value}`);
-                    updatePostesSupp(e.target.value);
-                  }}
+                  onChange={(e) => updatePostesSupp(e.target.value)}
                   style={colorPickerStyle}
                 />
               </div>
@@ -234,10 +339,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                 <input
                   type="color"
                   value={colors.texteLibre?.bg || '#fef3c7'}
-                  onChange={(e) => {
-                    console.log(`🎨 [ModalCouleurs] updateTexteLibre bg APPELÉ - value: ${e.target.value}`);
-                    updateTexteLibre('bg', e.target.value);
-                  }}
+                  onChange={(e) => updateTexteLibre('bg', e.target.value)}
                   style={colorPickerStyle}
                 />
               </div>
@@ -245,16 +347,14 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                 <input
                   type="color"
                   value={colors.texteLibre?.text || '#92400e'}
-                  onChange={(e) => {
-                    console.log(`🎨 [ModalCouleurs] updateTexteLibre text APPELÉ - value: ${e.target.value}`);
-                    updateTexteLibre('text', e.target.value);
-                  }}
+                  onChange={(e) => updateTexteLibre('text', e.target.value)}
                   style={colorPickerStyle}
                 />
               </div>
             </div>
           </div>
 
+          {/* ========== BOUTONS D'ACTION ========== */}
           <div style={{ 
             display: 'flex', 
             gap: '10px', 
@@ -280,7 +380,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                   ? '1px solid rgba(168, 85, 247, 0.3)'
                   : '1px solid rgba(0, 240, 255, 0.3)', 
                 borderRadius: '6px', 
-                color: context === 'perso' ? '#a855f7' : '#00f0ff', 
+                color: accentColor, 
                 cursor: 'pointer', 
                 fontSize: '13px' 
               }}
@@ -301,7 +401,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                   ? '1px solid rgba(168, 85, 247, 0.3)'
                   : '1px solid rgba(0, 240, 255, 0.3)', 
                 borderRadius: '6px', 
-                color: context === 'perso' ? '#a855f7' : '#00f0ff', 
+                color: accentColor, 
                 cursor: 'pointer', 
                 fontSize: '13px' 
               }}
@@ -333,7 +433,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
               alignItems: 'center', 
               gap: '6px', 
               padding: '10px 24px', 
-              backgroundColor: context === 'perso' ? '#a855f7' : '#00f0ff', 
+              backgroundColor: accentColor, 
               border: 'none', 
               borderRadius: '6px', 
               color: '#1a1a2e', 
@@ -346,6 +446,14 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
           </button>
         </div>
       </div>
+      
+      {/* CSS pour l'animation du loader */}
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };
