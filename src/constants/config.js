@@ -44,34 +44,53 @@ export const CODE_COLORS = {
   
   // === CONGES : JAUNE/OR ===
   'C': 'bg-yellow-400 text-yellow-900 font-semibold',
+  'C?': 'bg-yellow-200 text-yellow-800 font-semibold',
+  'CNA': 'bg-red-300 text-red-900 font-semibold',
   
   // === MALADIE : ROUGE ===
   'MA': 'bg-red-200 text-red-800 font-semibold',
+  'F': 'bg-purple-200 text-purple-800 font-semibold',
   
   // === INACTIF ===
   'I': 'bg-pink-100 text-pink-700',
+  'INAC': 'bg-blue-100 text-blue-800',
   'INACTIN': 'bg-gray-300 text-gray-700',
   
   // === DISPO : BLEU ===
-  'D': 'bg-blue-200 text-blue-800',
+  'D': 'bg-blue-100 text-blue-800',
   'DISPO': 'bg-blue-200 text-blue-800',
   
   // === NON UTILISE ===
-  'NU': 'bg-gray-100 text-gray-500',
+  'NU': 'bg-gray-200 text-gray-600',
+  
+  // === SERVICE DE JOUR : BLEU CLAIR ===
+  'VL': 'bg-blue-100 text-blue-800',
+  'EIA': 'bg-blue-100 text-blue-800',
+  'DPX': 'bg-blue-100 text-blue-800',
+  'PSE': 'bg-blue-100 text-blue-800',
+  'VM': 'bg-blue-100 text-blue-800',
   
   // === HAB/FO : ORANGE ===
   'FO': 'bg-orange-200 text-orange-800',
-  'VL': 'bg-orange-200 text-orange-800', 
-  'VM': 'bg-orange-200 text-orange-800',
   'HAB': 'bg-orange-200 text-orange-800',
+  'FO RO': 'bg-orange-200 text-orange-800',
+  'FO RC': 'bg-orange-200 text-orange-800',
+  'FO CAC': 'bg-orange-200 text-orange-800',
+  'FO CRC': 'bg-orange-200 text-orange-800',
+  'FO ACR': 'bg-orange-200 text-orange-800',
+  'FO CCU': 'bg-orange-200 text-orange-800',
   'HAB-QF': 'bg-orange-200 text-orange-800',
-  'EIA': 'bg-orange-200 text-orange-800',
   
-  // === VT : JAUNE CLAIR ===
+  // === JOURS RH : JAUNE CLAIR ===
   'VT': 'bg-yellow-100 text-yellow-800',
-  
-  // === D2I : GRIS ===
-  'D2I': 'bg-gray-300 text-gray-700',
+  'D2I': 'bg-yellow-100 text-yellow-800',
+  'RU': 'bg-yellow-100 text-yellow-800',
+  'RA': 'bg-yellow-100 text-yellow-800',
+  'RN': 'bg-yellow-100 text-yellow-800',
+  'TY': 'bg-yellow-100 text-yellow-800',
+  'AY': 'bg-yellow-100 text-yellow-800',
+  'AH': 'bg-yellow-100 text-yellow-800',
+  'DD': 'bg-yellow-100 text-yellow-800',
   
   // === SPECIAL ===
   'TQ': 'bg-pink-500 text-white',
@@ -123,21 +142,74 @@ export const GROUPES_PAR_STATUT = {
   ]
 };
 
-// SERVICE_CODES - Le texte libre est géré par un bouton séparé dans ModalCellEdit
+// ============================================
+// CODES HORAIRES DE BASE (toujours visibles)
+// ============================================
 export const SERVICE_CODES = [
-  { code: '-', desc: 'Matin (06h-14h)' },
-  { code: 'O', desc: 'Soir (14h-22h)' },
-  { code: 'X', desc: 'Nuit (22h-06h)' },
-  { code: 'RP', desc: 'Repos programmé' },
-  { code: 'C', desc: 'Congés' },
+  { code: '-', desc: 'Matin' },
+  { code: 'O', desc: 'Soir' },
+  { code: 'X', desc: 'Nuit' },
+  { code: 'I', desc: 'Inactif' },
+  { code: 'RP', desc: 'Repos' },
+  { code: 'NU', desc: 'Non Utilisé' }
+];
+
+// ============================================
+// ABSENCES (MA, F)
+// ============================================
+export const ABSENCES_CODES = [
   { code: 'MA', desc: 'Maladie' },
+  { code: 'F', desc: 'Famille' }
+];
+
+// ============================================
+// CONGES (C, C?, CNA)
+// ============================================
+export const CONGES_CODES = [
+  { code: 'C', desc: 'Congé accordé' },
+  { code: 'C?', desc: 'Congé en attente' },
+  { code: 'CNA', desc: 'Congé non accordé' }
+];
+
+// ============================================
+// SERVICE DE JOUR (accordéon)
+// ============================================
+export const SERVICE_JOUR_CODES = [
+  { code: 'VL', desc: 'Visite Locale' },
   { code: 'D', desc: 'Disponible' },
-  { code: 'NU', desc: 'Non Utilisé' },
-  { code: 'I', desc: 'Inactif/Visite' },
-  { code: 'HAB', desc: 'Habilitation/Formation' },
-  { code: 'FO', desc: 'Formation' },
+  { code: 'EIA', desc: 'EIA' },
+  { code: 'DPX', desc: 'Déplacement' },
+  { code: 'PSE', desc: 'PSE' },
+  { code: 'INAC', desc: 'Inactif jour' },
+  { code: 'VM', desc: 'Visite Médicale' }
+];
+
+// ============================================
+// HABILITATION / FORMATION (accordéon)
+// ============================================
+export const HABILITATION_CODES = [
+  { code: 'HAB', desc: 'Habilitation' },
+  { code: 'FO RO', desc: 'Formation RO' },
+  { code: 'FO RC', desc: 'Formation RC' },
+  { code: 'FO CAC', desc: 'Formation CAC' },
+  { code: 'FO CRC', desc: 'Formation CRC' },
+  { code: 'FO ACR', desc: 'Formation ACR' },
+  { code: 'FO CCU', desc: 'Formation CCU' }
+];
+
+// ============================================
+// JOURS RH (accordéon)
+// ============================================
+export const JOURS_RH_CODES = [
   { code: 'VT', desc: 'Temps partiel' },
-  { code: 'D2I', desc: 'D2I' }
+  { code: 'D2I', desc: 'D2I' },
+  { code: 'RU', desc: 'Récup Utilisé' },
+  { code: 'RA', desc: 'Récup Accordé' },
+  { code: 'RN', desc: 'Récup Non accord.' },
+  { code: 'TY', desc: 'Travail de nuit' },
+  { code: 'AY', desc: 'Abs. Autorisée' },
+  { code: 'AH', desc: 'Absence heures' },
+  { code: 'DD', desc: 'Droit dispo.' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)
