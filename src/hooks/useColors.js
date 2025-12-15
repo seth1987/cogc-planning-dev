@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabaseClient';
  * v1.2 - Support de contextes séparés (general / perso)
  * v1.3 - Fix: stabilisation storageKey + logs debug
  * v1.4 - NEW: Synchronisation multi-appareils via Supabase (optionnel)
+ * v1.5 - FIX: Race condition dans toggleSync (forceSave param)
  * 
  * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
  * @param {string} userEmail - Email de l'utilisateur pour la sync (optionnel)
@@ -100,11 +101,22 @@ export const useColors = (context = 'general', userEmail = null) => {
   }, [userEmail, context]);
 
   // Sauvegarder les couleurs dans Supabase
-  const saveToSupabase = useCallback(async (newColors) => {
-    if (!userEmail || !syncEnabled) return false;
+  // forceSave: true pour bypasser la vérification syncEnabled (utilisé par toggleSync)
+  const saveToSupabase = useCallback(async (newColors, forceSave = false) => {
+    if (!userEmail) {
+      console.log(`🎨 saveToSupabase: pas d'email, abandon`);
+      return false;
+    }
+    
+    if (!forceSave && !syncEnabled) {
+      console.log(`🎨 saveToSupabase: sync désactivée, abandon`);
+      return false;
+    }
     
     try {
       setIsSyncing(true);
+      console.log(`☁️ Tentative sauvegarde Supabase (${context})...`, { userEmail, forceSave });
+      
       const { error } = await supabase
         .from('user_color_preferences')
         .upsert({
@@ -117,7 +129,11 @@ export const useColors = (context = 'general', userEmail = null) => {
           onConflict: 'user_email,context'
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error(`🎨 Erreur Supabase upsert:`, error);
+        throw error;
+      }
+      
       console.log(`☁️ Couleurs synchronisées vers Supabase (${context})`);
       return true;
     } catch (error) {
@@ -149,13 +165,16 @@ export const useColors = (context = 'general', userEmail = null) => {
 
   // Activer/désactiver la synchronisation
   const toggleSync = useCallback(async (enabled) => {
+    console.log(`☁️ toggleSync appelé: enabled=${enabled}, userEmail=${userEmail}`);
+    
     setSyncEnabled(enabled);
     localStorage.setItem(syncFlagKey, enabled ? 'true' : 'false');
     
     if (enabled && userEmail) {
       // Activer : sauvegarder les couleurs actuelles vers Supabase
-      await saveToSupabase(colors);
-      console.log(`☁️ Synchronisation activée (${context})`);
+      // IMPORTANT: forceSave=true car syncEnabled n'est pas encore à jour (React async)
+      const success = await saveToSupabase(colors, true);
+      console.log(`☁️ Synchronisation activée (${context}), sauvegarde: ${success ? 'OK' : 'ÉCHEC'}`);
     } else if (!enabled) {
       // Désactiver : supprimer les données Supabase (garder local)
       await deleteFromSupabase();
@@ -169,7 +188,9 @@ export const useColors = (context = 'general', userEmail = null) => {
     const initFromSupabase = async () => {
       if (!userEmail) return;
       
+      console.log(`☁️ Vérification données Supabase pour ${userEmail} (${context})...`);
       const data = await loadFromSupabase();
+      
       if (data && data.sync_enabled && data.colors) {
         // Supabase a des données sync activées -> les utiliser
         const merged = mergeWithDefaults(data.colors);
@@ -178,6 +199,8 @@ export const useColors = (context = 'general', userEmail = null) => {
         localStorage.setItem(storageKey, JSON.stringify(merged));
         localStorage.setItem(syncFlagKey, 'true');
         console.log(`☁️ Couleurs chargées depuis Supabase (${context})`);
+      } else {
+        console.log(`☁️ Pas de données sync dans Supabase (${context})`);
       }
     };
 
