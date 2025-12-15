@@ -14,7 +14,7 @@ import { supabase } from '../../lib/supabaseClient';
  * 
  * v1.2 - Ajout décompte mensuel/annuel des postes supplémentaires
  * v1.3 - Support statut_conge (C, CNA) - C? non compté car transitoire
- * v1.4 - Sections détails repliables par défaut, suppression doublon Répartition Vacations
+ * v1.4 - Sections détails repliables par défaut, suppression doublons graphiques
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -655,37 +655,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                               ...styles.bar,
                               width: `${width}%`,
                               backgroundColor: congeColors[code]?.bg || '#facc15'
-                            }}
-                          />
-                        </div>
-                        <span style={styles.barValue}>{data.count}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Graphique visuel Postes Supplémentaires */}
-            {totalSupplements > 0 && (
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>📈 Répartition Postes Supplémentaires</h3>
-                <div style={styles.barChart}>
-                  {activeSupplements.map(([sup, data]) => {
-                    const maxSup = Math.max(...activeSupplements.map(([_, d]) => d.count), 1);
-                    const width = (data.count / maxSup) * 100;
-                    
-                    return (
-                      <div key={sup} style={styles.barRow}>
-                        <span style={{...styles.barLabel, color: supplementColors[sup] || '#FFD700'}}>
-                          {sup}
-                        </span>
-                        <div style={styles.barContainer}>
-                          <div 
-                            style={{
-                              ...styles.bar,
-                              width: `${width}%`,
-                              backgroundColor: supplementColors[sup] || '#FFD700'
                             }}
                           />
                         </div>
