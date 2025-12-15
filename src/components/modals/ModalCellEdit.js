@@ -1,26 +1,68 @@
 import React, { useState, useEffect } from 'react';
 import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search, Calendar, AlertCircle } from 'lucide-react';
-import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, POSTES_PAR_GROUPE, GROUPES_AVEC_POSTE, MONTHS } from '../../constants/config';
+import { 
+  SERVICE_CODES, 
+  POSTES_CODES, 
+  POSTES_SUPPLEMENTAIRES, 
+  POSTES_PAR_GROUPE, 
+  GROUPES_AVEC_POSTE, 
+  MONTHS,
+  SERVICE_JOUR_CODES,
+  HABILITATION_CODES,
+  JOURS_RH_CODES,
+  ABSENCES_CODES
+} from '../../constants/config';
 
-// Couleurs UNIQUEMENT pour la modal d'édition 
+// Couleurs pour la modal d'édition - par catégorie
 const MODAL_COLORS = {
+  // Horaires - pas de couleur spéciale
+  '-': 'bg-gray-100 text-gray-800',
+  'O': 'bg-gray-100 text-gray-800',
+  'X': 'bg-gray-100 text-gray-800',
+  'I': 'bg-gray-100 text-gray-800',
+  'RP': 'bg-green-100 text-green-800',
+  'NU': 'bg-gray-200 text-gray-600',
+  // Absences
   'MA': 'bg-red-200 text-red-800 font-semibold',
   'C': 'bg-yellow-400 text-yellow-900 font-semibold',
-  'RP': 'bg-green-100 text-green-800',
-  'RU': 'bg-green-100 text-green-800',
+  // Service de jour (bleu clair)
+  'VL': 'bg-blue-100 text-blue-800',
+  'D': 'bg-blue-100 text-blue-800',
+  'EIA': 'bg-blue-100 text-blue-800',
+  'DPX': 'bg-blue-100 text-blue-800',
+  'PSE': 'bg-blue-100 text-blue-800',
+  'INAC': 'bg-blue-100 text-blue-800',
+  'VM': 'bg-blue-100 text-blue-800',
+  // Habilitation (orange)
   'HAB': 'bg-orange-200 text-orange-800',
-  'FO': 'bg-orange-200 text-orange-800',
-  'D': 'bg-blue-200 text-blue-800',
-  'I': 'bg-pink-100 text-pink-700',
-  'NU': 'bg-gray-200 text-gray-600',
+  'FO RO': 'bg-orange-200 text-orange-800',
+  'FO RC': 'bg-orange-200 text-orange-800',
+  'FO CAC': 'bg-orange-200 text-orange-800',
+  'FO CRC': 'bg-orange-200 text-orange-800',
+  'FO ACR': 'bg-orange-200 text-orange-800',
+  'FO CCU': 'bg-orange-200 text-orange-800',
+  // Jours RH (jaune clair)
   'VT': 'bg-yellow-100 text-yellow-800',
-  'D2I': 'bg-gray-300 text-gray-700',
+  'D2I': 'bg-yellow-100 text-yellow-800',
+  'RU': 'bg-yellow-100 text-yellow-800',
+  'F': 'bg-yellow-100 text-yellow-800',
+  'RA': 'bg-yellow-100 text-yellow-800',
+  'RN': 'bg-yellow-100 text-yellow-800',
+  'TY': 'bg-yellow-100 text-yellow-800',
+  'AY': 'bg-yellow-100 text-yellow-800',
+  'AH': 'bg-yellow-100 text-yellow-800',
+  'DD': 'bg-yellow-100 text-yellow-800',
 };
 
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.4.4 - Fix chargement texteLibre depuis cellData
+ * @version 3.0.0 - Restructuration complète avec catégories
+ *   - Horaire: -, O, X, I, RP, NU
+ *   - Service de jour: VL, D, EIA, DPX, PSE, INAC, VM
+ *   - Habilitation/Formation: HAB, FO RO, FO RC, FO CAC, FO CRC, FO ACR, FO CCU
+ *   - Jours RH: VT, D2I, RU, F, RA, RN, TY, AY, AH, DD
+ *   - Absences: MA, C (combinables ou seuls)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -36,7 +78,8 @@ const ModalCellEdit = ({
   onClose 
 }) => {
   // États pour service, poste et postes supplémentaires
-  const [tempService, setTempService] = useState('');
+  const [tempService, setTempService] = useState('');      // Horaire (-, O, X, I, RP, NU)
+  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, C)
   const [tempPoste, setTempPoste] = useState('');
   const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
   
@@ -63,67 +106,73 @@ const ModalCellEdit = ({
   const [croisementSearch, setCroisementSearch] = useState('');
   const [croisementLoading, setCroisementLoading] = useState(false);
 
-  // DEBUG: Log des props reçues à chaque render
-  useEffect(() => {
-    const planningKeys = Object.keys(allPlanning || {});
-    const agentsWithData = planningKeys.filter(key => {
-      const agentData = allPlanning[key];
-      return agentData && Object.keys(agentData).length > 0;
-    });
-    
-    console.log('🔍 ModalCellEdit - Props reçues:');
-    console.log('   allPlanning type:', typeof allPlanning);
-    console.log('   allPlanning keys count:', planningKeys.length);
-    console.log('   allPlanning sample keys:', planningKeys.slice(0, 5));
-    console.log('   Agents avec données:', agentsWithData.length);
-    console.log('   selectedCell:', selectedCell);
-    console.log('   selectedCell.day type:', typeof selectedCell?.day);
-  }, [allPlanning, selectedCell]);
+  // Liste de tous les codes de catégorie pour détection
+  const ALL_CATEGORIE_CODES = [
+    ...SERVICE_JOUR_CODES.map(c => c.code),
+    ...HABILITATION_CODES.map(c => c.code),
+    ...JOURS_RH_CODES.map(c => c.code),
+    ...ABSENCES_CODES.map(c => c.code)
+  ];
+
+  // Liste des codes horaire
+  const HORAIRE_CODES = SERVICE_CODES.map(c => c.code);
 
   // Initialiser les états avec les données existantes
   useEffect(() => {
     if (cellData) {
       console.log('📦 CellData reçu:', JSON.stringify(cellData, null, 2));
-      console.log('📦 cellData.service:', cellData.service);
-      console.log('📦 cellData.texteLibre:', cellData.texteLibre);
-      console.log('📦 typeof cellData.texteLibre:', typeof cellData.texteLibre);
       
-      // Cas 1: texteLibre explicite dans les données (non null, non undefined, non vide)
+      // Déterminer si c'est un texte libre
       const hasExplicitTexteLibre = cellData.texteLibre && cellData.texteLibre.trim() !== '';
-      
-      // Cas 2: service non standard (mais PAS 'LIBRE' lui-même qui est juste un marqueur)
       const isNonStandardService = cellData.service && 
         cellData.service !== 'LIBRE' && 
-        !SERVICE_CODES.some(sc => sc.code === cellData.service);
-      
-      // Cas 3: Service est LIBRE mais pas de texteLibre (état transitoire ou erreur)
-      const isLibreWithoutText = cellData.service === 'LIBRE' && !hasExplicitTexteLibre;
-
-      console.log('🔍 Analyse cellData:');
-      console.log('   hasExplicitTexteLibre:', hasExplicitTexteLibre);
-      console.log('   isNonStandardService:', isNonStandardService);
-      console.log('   isLibreWithoutText:', isLibreWithoutText);
+        !HORAIRE_CODES.includes(cellData.service) &&
+        !ALL_CATEGORIE_CODES.includes(cellData.service);
 
       if (hasExplicitTexteLibre) {
-        // Texte libre explicite → utiliser tel quel
-        console.log('✏️ Mode texte libre explicite:', cellData.texteLibre);
-        setTempService('LIBRE');
+        setTempService('');
+        setTempCategorie('LIBRE');
         setTempTexteLibre(cellData.texteLibre);
       } else if (isNonStandardService) {
-        // Service non standard (ex: ancien texte libre stocké directement dans service)
-        console.log('✏️ Service non standard détecté comme texte libre:', cellData.service);
-        setTempService('LIBRE');
+        setTempService('');
+        setTempCategorie('LIBRE');
         setTempTexteLibre(cellData.service);
-      } else if (isLibreWithoutText) {
-        // Service LIBRE mais pas de texte → garder LIBRE et texte vide
-        // L'utilisateur devra cliquer sur LIBRE pour saisir le texte
-        console.log('⚠️ Service LIBRE sans texteLibre - état transitoire');
-        setTempService('LIBRE');
+      } else if (cellData.service === 'LIBRE') {
+        setTempService('');
+        setTempCategorie('LIBRE');
         setTempTexteLibre('');
       } else {
-        // Service standard
-        console.log('📋 Service standard:', cellData.service);
-        setTempService(cellData.service || '');
+        // Analyser le service stocké
+        const storedService = cellData.service || '';
+        
+        // Vérifier si c'est un horaire simple
+        if (HORAIRE_CODES.includes(storedService)) {
+          setTempService(storedService);
+          setTempCategorie('');
+        }
+        // Vérifier si c'est une catégorie
+        else if (ALL_CATEGORIE_CODES.includes(storedService)) {
+          setTempService('');
+          setTempCategorie(storedService);
+        }
+        // Combinaison potentielle (ex: "FO RC -" ou "MA O")
+        else if (storedService.includes(' ')) {
+          const parts = storedService.split(' ');
+          const lastPart = parts[parts.length - 1];
+          const firstParts = parts.slice(0, -1).join(' ');
+          
+          if (HORAIRE_CODES.includes(lastPart)) {
+            setTempService(lastPart);
+            setTempCategorie(firstParts);
+          } else {
+            // Peut-être code comme "FO RC"
+            setTempService('');
+            setTempCategorie(storedService);
+          }
+        } else {
+          setTempService(storedService);
+          setTempCategorie('');
+        }
         setTempTexteLibre('');
       }
       
@@ -131,8 +180,8 @@ const ModalCellEdit = ({
       setTempNote(cellData.note || '');
       setTempPostesSupplementaires(cellData.postesSupplementaires || []);
     } else {
-      console.log('📦 CellData est null/undefined - réinitialisation');
       setTempService('');
+      setTempCategorie('');
       setTempPoste('');
       setTempNote('');
       setTempTexteLibre('');
@@ -167,15 +216,13 @@ const ModalCellEdit = ({
 
   if (!selectedCell) return null;
 
-// === FONCTIONS HELPER POUR ÉDITION MULTIPLE ===
+  // === FONCTIONS HELPER ===
   
-  // Calculer le nombre de jours dans le mois actuel
   const getDaysInMonth = (month, year) => {
     const monthIndex = MONTHS.indexOf(month);
     return new Date(year, monthIndex + 1, 0).getDate();
   };
 
-  // Fonction pour les boutons rapides
   const handleQuickDateRange = (days) => {
     const currentDay = selectedCell.day;
     const daysInMonth = getDaysInMonth(currentMonth, currentYear);
@@ -193,22 +240,6 @@ const ModalCellEdit = ({
     const dateStr = `${currentYear}-${month}-${dayStr}`;
     
     setEndDate(dateStr);
-    validateDateRange(currentDay, targetDay);
-  };
-
-  // Validation de la plage de dates
-  const validateDateRange = (startDay, endDay) => {
-    const daysCount = endDay - startDay + 1;
-    
-    if (endDay < startDay) {
-      setDateRangeWarning('❌ La date de fin doit être >= à la date de début');
-    } else if (daysCount > 31) {
-      setDateRangeWarning('⚠️ Maximum 31 jours');
-    } else if (daysCount > 7) {
-      setDateRangeWarning(`⚠️ ${daysCount} jours seront modifiés`);
-    } else {
-      setDateRangeWarning(`✅ ${daysCount} jour${daysCount > 1 ? 's' : ''} sera${daysCount > 1 ? 'nt' : ''} modifié${daysCount > 1 ? 's' : ''}`);
-    }
   };
 
   // Trouver le groupe de l'agent sélectionné
@@ -222,11 +253,8 @@ const ModalCellEdit = ({
   };
 
   const agentGroup = findAgentGroup();
-
-  // Vérifier si l'agent a accès au sélecteur de poste
   const hasPosteSelector = GROUPES_AVEC_POSTE.some(g => agentGroup?.includes(g) || agentGroup === g);
 
-  // Déterminer les postes disponibles pour cet agent
   const getAvailablePostes = () => {
     for (const [groupeKey, postes] of Object.entries(POSTES_PAR_GROUPE)) {
       if (agentGroup?.includes(groupeKey) || agentGroup === groupeKey) {
@@ -238,24 +266,19 @@ const ModalCellEdit = ({
 
   const availablePostes = getAvailablePostes();
 
-  // Générer le label de la section Poste selon le groupe
   const getPosteLabel = () => {
-    if (agentGroup?.includes('RC - ROULEMENT REGULATEUR CENTRE')) {
-      return 'Poste (RC)';
-    }
-    if (agentGroup?.includes('EAC - APPORT DENFERT')) {
-      return 'Poste (EAC)';
-    }
+    if (agentGroup?.includes('RC - ROULEMENT REGULATEUR CENTRE')) return 'Poste (RC)';
+    if (agentGroup?.includes('EAC - APPORT DENFERT')) return 'Poste (EAC)';
     return 'Poste (Réserve)';
   };
 
-  // Fonction pour obtenir la couleur d'un code service dans la modal
+  // Fonction pour obtenir la couleur d'un code
   const getModalColor = (code, isSelected) => {
+    const baseColor = MODAL_COLORS[code] || 'bg-gray-100 text-gray-700';
     if (isSelected) {
-      const baseColor = MODAL_COLORS[code] || 'bg-gray-200 text-gray-800';
       return `ring-2 ring-blue-500 ${baseColor}`;
     }
-    return MODAL_COLORS[code] || 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+    return `${baseColor} hover:opacity-80`;
   };
 
   // Toggle un poste supplémentaire
@@ -267,6 +290,28 @@ const ModalCellEdit = ({
         return [...prev, code];
       }
     });
+  };
+
+  // Sélection d'un horaire
+  const selectHoraire = (code) => {
+    if (tempService === code) {
+      setTempService(''); // Désélectionner
+    } else {
+      setTempService(code);
+    }
+  };
+
+  // Sélection d'une catégorie
+  const selectCategorie = (code) => {
+    if (tempCategorie === code) {
+      setTempCategorie(''); // Désélectionner
+    } else {
+      setTempCategorie(code);
+      // Si on sélectionne une catégorie autre que LIBRE, effacer le texte libre
+      if (code !== 'LIBRE') {
+        setTempTexteLibre('');
+      }
+    }
   };
 
   // === GESTION NOTES ===
@@ -314,9 +359,8 @@ const ModalCellEdit = ({
   const handleValidateTexteLibre = () => {
     const texte = texteLibreInput.trim();
     if (texte) {
-      console.log('✅ Validation texte libre:', texte);
       setTempTexteLibre(texte);
-      setTempService('LIBRE');
+      setTempCategorie('LIBRE');
     }
     setShowTexteLibreModal(false);
   };
@@ -329,26 +373,21 @@ const ModalCellEdit = ({
   const handleDeleteTexteLibre = () => {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce texte libre ?')) {
       setTempTexteLibre('');
-      setTempService('');
+      setTempCategorie('');
     }
   };
 
   const selectTexteLibre = () => {
-    // Toujours ouvrir la modal pour saisir/modifier le texte
     if (tempTexteLibre) {
-      // Si déjà du texte libre valide, ouvrir en mode édition
       openEditTexteLibreModal();
     } else {
-      // Sinon, ouvrir en mode ajout
-      setTempService('LIBRE');
+      setTempCategorie('LIBRE');
       openAddTexteLibreModal();
     }
   };
 
   // === GESTION CROISEMENT ===
-
   const openCroisementModal = () => {
-    console.log('🔄 Ouverture modal croisement');
     setSelectedCroisementAgent(null);
     setCroisementSearch('');
     setShowCroisementModal(true);
@@ -360,75 +399,37 @@ const ModalCellEdit = ({
     setCroisementSearch('');
   };
 
-  // Filtrer les agents pour le croisement
   const getFilteredAgentsForCroisement = () => {
     const allAgentsList = Object.values(agentsData).flat();
-    
     return allAgentsList.filter(agent => {
       const fullName = `${agent.nom} ${agent.prenom}`;
       if (fullName === selectedCell.agent) return false;
       if (croisementSearch) {
         const search = croisementSearch.toLowerCase();
-        return fullName.toLowerCase().includes(search) || 
-               agent.nom.toLowerCase().includes(search) ||
-               agent.prenom.toLowerCase().includes(search);
+        return fullName.toLowerCase().includes(search);
       }
       return true;
     });
   };
 
-  /**
-   * Normalise un nom pour la comparaison
-   */
-  const normalizeName = (name) => {
-    return name?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
-  };
-
-  /**
-   * Trouve la clé correspondante dans allPlanning pour un nom d'agent
-   */
   const findPlanningKey = (agentName) => {
     if (!allPlanning || !agentName) return null;
-    
-    if (allPlanning[agentName] !== undefined) {
-      return agentName;
-    }
-    
-    const normalizedSearch = normalizeName(agentName);
-    const keys = Object.keys(allPlanning);
-    
-    for (const key of keys) {
-      if (normalizeName(key) === normalizedSearch) {
-        return key;
-      }
-    }
-    
-    for (const key of keys) {
-      if (normalizeName(key).includes(normalizedSearch) || 
-          normalizedSearch.includes(normalizeName(key))) {
-        return key;
-      }
-    }
-    
-    return null;
+    if (allPlanning[agentName] !== undefined) return agentName;
+    const normalizedSearch = agentName.trim().toLowerCase();
+    return Object.keys(allPlanning).find(key => 
+      key.trim().toLowerCase() === normalizedSearch
+    ) || null;
   };
 
-  /**
-   * Récupérer les données planning d'un agent pour un jour donné
-   */
   const getAgentPlanningForDay = (agentName, day) => {
     const planningKey = findPlanningKey(agentName);
     if (!planningKey) return null;
-    
     const agentData = allPlanning[planningKey];
     let cellValue = agentData?.[day] || agentData?.[String(day)] || agentData?.[Number(day)];
-    
     if (!cellValue) return null;
-    
     if (typeof cellValue === 'string') {
       return { service: cellValue, poste: null, note: null, postesSupplementaires: null };
     }
-    
     return {
       service: cellValue.service || null,
       poste: cellValue.poste || null,
@@ -438,20 +439,24 @@ const ModalCellEdit = ({
     };
   };
 
-  // Effectuer le croisement
+  const findAgentId = (fullName) => {
+    for (const agents of Object.values(agentsData)) {
+      const agent = agents.find(a => `${a.nom} ${a.prenom}` === fullName);
+      if (agent) return agent.id;
+    }
+    return null;
+  };
+
   const handleConfirmCroisement = async () => {
     if (!selectedCroisementAgent) {
       alert('Veuillez sélectionner un agent pour le croisement');
       return;
     }
-
     setCroisementLoading(true);
-
     try {
       const agent1Name = selectedCell.agent;
       const agent2Name = `${selectedCroisementAgent.nom} ${selectedCroisementAgent.prenom}`;
       const day = selectedCell.day;
-
       const agent1Data = cellData || {};
       const agent2Data = getAgentPlanningForDay(agent2Name, day) || {};
 
@@ -464,7 +469,7 @@ const ModalCellEdit = ({
       };
 
       const newAgent2Data = {
-        service: agent1Data.service || tempService || '',
+        service: agent1Data.service || buildFinalService(),
         poste: agent1Data.poste || tempPoste || '',
         postesSupplementaires: agent1Data.postesSupplementaires || tempPostesSupplementaires || [],
         note: `Croisement avec ${agent1Name}`,
@@ -487,7 +492,6 @@ const ModalCellEdit = ({
 
       closeCroisementModal();
       onClose();
-
     } catch (error) {
       console.error('Erreur lors du croisement:', error);
       alert(`Erreur lors du croisement: ${error.message}`);
@@ -496,46 +500,53 @@ const ModalCellEdit = ({
     }
   };
 
-  const findAgentId = (fullName) => {
-    for (const agents of Object.values(agentsData)) {
-      const agent = agents.find(a => `${a.nom} ${a.prenom}` === fullName);
-      if (agent) return agent.id;
+  // === CONSTRUCTION DU SERVICE FINAL ===
+  const buildFinalService = () => {
+    // Texte libre
+    if (tempCategorie === 'LIBRE' && tempTexteLibre) {
+      return 'LIBRE';
     }
-    return null;
+    
+    // Catégorie seule (ex: MA, C, FO RC)
+    if (tempCategorie && !tempService) {
+      return tempCategorie;
+    }
+    
+    // Horaire seul (ex: -, O, X, RP)
+    if (tempService && !tempCategorie) {
+      return tempService;
+    }
+    
+    // Combinaison catégorie + horaire (ex: "MA O", "FO RC -")
+    if (tempCategorie && tempService) {
+      return `${tempCategorie} ${tempService}`;
+    }
+    
+    return '';
   };
 
   const handleSave = async () => {
-    let planningData;
-    
-    // Déterminer le service final
-    // FIX v2.4.4: Vérifier que tempTexteLibre est non-vide
+    const finalService = buildFinalService();
     const hasValidTexteLibre = tempTexteLibre && tempTexteLibre.trim() !== '';
-    const isTexteLibre = tempService === 'LIBRE' && hasValidTexteLibre;
-    const finalService = isTexteLibre ? 'LIBRE' : tempService;
+    const isTexteLibre = tempCategorie === 'LIBRE' && hasValidTexteLibre;
     
     console.log('💾 Sauvegarde - tempService:', tempService);
-    console.log('💾 Sauvegarde - tempTexteLibre:', tempTexteLibre);
-    console.log('💾 Sauvegarde - hasValidTexteLibre:', hasValidTexteLibre);
-    console.log('💾 Sauvegarde - isTexteLibre:', isTexteLibre);
+    console.log('💾 Sauvegarde - tempCategorie:', tempCategorie);
     console.log('💾 Sauvegarde - finalService:', finalService);
     
-    // Construire l'objet de données
-    // FIX v2.4.4: Toujours créer un objet si texte libre valide
+    let planningData;
+    
     if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote || isTexteLibre) {
       planningData = { 
         service: finalService,
         ...(tempPoste && { poste: tempPoste }),
         ...(tempPostesSupplementaires.length > 0 && { postesSupplementaires: tempPostesSupplementaires }),
         ...(tempNote && { note: tempNote }),
-        // FIX v2.4.4: Sauvegarder texteLibre seulement si valide
         ...(isTexteLibre && { texteLibre: tempTexteLibre.trim() })
       };
     } else {
-      // Service simple (string)
       planningData = finalService;
     }
-    
-    console.log('💾 Planning data final:', JSON.stringify(planningData, null, 2));
     
     // === GESTION ÉDITION MULTIPLE ===
     if (applyToMultipleDays && endDate) {
@@ -582,11 +593,8 @@ const ModalCellEdit = ({
   const hasExistingPostesSupp = tempPostesSupplementaires.length > 0;
   const hasCroisementNote = tempNote?.toLowerCase().includes('croisement avec');
 
-  // Compter combien d'agents ont des données pour ce jour (pour debug)
-  const agentsWithDataForDay = Object.keys(allPlanning || {}).filter(key => {
-    const data = allPlanning[key];
-    return data && data[selectedCell.day] !== undefined;
-  }).length;
+  // Aperçu du service final
+  const previewService = buildFinalService();
 
   return (
     <>
@@ -599,6 +607,14 @@ const ModalCellEdit = ({
               <p className="text-sm text-gray-600">Jour {selectedCell.day}</p>
               {agentGroup && (
                 <p className="text-xs text-gray-400">{agentGroup}</p>
+              )}
+              {/* Aperçu du service */}
+              {previewService && (
+                <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                  <span className="text-xs text-blue-600 font-medium">Aperçu : </span>
+                  <span className="text-sm font-semibold text-blue-800">{previewService}</span>
+                  {hasExistingTexteLibre && <span className="text-xs text-purple-600 ml-2">({tempTexteLibre})</span>}
+                </div>
               )}
               {hasExistingNote && (
                 <div className="flex items-center gap-1 mt-1">
@@ -615,12 +631,6 @@ const ModalCellEdit = ({
                   )}
                 </div>
               )}
-              {hasExistingTexteLibre && (
-                <div className="flex items-center gap-1 mt-1">
-                  <Type className="w-3 h-3 text-purple-500" />
-                  <span className="text-xs text-purple-600">Texte libre : {tempTexteLibre}</span>
-                </div>
-              )}
               {hasExistingPostesSupp && (
                 <div className="flex items-center gap-1 mt-1">
                   <Check className="w-3 h-3 text-purple-500" />
@@ -633,75 +643,24 @@ const ModalCellEdit = ({
             </button>
           </div>
           
-          {/* Section Service / Horaire */}
+          {/* Section Horaire */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Service / Horaire</label>
-            <div className="grid grid-cols-3 gap-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Horaire</label>
+            <div className="grid grid-cols-6 gap-2">
               {SERVICE_CODES.map(({ code, desc }) => (
                 <button
                   key={code}
-                  onClick={() => {
-                    setTempService(code);
-                    // Si on sélectionne un autre service que LIBRE, effacer le texte libre
-                    if (code !== 'LIBRE') {
-                      setTempTexteLibre('');
-                    }
-                  }}
+                  onClick={() => selectHoraire(code)}
                   className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempService === code)}`}
                 >
                   <div className="font-semibold">{code}</div>
-                  <div className="text-xs mt-1">{desc}</div>
+                  <div className="text-[10px] mt-0.5 leading-tight">{desc}</div>
                 </button>
               ))}
-              
-              {/* Bouton Texte Libre */}
-              <button
-                onClick={selectTexteLibre}
-                className={`p-2 rounded text-center text-xs transition-all ${
-                  tempService === 'LIBRE'
-                    ? 'ring-2 ring-purple-500 bg-purple-100 text-purple-800'
-                    : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-2 border-dashed border-purple-300'
-                }`}
-              >
-                <div className="font-semibold flex items-center justify-center gap-1">
-                  <Type className="w-3 h-3" />
-                  LIBRE
-                </div>
-                <div className="text-xs mt-1">Texte libre</div>
-              </button>
             </div>
-            
-            {/* Affichage du texte libre existant */}
-            {tempService === 'LIBRE' && hasExistingTexteLibre && (
-              <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-start gap-2">
-                    <Type className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-purple-900 font-medium">{tempTexteLibre}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={openEditTexteLibreModal} className="p-1 text-purple-600 hover:text-purple-800" title="Modifier">
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button onClick={handleDeleteTexteLibre} className="p-1 text-red-500 hover:text-red-700" title="Supprimer">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Message si LIBRE sélectionné mais pas de texte */}
-            {tempService === 'LIBRE' && !hasExistingTexteLibre && (
-              <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <p className="text-sm text-amber-800">
-                  ⚠️ Cliquez sur le bouton LIBRE pour saisir votre texte
-                </p>
-              </div>
-            )}
           </div>
 
-          {/* Section Poste */}
+          {/* Section Poste (Réserve) */}
           {hasPosteSelector && (
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">{getPosteLabel()}</label>
@@ -723,13 +682,112 @@ const ModalCellEdit = ({
             </div>
           )}
 
+          {/* Section Service de jour (bleu clair) */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-blue-700 mb-2 flex items-center gap-2">
+              <span className="w-3 h-3 bg-blue-200 rounded"></span>
+              Service de jour
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {SERVICE_JOUR_CODES.map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectCategorie(code)}
+                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempCategorie === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-[10px] mt-0.5">{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Section Habilitation/Formation (orange) */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-orange-700 mb-2 flex items-center gap-2">
+              <span className="w-3 h-3 bg-orange-200 rounded"></span>
+              Habilitation/Formation
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {HABILITATION_CODES.map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectCategorie(code)}
+                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempCategorie === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-[10px] mt-0.5">{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Section Jours RH (jaune clair) */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-yellow-700 mb-2 flex items-center gap-2">
+              <span className="w-3 h-3 bg-yellow-200 rounded"></span>
+              Jours RH
+            </label>
+            <div className="grid grid-cols-5 gap-2">
+              {JOURS_RH_CODES.map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectCategorie(code)}
+                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempCategorie === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-[10px] mt-0.5">{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Section MA / C (combinables) */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Absences <span className="text-xs text-gray-500">(combinable avec horaire ou seul)</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {ABSENCES_CODES.map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectCategorie(code)}
+                  className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempCategorie === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-xs mt-0.5">{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Bouton Texte Libre */}
+          <div className="mb-4">
+            <button
+              onClick={selectTexteLibre}
+              className={`w-full p-3 rounded text-center text-sm transition-all ${
+                tempCategorie === 'LIBRE'
+                  ? 'ring-2 ring-purple-500 bg-purple-100 text-purple-800'
+                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-2 border-dashed border-purple-300'
+              }`}
+            >
+              <div className="font-semibold flex items-center justify-center gap-2">
+                <Type className="w-4 h-4" />
+                TEXTE LIBRE
+              </div>
+              {hasExistingTexteLibre && (
+                <div className="text-xs mt-1 text-purple-600">Actuel : {tempTexteLibre}</div>
+              )}
+            </button>
+          </div>
+
           {/* Section Postes supplémentaires */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Postes figés / Postes supplémentaires 
               <span className="text-xs text-gray-500 ml-2">(sélection multiple possible)</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => {
                 const isSelected = tempPostesSupplementaires.includes(code);
                 return (
@@ -746,7 +804,7 @@ const ModalCellEdit = ({
                       <Check className="w-3 h-3 absolute top-1 right-1 text-blue-600" />
                     )}
                     <div className="font-semibold italic">{code}</div>
-                    <div className="text-xs mt-1 not-italic">{desc.replace('Poste ', '').replace(' supplémentaire', '')}</div>
+                    <div className="text-[10px] mt-0.5 not-italic">{desc.replace('Poste ', '').replace(' supplémentaire', '')}</div>
                   </button>
                 );
               })}
@@ -773,7 +831,6 @@ const ModalCellEdit = ({
                     ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100' 
                     : 'bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200'
                 }`}
-                title={hasExistingNote ? "Modifier la note" : "Ajouter une note"}
               >
                 {hasExistingNote ? <Edit3 className="w-4 h-4" /> : <MessageSquarePlus className="w-4 h-4" />}
                 <span>{hasExistingNote ? 'Note' : '+ Note'}</span>
@@ -787,16 +844,13 @@ const ModalCellEdit = ({
                     ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 cursor-pointer' 
                     : 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
                 }`}
-                title="Supprimer la note"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Note</span>
               </button>
 
               <button
                 onClick={openCroisementModal}
                 className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg border-2 bg-purple-100 border-purple-400 text-purple-800 hover:bg-purple-200 transition-all"
-                title="Échanger le service avec un autre agent"
               >
                 <ArrowLeftRight className="w-4 h-4" />
                 <span>Croisement</span>
@@ -817,180 +871,146 @@ const ModalCellEdit = ({
             )}
           </div>
 
-{/* === SECTION ÉDITION MULTIPLE === */}
-        <div style={{
-          background: 'linear-gradient(to right, rgba(0, 240, 255, 0.05), rgba(0, 102, 179, 0.05))',
-          border: '1px solid rgba(0, 240, 255, 0.3)',
-          borderRadius: '8px',
-          padding: '12px',
-          marginTop: '16px'
-        }}>
-          <label style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            color: '#e0e0e0',
-            marginBottom: '8px'
+          {/* === SECTION ÉDITION MULTIPLE === */}
+          <div style={{
+            background: 'linear-gradient(to right, rgba(0, 240, 255, 0.05), rgba(0, 102, 179, 0.05))',
+            border: '1px solid rgba(0, 240, 255, 0.3)',
+            borderRadius: '8px',
+            padding: '12px',
+            marginTop: '16px'
           }}>
-            <input
-              type="checkbox"
-              checked={applyToMultipleDays}
-              onChange={(e) => setApplyToMultipleDays(e.target.checked)}
-              style={{
-                width: '18px',
-                height: '18px',
-                cursor: 'pointer',
-                accentColor: '#00f0ff'
-              }}
-            />
-            <Calendar size={16} style={{ color: '#00f0ff' }} />
-            <span>Appliquer à plusieurs jours</span>
-          </label>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: '#374151',
+              marginBottom: '8px'
+            }}>
+              <input
+                type="checkbox"
+                checked={applyToMultipleDays}
+                onChange={(e) => setApplyToMultipleDays(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <Calendar size={16} style={{ color: '#0066b3' }} />
+              <span>Appliquer à plusieurs jours</span>
+            </label>
 
-          {applyToMultipleDays && (
-            <div style={{ marginTop: '12px', paddingLeft: '4px' }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                marginBottom: '12px'
-              }}>
-                <span style={{ color: '#b0b0b0', fontSize: '13px', minWidth: '45px' }}>
-                  Du :
-                </span>
-                <input
-                  type="text"
-                  value={`${selectedCell.day.toString().padStart(2, '0')}/${currentMonth}/${currentYear}`}
-                  disabled
-                  style={{
-                    padding: '8px 12px',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(0, 240, 255, 0.2)',
-                    borderRadius: '6px',
-                    color: '#888',
-                    fontSize: '13px',
-                    width: '140px'
-                  }}
-                />
-              </div>
-
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                marginBottom: '12px'
-              }}>
-                <span style={{ color: '#b0b0b0', fontSize: '13px', minWidth: '45px' }}>
-                  Au :
-                </span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  min={(() => {
-                    const monthIndex = MONTHS.indexOf(currentMonth);
-                    const month = String(monthIndex + 1).padStart(2, '0');
-                    const day = String(selectedCell.day).padStart(2, '0');
-                    return `${currentYear}-${month}-${day}`;
-                  })()}
-                  max={(() => {
-                    const monthIndex = MONTHS.indexOf(currentMonth);
-                    const month = String(monthIndex + 1).padStart(2, '0');
-                    const daysInMonth = getDaysInMonth(currentMonth, currentYear);
-                    return `${currentYear}-${month}-${String(daysInMonth).padStart(2, '0')}`;
-                  })()}
-                  style={{
-                    padding: '8px 12px',
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid rgba(0, 240, 255, 0.4)',
-                    borderRadius: '6px',
-                    color: '#e0e0e0',
-                    fontSize: '13px',
-                    flex: 1,
-                    cursor: 'pointer'
-                  }}
-                />
-              </div>
-
-              {/* Boutons rapides */}
-              <div style={{
-                display: 'flex',
-                gap: '6px',
-                marginBottom: '12px',
-                flexWrap: 'wrap'
-              }}>
-                {[
-                  { label: '3j', value: 3 },
-                  { label: '5j', value: 5 },
-                  { label: '7j', value: 7 },
-                  { label: 'Fin mois', value: 'end' }
-                ].map(btn => (
-                  <button
-                    key={btn.label}
-                    onClick={() => handleQuickDateRange(btn.value)}
+            {applyToMultipleDays && (
+              <div style={{ marginTop: '12px', paddingLeft: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <span style={{ color: '#6b7280', fontSize: '13px', minWidth: '45px' }}>Du :</span>
+                  <input
+                    type="text"
+                    value={`${selectedCell.day.toString().padStart(2, '0')}/${currentMonth}/${currentYear}`}
+                    disabled
                     style={{
-                      padding: '6px 12px',
-                      background: 'rgba(0, 240, 255, 0.1)',
-                      border: '1px solid rgba(0, 240, 255, 0.3)',
+                      padding: '8px 12px',
+                      background: '#f3f4f6',
+                      border: '1px solid #d1d5db',
                       borderRadius: '6px',
-                      color: '#00f0ff',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      fontWeight: '500'
+                      color: '#6b7280',
+                      fontSize: '13px',
+                      width: '140px'
                     }}
-                    onMouseEnter={(e) => {
-                      e.target.style.background = 'rgba(0, 240, 255, 0.2)';
-                      e.target.style.borderColor = 'rgba(0, 240, 255, 0.5)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.background = 'rgba(0, 240, 255, 0.1)';
-                      e.target.style.borderColor = 'rgba(0, 240, 255, 0.3)';
-                    }}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Warning/Info message */}
-              {dateRangeWarning && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 12px',
-                  background: dateRangeWarning.startsWith('❌') 
-                    ? 'rgba(255, 0, 0, 0.1)'
-                    : dateRangeWarning.startsWith('⚠️')
-                    ? 'rgba(255, 165, 0, 0.1)'
-                    : 'rgba(0, 255, 0, 0.1)',
-                  border: `1px solid ${
-                    dateRangeWarning.startsWith('❌')
-                      ? 'rgba(255, 0, 0, 0.3)'
-                      : dateRangeWarning.startsWith('⚠️')
-                      ? 'rgba(255, 165, 0, 0.3)'
-                      : 'rgba(0, 255, 0, 0.3)'
-                  }`,
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  color: dateRangeWarning.startsWith('❌')
-                    ? '#ff6b6b'
-                    : dateRangeWarning.startsWith('⚠️')
-                    ? '#ffa500'
-                    : '#4ade80'
-                }}>
-                  <AlertCircle size={14} />
-                  <span>{dateRangeWarning}</span>
+                  />
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <span style={{ color: '#6b7280', fontSize: '13px', minWidth: '45px' }}>Au :</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={(() => {
+                      const monthIndex = MONTHS.indexOf(currentMonth);
+                      const month = String(monthIndex + 1).padStart(2, '0');
+                      const day = String(selectedCell.day).padStart(2, '0');
+                      return `${currentYear}-${month}-${day}`;
+                    })()}
+                    max={(() => {
+                      const monthIndex = MONTHS.indexOf(currentMonth);
+                      const month = String(monthIndex + 1).padStart(2, '0');
+                      const daysInMonth = getDaysInMonth(currentMonth, currentYear);
+                      return `${currentYear}-${month}-${String(daysInMonth).padStart(2, '0')}`;
+                    })()}
+                    style={{
+                      padding: '8px 12px',
+                      background: '#fff',
+                      border: '1px solid #0066b3',
+                      borderRadius: '6px',
+                      color: '#374151',
+                      fontSize: '13px',
+                      flex: 1,
+                      cursor: 'pointer'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: '3j', value: 3 },
+                    { label: '5j', value: 5 },
+                    { label: '7j', value: 7 },
+                    { label: 'Fin mois', value: 'end' }
+                  ].map(btn => (
+                    <button
+                      key={btn.label}
+                      onClick={() => handleQuickDateRange(btn.value)}
+                      style={{
+                        padding: '6px 12px',
+                        background: '#e0f2fe',
+                        border: '1px solid #0066b3',
+                        borderRadius: '6px',
+                        color: '#0066b3',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        fontWeight: '500'
+                      }}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+
+                {dateRangeWarning && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    background: dateRangeWarning.startsWith('❌') 
+                      ? '#fef2f2'
+                      : dateRangeWarning.startsWith('⚠️')
+                      ? '#fffbeb'
+                      : '#f0fdf4',
+                    border: `1px solid ${
+                      dateRangeWarning.startsWith('❌')
+                        ? '#fecaca'
+                        : dateRangeWarning.startsWith('⚠️')
+                        ? '#fde68a'
+                        : '#bbf7d0'
+                    }`,
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    color: dateRangeWarning.startsWith('❌')
+                      ? '#dc2626'
+                      : dateRangeWarning.startsWith('⚠️')
+                      ? '#d97706'
+                      : '#16a34a'
+                  }}>
+                    <AlertCircle size={14} />
+                    <span>{dateRangeWarning}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Boutons d'action */}
-          <div className="flex justify-between pt-4 border-t">
+          <div className="flex justify-between pt-4 border-t mt-4">
             <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700">
               Effacer
             </button>
@@ -1000,7 +1020,7 @@ const ModalCellEdit = ({
               </button>
               <button 
                 onClick={handleSave}
-                disabled={!tempService && !tempTexteLibre}
+                disabled={!tempService && !tempCategorie}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300"
               >
                 Sauvegarder
@@ -1156,8 +1176,8 @@ const ModalCellEdit = ({
                   <div className="flex-1 text-center">
                     <div className="font-medium">{selectedCell.agent}</div>
                     <div className="text-xs text-gray-500">
-                      {cellData?.service || tempService || '-'}
-                      {(cellData?.poste || tempPoste) && ` / ${cellData?.poste || tempPoste}`}
+                      {previewService || '-'}
+                      {tempPoste && ` / ${tempPoste}`}
                     </div>
                   </div>
                   <ArrowLeftRight className="w-5 h-5 text-purple-500" />
