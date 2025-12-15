@@ -21,10 +21,13 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * FIX v2.18: Debug log pour currentUser
  * FIX v2.19: Support des codes combinés (ex: "FO CRC -", "MA O")
  * FIX v2.20: Affichage 2 lignes pour codes combinés (horaire en haut, catégorie en bas)
+ * FIX v2.21: Couleur basée sur POSTE+SERVICE combiné (réserve vs roulement)
  */
 
 // Horaires simples pour détecter les combinaisons
-const HORAIRES_SIMPLES = ['-', 'O', 'X', 'I', 'RP', 'NU'];
+const HORAIRES_SIMPLES = ['-', 'O', 'X', 'I'];
+// Codes spéciaux qui ne sont PAS des horaires (repos, absences, etc.)
+const CODES_NON_HORAIRES = ['RP', 'NU', 'C', 'C?', 'CNA', 'F', 'MA', 'D', 'DISPO', 'VL', 'INAC', 'INACTIN', 'VM', 'EIA', 'DPX', 'PSE', 'VT', 'D2I', 'RU', 'RA', 'RN', 'TY', 'AY', 'AH', 'DD', 'HAB', 'FO', 'LIBRE'];
 
 /**
  * Parse un code combiné et retourne horaire + catégorie séparés
@@ -46,7 +49,7 @@ const parseCombinedCode = (serviceCode) => {
     if (HORAIRES_SIMPLES.includes(trimmed)) {
       return { horaire: trimmed, categorie: null };
     }
-    // Sinon c'est une catégorie seule (ex: "HAB", "VL", "D")
+    // Sinon c'est une catégorie seule (ex: "HAB", "VL", "D", "RP")
     return { horaire: null, categorie: trimmed };
   }
   
@@ -61,24 +64,6 @@ const parseCombinedCode = (serviceCode) => {
   
   // Sinon tout est catégorie (ex: "FO RO" sans horaire)
   return { horaire: null, categorie: trimmed };
-};
-
-// Fonction pour extraire la catégorie d'un code combiné (pour les couleurs)
-const extractCategoryFromCombined = (serviceCode) => {
-  if (!serviceCode) return null;
-  
-  const trimmed = serviceCode.trim();
-  const parts = trimmed.split(' ');
-  
-  if (parts.length === 1) return trimmed;
-  
-  const lastPart = parts[parts.length - 1];
-  if (HORAIRES_SIMPLES.includes(lastPart)) {
-    const category = parts.slice(0, -1).join(' ');
-    return category || lastPart;
-  }
-  
-  return trimmed;
 };
 
 // Composant barre de navigation rendu via portail - VERSION COMPACTE
@@ -227,21 +212,35 @@ const PlanningTable = ({
     }
   };
   
+  /**
+   * v2.21: Construit le code complet pour la recherche de couleur
+   * 
+   * LOGIQUE:
+   * - Si service est un horaire simple (-, O, X) ET poste est défini → "POSTE SERVICE" (ex: "CRC -")
+   * - Si service est un code non-horaire (RP, MA, C, etc.) → utiliser service seul
+   * - Si service seul (pas de poste) → utiliser service tel quel
+   * 
+   * Cela permet:
+   * - Agents ROULEMENT avec "-" seul → catégorie "Horaires"
+   * - Agents RÉSERVE avec "-" + poste "CRC" → catégorie "Poste (Réserve)" via "CRC -"
+   */
+  const buildColorCode = (service, poste) => {
+    if (!service) return null;
+    
+    // Si le service est un horaire simple ET on a un poste → combiner
+    if (HORAIRES_SIMPLES.includes(service) && poste) {
+      return `${poste} ${service}`;
+    }
+    
+    // Sinon utiliser le service tel quel
+    return service;
+  };
+  
   // Fonction pour obtenir le style de couleur d'une cellule
-  // Supporte les codes combinés (ex: "FO CRC -" utilise la couleur de "FO CRC")
   const getCellColorStyle = (serviceCode) => {
     if (!serviceCode) return {};
     
-    // 1. D'abord essayer le code exact
-    let colorConfig = getServiceColor(serviceCode);
-    
-    // 2. Si pas de couleur trouvée (transparent), essayer d'extraire la catégorie
-    if (!colorConfig || colorConfig.bg === 'transparent') {
-      const category = extractCategoryFromCombined(serviceCode);
-      if (category && category !== serviceCode) {
-        colorConfig = getServiceColor(category);
-      }
-    }
+    const colorConfig = getServiceColor(serviceCode);
     
     if (!colorConfig) return {};
     
@@ -302,7 +301,7 @@ const PlanningTable = ({
     
     if (planningData) {
       if (typeof planningData === 'string') {
-        // ===== FIX v2.20: Parser les codes combinés pour affichage 2 lignes =====
+        // ===== String simple: code direct =====
         const { horaire, categorie } = parseCombinedCode(planningData);
         cellStyle = getCellColorStyle(planningData);
         
@@ -319,6 +318,7 @@ const PlanningTable = ({
           cellContent = planningData;
         }
       } else if (typeof planningData === 'object') {
+        // ===== Objet: service + poste + extras =====
         const service = planningData.service || '';
         const poste = planningData.poste || '';
         const texteLibre = planningData.texteLibre || '';
@@ -328,6 +328,11 @@ const PlanningTable = ({
         hasNote = Boolean(planningData.note);
         isTexteLibre = service === 'LIBRE' && texteLibre;
         
+        // ===== v2.21: Construire le code complet pour la couleur =====
+        // Si service est un horaire (-, O, X) ET poste défini → "POSTE SERVICE"
+        // Sinon → service seul
+        const colorCode = buildColorCode(service, poste);
+        
         // Couleur selon le type
         if (isTexteLibre) {
           const texteLibreColors = colors.texteLibre || { bg: '#fef3c7', text: '#92400e' };
@@ -336,13 +341,13 @@ const PlanningTable = ({
             color: texteLibreColors.text,
           };
         } else {
-          cellStyle = getCellColorStyle(service);
+          cellStyle = getCellColorStyle(colorCode);
         }
         
         // Couleur des postes supplémentaires
         const postesColor = colors.postesSupp?.text || '#8b5cf6';
         
-        // ===== FIX v2.20: Parser le service pour affichage 2 lignes =====
+        // Parser le service pour affichage
         const { horaire, categorie } = parseCombinedCode(service);
         const displayText = isTexteLibre ? texteLibre : (horaire || service);
         // La catégorie du service combiné OU le poste existant
