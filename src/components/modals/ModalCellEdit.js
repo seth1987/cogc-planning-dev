@@ -20,7 +20,7 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.4.2 - Fix texte libre (sauvegarde + affichage)
+ * @version 2.4.3 - Fix texte libre init (ne plus mettre 'LIBRE' comme texteLibre)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -83,14 +83,29 @@ const ModalCellEdit = ({
   // Initialiser les états avec les données existantes
   useEffect(() => {
     if (cellData) {
-      // Détection du texte libre : si texteLibre existe OU si le service n'est pas un code standard
-      const isTexteLibre = cellData.texteLibre || 
-        (cellData.service && !SERVICE_CODES.some(sc => sc.code === cellData.service) && cellData.service !== '');
+      console.log('📦 CellData reçu:', cellData);
       
-      if (isTexteLibre) {
+      // Cas 1: texteLibre explicite dans les données
+      const hasExplicitTexteLibre = Boolean(cellData.texteLibre);
+      
+      // Cas 2: service non standard (mais PAS 'LIBRE' lui-même qui est juste un marqueur)
+      const isNonStandardService = cellData.service && 
+        cellData.service !== 'LIBRE' && 
+        !SERVICE_CODES.some(sc => sc.code === cellData.service);
+
+      if (hasExplicitTexteLibre) {
+        // Texte libre explicite → utiliser tel quel
+        console.log('✏️ Mode texte libre explicite:', cellData.texteLibre);
         setTempService('LIBRE');
-        setTempTexteLibre(cellData.texteLibre || cellData.service || '');
+        setTempTexteLibre(cellData.texteLibre);
+      } else if (isNonStandardService) {
+        // Service non standard (ex: ancien texte libre stocké directement dans service)
+        console.log('✏️ Service non standard détecté comme texte libre:', cellData.service);
+        setTempService('LIBRE');
+        setTempTexteLibre(cellData.service);
       } else {
+        // Service standard
+        console.log('📋 Service standard:', cellData.service);
         setTempService(cellData.service || '');
         setTempTexteLibre('');
       }
@@ -281,6 +296,7 @@ const ModalCellEdit = ({
   const handleValidateTexteLibre = () => {
     const texte = texteLibreInput.trim();
     if (texte) {
+      console.log('✅ Validation texte libre:', texte);
       setTempTexteLibre(texte);
       setTempService('LIBRE');
     }
@@ -300,8 +316,9 @@ const ModalCellEdit = ({
   };
 
   const selectTexteLibre = () => {
+    // Toujours ouvrir la modal pour saisir/modifier le texte
     if (tempTexteLibre) {
-      // Si déjà du texte libre, ouvrir en mode édition
+      // Si déjà du texte libre valide, ouvrir en mode édition
       openEditTexteLibreModal();
     } else {
       // Sinon, ouvrir en mode ajout
@@ -476,6 +493,8 @@ const ModalCellEdit = ({
     const isTexteLibre = tempService === 'LIBRE' && tempTexteLibre;
     const finalService = isTexteLibre ? 'LIBRE' : tempService;
     
+    console.log('💾 Sauvegarde - tempService:', tempService, 'tempTexteLibre:', tempTexteLibre, 'isTexteLibre:', isTexteLibre);
+    
     // Construire l'objet de données
     if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote || isTexteLibre) {
       planningData = { 
@@ -489,7 +508,7 @@ const ModalCellEdit = ({
       planningData = finalService;
     }
     
-    console.log('💾 Sauvegarde planning:', planningData);
+    console.log('💾 Planning data final:', planningData);
     
     // === GESTION ÉDITION MULTIPLE ===
     if (applyToMultipleDays && endDate) {
@@ -642,6 +661,15 @@ const ModalCellEdit = ({
                     </button>
                   </div>
                 </div>
+              </div>
+            )}
+            
+            {/* Message si LIBRE sélectionné mais pas de texte */}
+            {tempService === 'LIBRE' && !hasExistingTexteLibre && (
+              <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <p className="text-sm text-amber-800">
+                  ⚠️ Cliquez sur le bouton LIBRE pour saisir votre texte
+                </p>
               </div>
             )}
           </div>
