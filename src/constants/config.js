@@ -46,7 +46,7 @@ export const CODE_COLORS = {
   // === CONGES : JAUNE/OR ===
   'C': 'bg-yellow-400 text-yellow-900 font-semibold',
   'C?': 'bg-yellow-200 text-yellow-800 font-semibold',    // Congé en attente
-  'C̶': 'bg-red-300 text-red-900 font-semibold',           // Congé refusé
+  'CNA': 'bg-red-300 text-red-900 font-semibold',         // Congé Non Accordé
   
   // === MALADIE : ROUGE ===
   'MA': 'bg-red-200 text-red-800 font-semibold',
@@ -201,7 +201,7 @@ export const ABSENCES_CODES = [
 export const CONGES_CODES = [
   { code: 'C', desc: 'Congés' },
   { code: 'C?', desc: 'Congé en attente' },
-  { code: 'C̶', desc: 'Congé refusé' }
+  { code: 'CNA', desc: 'Congé Non Accordé' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)
