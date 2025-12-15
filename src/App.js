@@ -43,6 +43,7 @@ const DebugPlanning = isDev ? require('./components/DebugPlanning').default : nu
  * v3.0 - Ajout signOut sur LandingPage
  * v3.1 - FIX: Passage de currentYear à PlanningTable
  * v3.2 - Ajout fonctionnalité Croisement de services
+ * v3.3 - Passage de currentUser à PlanningTable pour sync couleurs
  */
 const App = () => {
   // === HOOKS PERSONNALISÉS ===
@@ -561,6 +562,7 @@ const App = () => {
       
       <div className="p-4">
         {/* FIX v3.1: Ajout de currentYear pour calcul correct des jours */}
+        {/* v3.3: Ajout de currentUser pour sync couleurs */}
         <PlanningTable 
           currentMonth={currentMonth}
           currentYear={currentYear}
@@ -569,6 +571,7 @@ const App = () => {
           onCellClick={handleCellClick}
           onAgentClick={handleAgentClick}
           onDayHeaderClick={handleDayHeaderClick}
+          currentUser={user}
         />
         
         {/* Debug (dev only) */}
