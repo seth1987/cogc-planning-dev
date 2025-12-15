@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Palette } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
-import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE, POSTES_PAR_GROUPE, CODE_COLORS } from '../../constants/config';
+import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE, POSTES_PAR_GROUPE } from '../../constants/config';
+import useColors from '../../hooks/useColors';
+import ModalCouleurs from './ModalCouleurs';
 
 /**
  * ModalMonPlanning - Calendrier personnel de l'agent connecté
@@ -11,6 +14,7 @@ import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE
  * v1.3 - Harmonisation couleurs avec Planning complet
  * v1.4 - FIX: Calcul correct des jours de la semaine (année dynamique)
  * v1.5 - FIX: Responsive mobile + utilisation CODE_COLORS
+ * v1.6 - NEW: Bouton palette + ModalCouleurs (même système que planning général)
  */
 const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear }) => {
   // FIX v1.4: Utiliser initialYear si fourni, sinon année système
@@ -25,6 +29,10 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [agentInfo, setAgentInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
+  
+  // v1.6: Hook pour les couleurs personnalisées
+  const { colors, getServiceColor } = useColors();
+  const [showColorModal, setShowColorModal] = useState(false);
   
   // Tracker si des modifications ont été faites
   const hasChanges = useRef(false);
@@ -283,85 +291,32 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   };
 
   /**
-   * Convertit les classes Tailwind de CODE_COLORS en couleurs HEX
-   * v1.5: Utilisation directe de CODE_COLORS pour cohérence avec le planning complet
+   * v1.6: Utilise le hook useColors pour obtenir les couleurs personnalisées
    */
-  const getColorFromTailwind = (tailwindClass) => {
-    const colorMap = {
-      // Backgrounds
-      'bg-green-100': '#dcfce7',
-      'bg-yellow-400': '#facc15',
-      'bg-red-200': '#fecaca',
-      'bg-pink-100': '#fce7f3',
-      'bg-gray-300': '#d1d5db',
-      'bg-gray-100': '#f3f4f6',
-      'bg-gray-50': '#f9fafb',
-      'bg-blue-200': '#bfdbfe',
-      'bg-orange-200': '#fed7aa',
-      'bg-yellow-100': '#fef9c3',
-      'bg-pink-500': '#ec4899',
-      'bg-gray-500': '#6b7280',
-      // Text colors
-      'text-green-700': '#15803d',
-      'text-yellow-900': '#713f12',
-      'text-red-800': '#991b1b',
-      'text-pink-700': '#be185d',
-      'text-gray-700': '#374151',
-      'text-gray-500': '#6b7280',
-      'text-gray-400': '#9ca3af',
-      'text-blue-800': '#1e40af',
-      'text-orange-800': '#9a3412',
-      'text-yellow-800': '#854d0e',
-      'text-white': '#ffffff'
-    };
-
-    // Extraire les classes et retourner les couleurs
-    const classes = tailwindClass.split(' ');
-    let bgColor = null;
-    let textColor = null;
-
-    classes.forEach(cls => {
-      if (cls.startsWith('bg-') && colorMap[cls]) {
-        bgColor = colorMap[cls];
-      }
-      if (cls.startsWith('text-') && colorMap[cls]) {
-        textColor = colorMap[cls];
-      }
-    });
-
-    return { bgColor, textColor };
-  };
-
-  // Couleur selon le service - ALIGNÉ SUR CODE_COLORS (config.js)
-  const getServiceColor = (planning) => {
-    if (!planning?.service_code) return 'transparent';
+  const getCellBackgroundColor = (planning) => {
+    if (!planning?.service_code) return 'rgba(255, 255, 255, 0.08)';
     
     const code = planning.service_code.toUpperCase();
-    const tailwindClass = CODE_COLORS[code] || '';
+    const colorConfig = getServiceColor(code);
     
-    // Services -, O, X : pas de couleur de fond spéciale
-    if (code === '-' || code === 'O' || code === 'X' || !tailwindClass) {
+    if (!colorConfig || colorConfig.bg === 'transparent') {
       return 'rgba(255, 255, 255, 0.08)';
     }
     
-    const { bgColor } = getColorFromTailwind(tailwindClass);
-    return bgColor || 'rgba(255, 255, 255, 0.08)';
+    return colorConfig.bg;
   };
 
-  // Couleur du texte selon le fond - ALIGNÉ SUR CODE_COLORS
-  const getTextColor = (planning) => {
+  const getCellTextColor = (planning) => {
     if (!planning?.service_code) return 'white';
     
     const code = planning.service_code.toUpperCase();
-    const tailwindClass = CODE_COLORS[code] || '';
+    const colorConfig = getServiceColor(code);
     
-    // Services sans fond → texte blanc
-    if (code === '-' || code === 'O' || code === 'X' || !tailwindClass) {
+    if (!colorConfig || colorConfig.bg === 'transparent') {
       return 'white';
     }
     
-    const { textColor } = getColorFromTailwind(tailwindClass);
-    return textColor || '#1f2937';
+    return colorConfig.text;
   };
 
   if (!isOpen) return null;
@@ -372,10 +327,19 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   return (
     <div style={styles.overlay} onClick={handleClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
-        {/* Header */}
+        {/* Header avec bouton palette */}
         <div style={styles.header}>
           <h2 style={styles.title}>📆 Mon Planning</h2>
-          <button style={styles.closeBtn} onClick={handleClose}>✕</button>
+          <div style={styles.headerActions}>
+            <button 
+              style={styles.paletteBtn} 
+              onClick={() => setShowColorModal(true)}
+              title="Personnaliser les couleurs"
+            >
+              <Palette size={18} />
+            </button>
+            <button style={styles.closeBtn} onClick={handleClose}>✕</button>
+          </div>
         </div>
 
         {/* Info agent */}
@@ -418,30 +382,33 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                       ...(dayInfo.currentMonth ? styles.currentMonthDay : styles.otherMonthDay),
                       ...(selectedDay?.date === dayInfo.date ? styles.selectedDay : {}),
                       ...(isWeekend && dayInfo.currentMonth ? styles.weekendDay : {}),
-                      backgroundColor: dayInfo.currentMonth ? getServiceColor(dayInfo.planning) : 'transparent',
-                      color: dayInfo.currentMonth ? getTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
+                      backgroundColor: dayInfo.currentMonth ? getCellBackgroundColor(dayInfo.planning) : 'transparent',
+                      color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
                     }}
                     onClick={() => handleDayClick(dayInfo)}
                   >
                     <span style={{
                       ...styles.dayNumber, 
-                      color: dayInfo.currentMonth ? getTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
+                      color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
                     }}>{dayInfo.day}</span>
                     {dayInfo.planning?.service_code && (
                       <span style={{
                         ...styles.serviceCode, 
-                        color: getTextColor(dayInfo.planning)
+                        color: getCellTextColor(dayInfo.planning)
                       }}>{dayInfo.planning.service_code}</span>
                     )}
                     {dayInfo.planning?.poste_code && (
                       <span style={{
                         ...styles.posteCode, 
-                        color: getTextColor(dayInfo.planning), 
+                        color: getCellTextColor(dayInfo.planning), 
                         opacity: 0.75
                       }}>{dayInfo.planning.poste_code}</span>
                     )}
                     {dayInfo.planning?.postes_supplementaires?.length > 0 && (
-                      <span style={styles.supplement}>
+                      <span style={{
+                        ...styles.supplement,
+                        color: colors.postesSupp?.text || '#a855f7'
+                      }}>
                         {dayInfo.planning.postes_supplementaires.map(p => p.replace('+', '')).join(' ')}
                       </span>
                     )}
@@ -452,17 +419,22 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
           )}
         </div>
 
-        {/* Légende - Couleurs alignées sur CODE_COLORS */}
+        {/* Légende compacte */}
         <div style={styles.legend}>
-          <span style={{...styles.legendItem, backgroundColor: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)'}}>- O X</span>
-          <span style={{...styles.legendItem, backgroundColor: '#dcfce7', color: '#15803d'}}>RP</span>
-          <span style={{...styles.legendItem, backgroundColor: '#facc15', color: '#713f12'}}>C</span>
-          <span style={{...styles.legendItem, backgroundColor: '#fecaca', color: '#991b1b'}}>MA</span>
-          <span style={{...styles.legendItem, backgroundColor: '#bfdbfe', color: '#1e40af'}}>D</span>
-          <span style={{...styles.legendItem, backgroundColor: '#fed7aa', color: '#9a3412'}}>FO</span>
-          <span style={{...styles.legendItem, backgroundColor: '#f3f4f6', color: '#6b7280'}}>NU</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('-').bg || 'rgba(255,255,255,0.1)', color: getServiceColor('-').text || 'white', border: '1px solid rgba(255,255,255,0.2)'}}>- O X</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('RP').bg, color: getServiceColor('RP').text}}>RP</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('C').bg, color: getServiceColor('C').text}}>C</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('MA').bg, color: getServiceColor('MA').text}}>MA</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('D').bg, color: getServiceColor('D').text}}>D</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('FO').bg, color: getServiceColor('FO').text}}>FO</span>
         </div>
       </div>
+
+      {/* Modal Couleurs */}
+      <ModalCouleurs 
+        isOpen={showColorModal} 
+        onClose={() => setShowColorModal(false)} 
+      />
 
       {/* Modal d'édition (comme ModalCellEdit) */}
       {editMode && selectedDay && (
@@ -579,7 +551,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
 };
 
 // ============================================
-// STYLES - v1.5: Optimisés pour mobile
+// STYLES - v1.6: Ajout bouton palette
 // ============================================
 const styles = {
   overlay: {
@@ -590,13 +562,13 @@ const styles = {
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 9999,
-    padding: '8px' // Réduit pour mobile
+    padding: '8px'
   },
   modal: {
     backgroundColor: '#1a1a2e',
     borderRadius: '12px',
     width: '100%',
-    maxWidth: '420px', // Réduit pour tenir sur mobile
+    maxWidth: '420px',
     maxHeight: '95vh',
     overflow: 'auto',
     border: '1px solid rgba(0, 240, 255, 0.3)',
@@ -609,7 +581,24 @@ const styles = {
     padding: '12px 16px',
     borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
   },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
   title: { margin: 0, color: '#00f0ff', fontSize: '16px' },
+  paletteBtn: {
+    background: 'rgba(0, 240, 255, 0.15)',
+    border: '1px solid rgba(0, 240, 255, 0.3)',
+    borderRadius: '6px',
+    padding: '6px',
+    cursor: 'pointer',
+    color: '#00f0ff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.2s'
+  },
   closeBtn: {
     background: 'none', border: 'none', color: 'white',
     fontSize: '20px', cursor: 'pointer', padding: '4px 8px'
@@ -657,7 +646,7 @@ const styles = {
   dayNumber: { fontSize: '12px', fontWeight: 'bold', lineHeight: 1 },
   serviceCode: { fontSize: '9px', fontWeight: 'bold', marginTop: '1px', lineHeight: 1 },
   posteCode: { fontSize: '7px', lineHeight: 1 },
-  supplement: { fontSize: '6px', color: '#a855f7', fontStyle: 'italic', fontWeight: 'bold', lineHeight: 1 },
+  supplement: { fontSize: '6px', fontStyle: 'italic', fontWeight: 'bold', lineHeight: 1 },
   legend: { 
     display: 'flex', 
     justifyContent: 'center', 
