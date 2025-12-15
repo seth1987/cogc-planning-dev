@@ -18,6 +18,7 @@ import ModalCouleurs from './ModalCouleurs';
  * v1.7 - FIX: Synchronisation couleurs - reloadColors() à la fermeture du panneau
  * v1.8 - Couleurs séparées du planning général (contexte 'perso')
  * v1.9 - FIX: ModalCouleurs sorti de l'overlay pour éviter fermeture au color picker
+ * v2.0 - NEW: Support synchronisation couleurs multi-appareils
  */
 const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear }) => {
   // FIX v1.4: Utiliser initialYear si fourni, sinon année système
@@ -33,8 +34,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
   
-  // v1.8: Hook pour les couleurs personnalisées avec contexte 'perso' (séparé du général)
-  const { colors, getServiceColor, reloadColors } = useColors('perso');
+  // v2.0: Hook avec email utilisateur pour synchronisation cloud
+  const { colors, getServiceColor, reloadColors } = useColors('perso', currentUser?.email);
   const [showColorModal, setShowColorModal] = useState(false);
   
   // Tracker si des modifications ont été faites
@@ -556,11 +557,12 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
         )}
       </div>
 
-      {/* v1.9: Modal Couleurs HORS de l'overlay pour éviter la fermeture au clic color picker */}
+      {/* v2.0: Modal Couleurs avec email pour synchronisation cloud */}
       <ModalCouleurs 
         isOpen={showColorModal} 
         onClose={handleCloseColorModal}
         context="perso"
+        userEmail={currentUser?.email}
       />
     </>
   );
