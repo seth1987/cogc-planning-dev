@@ -11,7 +11,7 @@ import { supabase } from '../../lib/supabaseClient';
  * - Détails mensuels repliables en fin de modal
  * - Benchmarking Réserve (pour agents RESERVE REGULATEUR PN/DR uniquement)
  * 
- * v1.5 - Ajout section Benchmarking Réserve avec comparaison groupe/total
+ * v1.5.1 - Section Benchmarking Réserve repliable
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -27,6 +27,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   // États pour les sections repliables (fermées par défaut)
   const [showDetailMois, setShowDetailMois] = useState(false);
   const [showDetailSupplements, setShowDetailSupplements] = useState(false);
+  const [showBenchmark, setShowBenchmark] = useState(false); // v1.5.1: Benchmarking repliable
   
   // v1.5: État pour les stats de benchmarking réserve
   const [benchmarkStats, setBenchmarkStats] = useState(null);
@@ -309,6 +310,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
       loadAgentInfo();
       setShowDetailMois(false);
       setShowDetailSupplements(false);
+      setShowBenchmark(false); // v1.5.1: Reset état
       setBenchmarkStats(null);
     }
   }, [isOpen, loadAgentInfo]);
@@ -588,100 +590,110 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               )}
             </div>
 
-            {/* v1.5: Section Benchmarking Réserve (uniquement pour agents PN/DR) */}
+            {/* === SECTIONS REPLIABLES === */}
+
+            {/* v1.5.1: Section Benchmarking Réserve - REPLIABLE (uniquement pour agents PN/DR) */}
             {isReserveAgent && (
               <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>📊 Benchmarking Réserve {selectedYear}</h3>
+                <h3 
+                  style={styles.sectionTitleClickable}
+                  onClick={() => setShowBenchmark(!showBenchmark)}
+                >
+                  <span style={styles.toggleIcon}>{showBenchmark ? '▼' : '▶'}</span>
+                  📊 Benchmarking Réserve {selectedYear}
+                </h3>
                 
-                {loadingBenchmark ? (
-                  <div style={styles.loadingSmall}>Chargement comparaison...</div>
-                ) : benchmarkStats ? (
+                {showBenchmark && (
                   <>
-                    <p style={styles.benchmarkInfo}>
-                      Comparaison de vos vacations avec votre groupe ({benchmarkStats.myGroupCount} agents) 
-                      et la réserve totale ({benchmarkStats.totalReserveCount} agents PN + DR)
-                    </p>
-                    
-                    <div style={styles.tableContainer}>
-                      <table style={styles.benchmarkTable}>
-                        <thead>
-                          <tr>
-                            <th style={styles.benchmarkTh}></th>
-                            <th style={styles.benchmarkTh}>Moi</th>
-                            <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(0, 102, 179, 0.3)'}}>
-                              {agentInfo.groupe.replace('RESERVE REGULATEUR ', '')}
-                            </th>
-                            <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(0, 102, 179, 0.3)'}}>
-                              % groupe
-                            </th>
-                            <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(201, 25, 50, 0.3)'}}>
-                              Réserve totale
-                            </th>
-                            <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(201, 25, 50, 0.3)'}}>
-                              % réserve
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {benchmarkRows.map((row, idx) => {
-                            const pctGroup = getPercentageNum(row.me, row.group);
-                            const pctTotal = getPercentageNum(row.me, row.total);
-                            
-                            return (
-                              <tr key={idx} style={styles.benchmarkTr}>
-                                <td style={styles.benchmarkTdLabel}>
-                                  <span style={{color: row.color, fontWeight: 'bold'}}>{row.label}</span>
-                                  {row.subtitle && (
-                                    <div style={styles.benchmarkSubtitle}>{row.subtitle}</div>
-                                  )}
-                                </td>
-                                <td style={{...styles.benchmarkTd, fontWeight: 'bold', color: row.color}}>
-                                  {row.me}
-                                </td>
-                                <td style={styles.benchmarkTd}>{row.group}</td>
-                                <td style={styles.benchmarkTd}>
-                                  <div style={styles.percentBar}>
-                                    <div 
-                                      style={{
-                                        ...styles.percentBarFill, 
-                                        width: `${Math.min(pctGroup, 100)}%`,
-                                        backgroundColor: row.color
-                                      }} 
-                                    />
-                                  </div>
-                                  <span style={{color: pctGroup > 20 ? '#4CAF50' : 'white'}}>
-                                    {pctGroup}%
-                                  </span>
-                                </td>
-                                <td style={styles.benchmarkTd}>{row.total}</td>
-                                <td style={styles.benchmarkTd}>
-                                  <div style={styles.percentBar}>
-                                    <div 
-                                      style={{
-                                        ...styles.percentBarFill, 
-                                        width: `${Math.min(pctTotal, 100)}%`,
-                                        backgroundColor: row.color
-                                      }} 
-                                    />
-                                  </div>
-                                  <span style={{color: pctTotal > 10 ? '#4CAF50' : 'white'}}>
-                                    {pctTotal}%
-                                  </span>
-                                </td>
+                    {loadingBenchmark ? (
+                      <div style={styles.loadingSmall}>Chargement comparaison...</div>
+                    ) : benchmarkStats ? (
+                      <>
+                        <p style={styles.benchmarkInfo}>
+                          Comparaison de vos vacations avec votre groupe ({benchmarkStats.myGroupCount} agents) 
+                          et la réserve totale ({benchmarkStats.totalReserveCount} agents PN + DR)
+                        </p>
+                        
+                        <div style={styles.tableContainer}>
+                          <table style={styles.benchmarkTable}>
+                            <thead>
+                              <tr>
+                                <th style={styles.benchmarkTh}></th>
+                                <th style={styles.benchmarkTh}>Moi</th>
+                                <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(0, 102, 179, 0.3)'}}>
+                                  {agentInfo.groupe.replace('RESERVE REGULATEUR ', '')}
+                                </th>
+                                <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(0, 102, 179, 0.3)'}}>
+                                  % groupe
+                                </th>
+                                <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(201, 25, 50, 0.3)'}}>
+                                  Réserve totale
+                                </th>
+                                <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(201, 25, 50, 0.3)'}}>
+                                  % réserve
+                                </th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                            </thead>
+                            <tbody>
+                              {benchmarkRows.map((row, idx) => {
+                                const pctGroup = getPercentageNum(row.me, row.group);
+                                const pctTotal = getPercentageNum(row.me, row.total);
+                                
+                                return (
+                                  <tr key={idx} style={styles.benchmarkTr}>
+                                    <td style={styles.benchmarkTdLabel}>
+                                      <span style={{color: row.color, fontWeight: 'bold'}}>{row.label}</span>
+                                      {row.subtitle && (
+                                        <div style={styles.benchmarkSubtitle}>{row.subtitle}</div>
+                                      )}
+                                    </td>
+                                    <td style={{...styles.benchmarkTd, fontWeight: 'bold', color: row.color}}>
+                                      {row.me}
+                                    </td>
+                                    <td style={styles.benchmarkTd}>{row.group}</td>
+                                    <td style={styles.benchmarkTd}>
+                                      <div style={styles.percentBar}>
+                                        <div 
+                                          style={{
+                                            ...styles.percentBarFill, 
+                                            width: `${Math.min(pctGroup, 100)}%`,
+                                            backgroundColor: row.color
+                                          }} 
+                                        />
+                                      </div>
+                                      <span style={{color: pctGroup > 20 ? '#4CAF50' : 'white'}}>
+                                        {pctGroup}%
+                                      </span>
+                                    </td>
+                                    <td style={styles.benchmarkTd}>{row.total}</td>
+                                    <td style={styles.benchmarkTd}>
+                                      <div style={styles.percentBar}>
+                                        <div 
+                                          style={{
+                                            ...styles.percentBarFill, 
+                                            width: `${Math.min(pctTotal, 100)}%`,
+                                            backgroundColor: row.color
+                                          }} 
+                                        />
+                                      </div>
+                                      <span style={{color: pctTotal > 10 ? '#4CAF50' : 'white'}}>
+                                        {pctTotal}%
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    ) : (
+                      <p style={styles.noData}>Données non disponibles</p>
+                    )}
                   </>
-                ) : (
-                  <p style={styles.noData}>Données non disponibles</p>
                 )}
               </div>
             )}
-
-            {/* === SECTIONS REPLIABLES À LA FIN === */}
 
             {/* Détail par Mois - REPLIABLE */}
             <div style={styles.section}>
