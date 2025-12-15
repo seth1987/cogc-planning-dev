@@ -11,7 +11,8 @@ import {
   HABILITATION_CODES,
   JOURS_RH_CODES,
   ABSENCES_CODES,
-  CONGES_CODES
+  CONGES_CODES,
+  PCD_CODES
 } from '../../constants/config';
 
 // Couleurs pour la modal d'édition - par catégorie
@@ -56,13 +57,16 @@ const MODAL_COLORS = {
   'AY': 'bg-yellow-100 text-yellow-800',
   'AH': 'bg-yellow-100 text-yellow-800',
   'DD': 'bg-yellow-100 text-yellow-800',
+  // PCD (cyan/turquoise)
+  'CCC': 'bg-cyan-200 text-cyan-800',
+  'BO': 'bg-cyan-200 text-cyan-800',
+  'CBVD': 'bg-cyan-200 text-cyan-800',
 };
 
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 4.2.1 - Fix affichage date "Du" dans édition multiple
- *   - Conversion nom du mois en numéro pour affichage JJ/MM/AAAA
+ * @version 4.3.0 - Ajout catégorie PCD (CCC, BO, CBVD)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -79,7 +83,7 @@ const ModalCellEdit = ({
 }) => {
   // États pour service, poste et postes supplémentaires
   const [tempService, setTempService] = useState('');      // Horaire (-, O, X, I, RP, NU)
-  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, C, F, etc.)
+  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, C, F, PCD, etc.)
   const [tempPoste, setTempPoste] = useState('');
   const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
   
@@ -111,16 +115,18 @@ const ModalCellEdit = ({
   const [openSections, setOpenSections] = useState({
     serviceJour: false,
     habilitation: false,
-    joursRH: false
+    joursRH: false,
+    pcd: false
   });
 
-  // Liste de tous les codes de catégorie pour détection (incluant les nouveaux)
+  // Liste de tous les codes de catégorie pour détection (incluant PCD)
   const ALL_CATEGORIE_CODES = [
     ...SERVICE_JOUR_CODES.map(c => c.code),
     ...HABILITATION_CODES.map(c => c.code),
     ...JOURS_RH_CODES.map(c => c.code),
     ...ABSENCES_CODES.map(c => c.code),
-    ...CONGES_CODES.map(c => c.code)
+    ...CONGES_CODES.map(c => c.code),
+    ...PCD_CODES.map(c => c.code)
   ];
 
   // Liste des codes horaire (incluant RP et NU)
@@ -554,7 +560,7 @@ const ModalCellEdit = ({
       return 'LIBRE';
     }
     
-    // Catégorie seule (ex: MA, C, FO RC)
+    // Catégorie seule (ex: MA, C, FO RC, CCC, BO, CBVD)
     if (tempCategorie && !tempService) {
       return tempCategorie;
     }
@@ -564,7 +570,7 @@ const ModalCellEdit = ({
       return tempService;
     }
     
-    // Combinaison catégorie + horaire (ex: "MA O", "FO RC -")
+    // Combinaison catégorie + horaire (ex: "MA O", "FO RC -", "CCC -")
     if (tempCategorie && tempService) {
       return `${tempCategorie} ${tempService}`;
     }
@@ -744,7 +750,7 @@ const ModalCellEdit = ({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Rechercher un code (ex: FO, MA, VL...)"
+                placeholder="Rechercher un code (ex: FO, MA, VL, CCC...)"
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
               {searchTerm && (
@@ -899,6 +905,20 @@ const ModalCellEdit = ({
               badge="VT, D2I, RU..."
             >
               {renderCodeButtons(JOURS_RH_CODES, selectCategorie, (code) => tempCategorie === code, 5)}
+            </AccordionSection>
+          )}
+
+          {/* PCD */}
+          {hasSearchResults(PCD_CODES) && (
+            <AccordionSection 
+              id="pcd" 
+              title="PCD" 
+              colorClass="bg-cyan-200"
+              isOpen={openSections.pcd || searchTerm.trim() !== ''}
+              onToggle={toggleSection}
+              badge="CCC, BO, CBVD"
+            >
+              {renderCodeButtons(PCD_CODES, selectCategorie, (code) => tempCategorie === code, 3)}
             </AccordionSection>
           )}
 
