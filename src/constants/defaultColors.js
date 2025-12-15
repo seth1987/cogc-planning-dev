@@ -3,9 +3,9 @@
 
 export const DEFAULT_COLORS = {
   services: {
-    '-': { bg: 'transparent', text: '#ffffff' },      // Matin
-    'O': { bg: 'transparent', text: '#ffffff' },      // Soir
-    'X': { bg: 'transparent', text: '#ffffff' },      // Nuit
+    '-': { bg: '#ffffff', text: '#000000' },          // Matin - fond blanc, texte noir
+    'O': { bg: '#ffffff', text: '#000000' },          // Soir - fond blanc, texte noir
+    'X': { bg: '#ffffff', text: '#000000' },          // Nuit - fond blanc, texte noir
     'RP': { bg: '#dcfce7', text: '#166534' },         // Repos périodique
     'C': { bg: '#facc15', text: '#713f12' },          // Congés
     'MA': { bg: '#fecaca', text: '#991b1b' },         // Maladie
