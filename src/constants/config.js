@@ -182,7 +182,8 @@ export const POSTES_SUPPLEMENTAIRES = [
   { code: '+RC', desc: 'Poste RC supplémentaire' },
   { code: '+CCU', desc: 'Poste CCU supplémentaire' },
   { code: '+CAC', desc: 'Poste CAC supplémentaire' },
-  { code: '+OV', desc: 'Poste OV supplémentaire' }
+  { code: '+OV', desc: 'Poste OV supplémentaire' },
+  { code: '+PN', desc: 'Rapatriement Paris Nord' }
 ];
 
 // Constante pour détecter si une valeur est en mode texte libre
