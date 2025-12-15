@@ -20,7 +20,7 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.4.1 - Fix useEffect placement (ESLint)
+ * @version 2.4.2 - Fix texte libre (sauvegarde + affichage)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -83,10 +83,20 @@ const ModalCellEdit = ({
   // Initialiser les états avec les données existantes
   useEffect(() => {
     if (cellData) {
-      setTempService(cellData.service || '');
+      // Détection du texte libre : si texteLibre existe OU si le service n'est pas un code standard
+      const isTexteLibre = cellData.texteLibre || 
+        (cellData.service && !SERVICE_CODES.some(sc => sc.code === cellData.service) && cellData.service !== '');
+      
+      if (isTexteLibre) {
+        setTempService('LIBRE');
+        setTempTexteLibre(cellData.texteLibre || cellData.service || '');
+      } else {
+        setTempService(cellData.service || '');
+        setTempTexteLibre('');
+      }
+      
       setTempPoste(cellData.poste || '');
       setTempNote(cellData.note || '');
-      setTempTexteLibre(cellData.texteLibre || '');
       setTempPostesSupplementaires(cellData.postesSupplementaires || []);
     } else {
       setTempService('');
@@ -269,7 +279,11 @@ const ModalCellEdit = ({
   };
 
   const handleValidateTexteLibre = () => {
-    setTempTexteLibre(texteLibreInput.trim());
+    const texte = texteLibreInput.trim();
+    if (texte) {
+      setTempTexteLibre(texte);
+      setTempService('LIBRE');
+    }
     setShowTexteLibreModal(false);
   };
 
@@ -281,52 +295,25 @@ const ModalCellEdit = ({
   const handleDeleteTexteLibre = () => {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce texte libre ?')) {
       setTempTexteLibre('');
+      setTempService('');
     }
   };
 
   const selectTexteLibre = () => {
-    setTempService('LIBRE');
-    openAddTexteLibreModal();
+    if (tempTexteLibre) {
+      // Si déjà du texte libre, ouvrir en mode édition
+      openEditTexteLibreModal();
+    } else {
+      // Sinon, ouvrir en mode ajout
+      setTempService('LIBRE');
+      openAddTexteLibreModal();
+    }
   };
 
   // === GESTION CROISEMENT ===
 
   const openCroisementModal = () => {
-    // DEBUG: Afficher la structure complète du planning
-    console.log('🔄 ═══════════════════════════════════════════');
-    console.log('🔄 Ouverture modal croisement - DEBUG COMPLET');
-    console.log('🔄 ═══════════════════════════════════════════');
-    console.log('   allPlanning est null?:', allPlanning === null);
-    console.log('   allPlanning est undefined?:', allPlanning === undefined);
-    console.log('   allPlanning type:', typeof allPlanning);
-    
-    const keys = Object.keys(allPlanning || {});
-    console.log('   Nombre de clés dans allPlanning:', keys.length);
-    console.log('   Premières clés (noms agents):', keys.slice(0, 10));
-    
-    // Vérifier la structure pour le premier agent
-    if (keys.length > 0) {
-      const firstKey = keys[0];
-      const firstAgentData = allPlanning[firstKey];
-      console.log(`   Structure agent "${firstKey}":`, firstAgentData);
-      console.log('   Type données premier agent:', typeof firstAgentData);
-      console.log('   Jours disponibles pour cet agent:', Object.keys(firstAgentData || {}));
-    }
-    
-    // Vérifier si selectedCell.day existe dans les données
-    const day = selectedCell.day;
-    console.log('   selectedCell.day:', day, '(type:', typeof day, ')');
-    
-    // Chercher combien d'agents ont des données pour ce jour
-    let agentsWithDayData = 0;
-    keys.forEach(key => {
-      if (allPlanning[key] && allPlanning[key][day] !== undefined) {
-        agentsWithDayData++;
-      }
-    });
-    console.log(`   Agents avec données pour jour ${day}:`, agentsWithDayData);
-    console.log('🔄 ═══════════════════════════════════════════');
-    
+    console.log('🔄 Ouverture modal croisement');
     setSelectedCroisementAgent(null);
     setCroisementSearch('');
     setShowCroisementModal(true);
@@ -364,32 +351,26 @@ const ModalCellEdit = ({
 
   /**
    * Trouve la clé correspondante dans allPlanning pour un nom d'agent
-   * Recherche flexible pour gérer les variations d'espaces/casse
    */
   const findPlanningKey = (agentName) => {
     if (!allPlanning || !agentName) return null;
     
-    // Essai 1: Correspondance exacte
     if (allPlanning[agentName] !== undefined) {
       return agentName;
     }
     
-    // Essai 2: Recherche normalisée
     const normalizedSearch = normalizeName(agentName);
     const keys = Object.keys(allPlanning);
     
     for (const key of keys) {
       if (normalizeName(key) === normalizedSearch) {
-        console.log(`   → Clé trouvée par normalisation: "${key}" pour "${agentName}"`);
         return key;
       }
     }
     
-    // Essai 3: Recherche partielle (nom contient)
     for (const key of keys) {
       if (normalizeName(key).includes(normalizedSearch) || 
           normalizedSearch.includes(normalizeName(key))) {
-        console.log(`   → Clé trouvée par inclusion: "${key}" pour "${agentName}"`);
         return key;
       }
     }
@@ -399,69 +380,27 @@ const ModalCellEdit = ({
 
   /**
    * Récupérer les données planning d'un agent pour un jour donné
-   * Structure attendue: allPlanning[agentName][day]
-   * @version 2.3.0 - Recherche flexible des clés
    */
   const getAgentPlanningForDay = (agentName, day) => {
-    // DEBUG détaillé
-    console.log(`🔍 getAgentPlanningForDay("${agentName}", ${day})`);
-    console.log(`   allPlanning existe:`, !!allPlanning);
-    console.log(`   Nombre de clés:`, Object.keys(allPlanning || {}).length);
-    
-    // Trouver la clé correspondante
     const planningKey = findPlanningKey(agentName);
-    console.log(`   Clé planning trouvée:`, planningKey);
-    
-    if (!planningKey) {
-      console.log(`   → Résultat: null (agent non trouvé dans planning)`);
-      return null;
-    }
+    if (!planningKey) return null;
     
     const agentData = allPlanning[planningKey];
-    console.log(`   Données agent:`, agentData);
-    console.log(`   Jours disponibles:`, Object.keys(agentData || {}));
+    let cellValue = agentData?.[day] || agentData?.[String(day)] || agentData?.[Number(day)];
     
-    // Essayer avec day comme number et comme string
-    let cellValue = agentData?.[day];
-    if (cellValue === undefined) {
-      cellValue = agentData?.[String(day)];
-      if (cellValue !== undefined) {
-        console.log(`   → Trouvé avec day comme string`);
-      }
-    }
-    if (cellValue === undefined) {
-      cellValue = agentData?.[Number(day)];
-      if (cellValue !== undefined) {
-        console.log(`   → Trouvé avec day comme number`);
-      }
-    }
+    if (!cellValue) return null;
     
-    if (!cellValue) {
-      console.log(`   → Résultat: null (pas de données pour jour ${day})`);
-      return null;
-    }
-    
-    // Si c'est une string simple (juste le code service)
     if (typeof cellValue === 'string') {
-      console.log(`   → Résultat (string):`, cellValue);
-      return { 
-        service: cellValue, 
-        poste: null, 
-        note: null, 
-        postesSupplementaires: null 
-      };
+      return { service: cellValue, poste: null, note: null, postesSupplementaires: null };
     }
     
-    // Si c'est un objet avec les détails
-    const result = {
+    return {
       service: cellValue.service || null,
       poste: cellValue.poste || null,
       note: cellValue.note || null,
       postesSupplementaires: cellValue.postesSupplementaires || null,
       texteLibre: cellValue.texteLibre || null
     };
-    console.log(`   → Résultat (object):`, result);
-    return result;
   };
 
   // Effectuer le croisement
@@ -481,9 +420,6 @@ const ModalCellEdit = ({
       const agent1Data = cellData || {};
       const agent2Data = getAgentPlanningForDay(agent2Name, day) || {};
 
-      console.log('🔄 Croisement - Agent 1 data:', agent1Data);
-      console.log('🔄 Croisement - Agent 2 data:', agent2Data);
-
       const newAgent1Data = {
         service: agent2Data.service || '',
         poste: agent2Data.poste || '',
@@ -499,9 +435,6 @@ const ModalCellEdit = ({
         note: `Croisement avec ${agent1Name}`,
         texteLibre: agent1Data.texteLibre || tempTexteLibre || ''
       };
-
-      console.log('🔄 Croisement - New Agent 1 data:', newAgent1Data);
-      console.log('🔄 Croisement - New Agent 2 data:', newAgent2Data);
 
       if (onCroisement) {
         await onCroisement({
@@ -539,28 +472,30 @@ const ModalCellEdit = ({
   const handleSave = async () => {
     let planningData;
     
-    const finalService = tempService === 'LIBRE' && tempTexteLibre 
-      ? tempTexteLibre 
-      : tempService;
+    // Déterminer le service final
+    const isTexteLibre = tempService === 'LIBRE' && tempTexteLibre;
+    const finalService = isTexteLibre ? 'LIBRE' : tempService;
     
-    if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote || tempTexteLibre) {
+    // Construire l'objet de données
+    if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote || isTexteLibre) {
       planningData = { 
         service: finalService,
         ...(tempPoste && { poste: tempPoste }),
         ...(tempPostesSupplementaires.length > 0 && { postesSupplementaires: tempPostesSupplementaires }),
         ...(tempNote && { note: tempNote }),
-        ...(tempTexteLibre && tempService === 'LIBRE' && { texteLibre: tempTexteLibre })
+        ...(isTexteLibre && { texteLibre: tempTexteLibre })
       };
     } else {
       planningData = finalService;
     }
+    
+    console.log('💾 Sauvegarde planning:', planningData);
     
     // === GESTION ÉDITION MULTIPLE ===
     if (applyToMultipleDays && endDate) {
       const [, , endDay] = endDate.split('-').map(Number);
       const startDay = selectedCell.day;
       
-      // Validation finale
       if (endDay < startDay) {
         alert('❌ La date de fin doit être >= à la date de début');
         return;
@@ -568,7 +503,6 @@ const ModalCellEdit = ({
       
       const daysCount = endDay - startDay + 1;
       
-      // Confirmation si beaucoup de jours
       if (daysCount > 7) {
         const confirm = window.confirm(
           `⚠️ Vous allez modifier ${daysCount} jours (du ${startDay} au ${endDay} ${currentMonth}).\n\nConfirmer ?`
@@ -576,7 +510,6 @@ const ModalCellEdit = ({
         if (!confirm) return;
       }
       
-      // Appliquer à tous les jours de la plage
       try {
         for (let day = startDay; day <= endDay; day++) {
           await onUpdateCell(selectedCell.agent, day, planningData);
@@ -587,7 +520,6 @@ const ModalCellEdit = ({
         return;
       }
     } else {
-      // Mode simple : un seul jour
       await onUpdateCell(selectedCell.agent, selectedCell.day, planningData);
     }
     
@@ -662,7 +594,13 @@ const ModalCellEdit = ({
               {SERVICE_CODES.map(({ code, desc }) => (
                 <button
                   key={code}
-                  onClick={() => setTempService(code)}
+                  onClick={() => {
+                    setTempService(code);
+                    // Si on sélectionne un autre service que LIBRE, effacer le texte libre
+                    if (code !== 'LIBRE') {
+                      setTempTexteLibre('');
+                    }
+                  }}
                   className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempService === code)}`}
                 >
                   <div className="font-semibold">{code}</div>
@@ -670,6 +608,7 @@ const ModalCellEdit = ({
                 </button>
               ))}
               
+              {/* Bouton Texte Libre */}
               <button
                 onClick={selectTexteLibre}
                 className={`p-2 rounded text-center text-xs transition-all ${
@@ -686,6 +625,7 @@ const ModalCellEdit = ({
               </button>
             </div>
             
+            {/* Affichage du texte libre existant */}
             {tempService === 'LIBRE' && hasExistingTexteLibre && (
               <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
                 <div className="flex items-center justify-between">
@@ -1096,13 +1036,6 @@ const ModalCellEdit = ({
               <button onClick={closeCroisementModal} className="text-gray-500 hover:text-gray-700">
                 <X className="w-5 h-5" />
               </button>
-            </div>
-            
-            {/* DEBUG INFO */}
-            <div className="mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-              <p>🔍 Debug: {Object.keys(allPlanning || {}).length} agents dans planning</p>
-              <p>📅 Jour: {selectedCell.day} (type: {typeof selectedCell.day})</p>
-              <p>👥 Agents avec données ce jour: {agentsWithDataForDay}</p>
             </div>
             
             <div className="mb-4">
