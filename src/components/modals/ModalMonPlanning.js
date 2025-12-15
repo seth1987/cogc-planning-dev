@@ -15,6 +15,7 @@ import ModalCouleurs from './ModalCouleurs';
  * v1.4 - FIX: Calcul correct des jours de la semaine (année dynamique)
  * v1.5 - FIX: Responsive mobile + utilisation CODE_COLORS
  * v1.6 - NEW: Bouton palette + ModalCouleurs (même système que planning général)
+ * v1.7 - FIX: Synchronisation couleurs - reloadColors() à la fermeture du panneau
  */
 const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear }) => {
   // FIX v1.4: Utiliser initialYear si fourni, sinon année système
@@ -30,8 +31,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
   
-  // v1.6: Hook pour les couleurs personnalisées
-  const { colors, getServiceColor } = useColors();
+  // v1.7: Hook pour les couleurs personnalisées avec reloadColors
+  const { colors, getServiceColor, reloadColors } = useColors();
   const [showColorModal, setShowColorModal] = useState(false);
   
   // Tracker si des modifications ont été faites
@@ -213,6 +214,14 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     }
     hasChanges.current = false;
     onClose();
+  };
+
+  // v1.7: Fermer le modal couleurs ET recharger les couleurs
+  const handleCloseColorModal = () => {
+    setShowColorModal(false);
+    // Recharger les couleurs depuis localStorage pour synchroniser
+    reloadColors();
+    console.log('🎨 Couleurs rechargées après fermeture du panneau');
   };
 
   // Sauvegarder modification
@@ -430,10 +439,10 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
         </div>
       </div>
 
-      {/* Modal Couleurs */}
+      {/* Modal Couleurs - v1.7: Utilise handleCloseColorModal pour recharger */}
       <ModalCouleurs 
         isOpen={showColorModal} 
-        onClose={() => setShowColorModal(false)} 
+        onClose={handleCloseColorModal} 
       />
 
       {/* Modal d'édition (comme ModalCellEdit) */}
