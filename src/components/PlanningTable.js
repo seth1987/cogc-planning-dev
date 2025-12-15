@@ -20,34 +20,64 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * NEW v2.17: Synchronisation multi-appareils des couleurs via Supabase
  * FIX v2.18: Debug log pour currentUser
  * FIX v2.19: Support des codes combinés (ex: "FO CRC -", "MA O")
+ * FIX v2.20: Affichage 2 lignes pour codes combinés (horaire en haut, catégorie en bas)
  */
 
 // Horaires simples pour détecter les combinaisons
 const HORAIRES_SIMPLES = ['-', 'O', 'X', 'I', 'RP', 'NU'];
 
-// Fonction pour extraire la catégorie d'un code combiné
-// "FO CRC -" → "FO CRC"
-// "MA O" → "MA"
-// "HAB" → "HAB"
-// "-" → "-"
+/**
+ * Parse un code combiné et retourne horaire + catégorie séparés
+ * "FO RO -" → { horaire: "-", categorie: "FO RO" }
+ * "MA O" → { horaire: "O", categorie: "MA" }
+ * "HAB" → { horaire: null, categorie: "HAB" }
+ * "-" → { horaire: "-", categorie: null }
+ * "RP" → { horaire: "RP", categorie: null }
+ */
+const parseCombinedCode = (serviceCode) => {
+  if (!serviceCode) return { horaire: null, categorie: null };
+  
+  const trimmed = serviceCode.trim();
+  const parts = trimmed.split(' ');
+  
+  // Code simple (1 seul élément)
+  if (parts.length === 1) {
+    // Si c'est un horaire simple, pas de catégorie
+    if (HORAIRES_SIMPLES.includes(trimmed)) {
+      return { horaire: trimmed, categorie: null };
+    }
+    // Sinon c'est une catégorie seule (ex: "HAB", "VL", "D")
+    return { horaire: null, categorie: trimmed };
+  }
+  
+  // Code combiné (plusieurs éléments)
+  const lastPart = parts[parts.length - 1];
+  
+  // Si le dernier élément est un horaire simple → combinaison catégorie + horaire
+  if (HORAIRES_SIMPLES.includes(lastPart)) {
+    const categorie = parts.slice(0, -1).join(' ');
+    return { horaire: lastPart, categorie: categorie || null };
+  }
+  
+  // Sinon tout est catégorie (ex: "FO RO" sans horaire)
+  return { horaire: null, categorie: trimmed };
+};
+
+// Fonction pour extraire la catégorie d'un code combiné (pour les couleurs)
 const extractCategoryFromCombined = (serviceCode) => {
   if (!serviceCode) return null;
   
   const trimmed = serviceCode.trim();
   const parts = trimmed.split(' ');
   
-  // Si c'est un code simple, le retourner tel quel
   if (parts.length === 1) return trimmed;
   
-  // Vérifier si le dernier élément est un horaire simple
   const lastPart = parts[parts.length - 1];
   if (HORAIRES_SIMPLES.includes(lastPart)) {
-    // Extraire tout sauf le dernier (la catégorie)
     const category = parts.slice(0, -1).join(' ');
-    return category || lastPart; // Si catégorie vide, retourner l'horaire
+    return category || lastPart;
   }
   
-  // Sinon retourner le code complet
   return trimmed;
 };
 
@@ -272,8 +302,22 @@ const PlanningTable = ({
     
     if (planningData) {
       if (typeof planningData === 'string') {
-        cellContent = planningData;
+        // ===== FIX v2.20: Parser les codes combinés pour affichage 2 lignes =====
+        const { horaire, categorie } = parseCombinedCode(planningData);
         cellStyle = getCellColorStyle(planningData);
+        
+        // Si c'est un code combiné (horaire + catégorie), afficher sur 2 lignes
+        if (horaire && categorie) {
+          cellContent = (
+            <div className="flex flex-col h-full justify-center">
+              <span className="font-medium">{horaire}</span>
+              <span className="text-xs font-bold">{categorie}</span>
+            </div>
+          );
+        } else {
+          // Code simple - afficher tel quel
+          cellContent = planningData;
+        }
       } else if (typeof planningData === 'object') {
         const service = planningData.service || '';
         const poste = planningData.poste || '';
@@ -286,7 +330,6 @@ const PlanningTable = ({
         
         // Couleur selon le type
         if (isTexteLibre) {
-          // Utiliser la couleur configurée pour le texte libre
           const texteLibreColors = colors.texteLibre || { bg: '#fef3c7', text: '#92400e' };
           cellStyle = {
             backgroundColor: texteLibreColors.bg,
@@ -299,8 +342,11 @@ const PlanningTable = ({
         // Couleur des postes supplémentaires
         const postesColor = colors.postesSupp?.text || '#8b5cf6';
         
-        // Texte à afficher : texteLibre si LIBRE, sinon service
-        const displayText = isTexteLibre ? texteLibre : service;
+        // ===== FIX v2.20: Parser le service pour affichage 2 lignes =====
+        const { horaire, categorie } = parseCombinedCode(service);
+        const displayText = isTexteLibre ? texteLibre : (horaire || service);
+        // La catégorie du service combiné OU le poste existant
+        const displayCategorie = categorie || poste;
         
         cellContent = (
           <div className="flex flex-col h-full justify-between">
@@ -316,7 +362,7 @@ const PlanningTable = ({
             )}
             <div className="flex flex-col">
               <span className={`font-medium ${isTexteLibre ? 'text-[10px]' : ''}`}>{displayText}</span>
-              {poste && <span className="text-xs font-bold">{poste}</span>}
+              {displayCategorie && <span className="text-xs font-bold">{displayCategorie}</span>}
             </div>
             {postesSupplementaires.length > 0 && (
               <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
