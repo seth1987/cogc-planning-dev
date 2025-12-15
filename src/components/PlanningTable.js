@@ -17,6 +17,7 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * FIX v2.14: Réduction hauteur barre navigation (moins intrusive sur mobile)
  * NEW v2.15: Personnalisation des couleurs via ModalCouleurs
  * FIX v2.16: Affichage correct du texte libre (service=LIBRE + texteLibre)
+ * NEW v2.17: Synchronisation multi-appareils des couleurs via Supabase
  */
 
 // Composant barre de navigation rendu via portail - VERSION COMPACTE
@@ -93,12 +94,14 @@ const PlanningTable = ({
   agentsData, 
   onCellClick, 
   onAgentClick, 
-  onDayHeaderClick 
+  onDayHeaderClick,
+  currentUser,  // NEW: pour la synchronisation des couleurs
 }) => {
   const year = currentYear || new Date().getFullYear();
+  const userEmail = currentUser?.email || null;
   
-  // Hook pour les couleurs personnalisées
-  const { colors, getServiceColor } = useColors();
+  // Hook pour les couleurs personnalisées (avec sync si userEmail présent)
+  const { colors, getServiceColor, reloadColors } = useColors('general', userEmail);
   
   // State pour la modal couleurs
   const [showColorModal, setShowColorModal] = useState(false);
@@ -116,6 +119,13 @@ const PlanningTable = ({
     setShowNavBar(true);
     return () => setShowNavBar(false);
   }, []);
+
+  // Recharger les couleurs après fermeture de la modal
+  const handleCloseColorModal = () => {
+    setShowColorModal(false);
+    reloadColors();
+    console.log('🎨 Couleurs general rechargées après fermeture du panneau');
+  };
 
   const toggleGroupCollapse = (groupName) => {
     setCollapsedGroups(prev => ({
@@ -307,7 +317,9 @@ const PlanningTable = ({
       {/* Modal personnalisation couleurs */}
       <ModalCouleurs 
         isOpen={showColorModal} 
-        onClose={() => setShowColorModal(false)} 
+        onClose={handleCloseColorModal}
+        context="general"
+        userEmail={userEmail}
       />
       
       {/* Barre de navigation via portail */}
