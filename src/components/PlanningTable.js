@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users, Palette, Type } from 'lucide-react';
 import { MONTHS } from '../constants/config';
 import { DEFAULT_COLORS } from '../constants/defaultColors';
+import { getPaieType, PAIE_ICONS } from '../constants/paie2026';
 import useColors from '../hooks/useColors';
 import planningService from '../services/planningService';
 import ModalCouleurs from './modals/ModalCouleurs';
@@ -23,6 +24,7 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * FIX v2.20: Affichage 2 lignes pour codes combinés (horaire en haut, catégorie en bas)
  * FIX v2.21: Couleur basée sur POSTE+SERVICE combiné (réserve vs roulement)
  * NEW v4.5.0: Support statut_conge combinable (C, C?, CNA) avec service/poste
+ * NEW v4.6.0: Icônes paie 2026 (Digiposte/Virement) dans les en-têtes de jours
  */
 
 // Horaires simples pour détecter les combinaisons
@@ -269,11 +271,17 @@ const PlanningTable = ({
     };
   };
   
+  /**
+   * v4.6.0: Génère l'en-tête de jour avec icône paie si applicable
+   */
   const getDayHeader = (day) => {
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
     const dayName = planningService.getDayName(day, currentMonth, year);
     
-    let className = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] ';
+    // Vérifier si c'est une date de paie 2026
+    const paieType = getPaieType(day, currentMonth, year);
+    
+    let className = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] relative ';
     
     if (isFerier) {
       className += 'bg-red-100 text-red-900';
@@ -288,14 +296,42 @@ const PlanningTable = ({
       className += ' cursor-pointer hover:bg-blue-100 hover:text-blue-800 transition-colors group';
     }
     
+    // Déterminer l'icône à afficher
+    let backgroundIcon = null;
+    if (paieType === 'digiposte') {
+      backgroundIcon = PAIE_ICONS.general.digiposte;
+    } else if (paieType === 'virement') {
+      backgroundIcon = PAIE_ICONS.general.euro;
+    } else if (paieType === 'both') {
+      // Si les deux tombent le même jour (rare), priorité Digiposte
+      backgroundIcon = PAIE_ICONS.general.digiposte;
+    }
+    
     return (
       <th 
         key={day} 
         className={className}
         onClick={isClickable ? () => onDayHeaderClick(day) : undefined}
         title={isClickable ? `Voir les equipes du ${day}` : undefined}
+        style={backgroundIcon ? {
+          backgroundImage: `url(${backgroundIcon})`,
+          backgroundSize: '32px 32px',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+        } : undefined}
       >
-        <div className="flex flex-col items-center">
+        {/* Overlay semi-transparent pour lisibilité si icône présente */}
+        {backgroundIcon && (
+          <div 
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundColor: isFerier ? 'rgba(254, 226, 226, 0.75)' : 
+                             isWeekend ? 'rgba(240, 253, 244, 0.75)' : 
+                             'rgba(249, 250, 251, 0.75)',
+            }}
+          />
+        )}
+        <div className="flex flex-col items-center relative z-10">
           <span className="text-xs uppercase">{dayName}</span>
           <span className="font-bold text-sm">{day}</span>
           {isFerier && <span className="text-xs">Ferie</span>}
@@ -752,6 +788,37 @@ const PlanningTable = ({
                 >RDV</span>
                 <span>Fond jaune clair</span>
               </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Légende Paie 2026 */}
+        <div className="mt-4 pt-3 border-t border-gray-200">
+          <p className="font-medium mb-2 text-sm">📅 Dates de paie 2026 :</p>
+          <div className="flex flex-wrap gap-4 text-xs">
+            <div className="flex items-center gap-2">
+              <div 
+                className="w-8 h-8 rounded border border-gray-300 bg-gray-50"
+                style={{
+                  backgroundImage: `url(${PAIE_ICONS.general.digiposte})`,
+                  backgroundSize: '24px 24px',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }}
+              />
+              <span>Bulletin Digiposte disponible</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div 
+                className="w-8 h-8 rounded border border-gray-300 bg-gray-50"
+                style={{
+                  backgroundImage: `url(${PAIE_ICONS.general.euro})`,
+                  backgroundSize: '24px 24px',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }}
+              />
+              <span>Virement salaire</span>
             </div>
           </div>
         </div>
