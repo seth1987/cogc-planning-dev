@@ -1,6 +1,6 @@
 /**
  * Couleurs par défaut pour les services et éléments du planning
- * VERSION 3.6 - Catégorie C,CP,F (Congés/Férié) avec C, C?, CNA, F
+ * VERSION 3.7 - Ajout catégorie PCD avec CCCBO et CBVD
  */
 
 // Horaires de base pour les combinaisons
@@ -84,6 +84,29 @@ export const COLOR_CATEGORIES = {
         label: 'SOUF - Soufflerie',
         defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
         horaires: 'jour',
+      }
+    },
+    items: {}
+  },
+  
+  // PCD : OUVERT par défaut - avec CCCBO et CBVD
+  pcd: {
+    id: 'pcd',
+    label: 'PCD',
+    description: 'Postes PCD : CCCBO, CBVD',
+    defaultOpen: true,
+    defaultColor: { bg: '#a5f3fc', text: '#155e75' },
+    hasSubCategories: true,
+    subCategories: {
+      'CCCBO': {
+        label: 'CCCBO',
+        defaultColor: { bg: '#a5f3fc', text: '#155e75' },
+        horaires: 'all',
+      },
+      'CBVD': {
+        label: 'CBVD',
+        defaultColor: { bg: '#a5f3fc', text: '#155e75' },
+        horaires: 'all',
       }
     },
     items: {}
@@ -268,6 +291,7 @@ const generateSubCategoryItems = (categoryKey) => {
 
 // Appliquer les items générés pour les catégories avec sous-catégories
 COLOR_CATEGORIES.posteReserve.items = generateSubCategoryItems('posteReserve');
+COLOR_CATEGORIES.pcd.items = generateSubCategoryItems('pcd');
 COLOR_CATEGORIES.habilitationFormation.items = generateSubCategoryItems('habilitationFormation');
 
 // ========================
