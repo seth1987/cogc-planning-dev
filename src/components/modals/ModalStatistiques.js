@@ -5,16 +5,12 @@ import { supabase } from '../../lib/supabaseClient';
  * ModalStatistiques - Compteurs et analyses pour l'agent connecté
  * 
  * Affiche les statistiques de l'agent :
- * - Compteurs par type de vacation : - (Matin), O (Soir), X (Nuit)
- * - Compteurs RP, MA
+ * - Compteurs par type de vacation : - (Matin), O (Soir), X (Nuit), RP, MA
  * - Compteurs congés définitifs : C (accordé), CNA (refusé)
- *   Note: C? (en attente) n'est PAS compté car statut transitoire
- * - Pourcentages mensuels et annuels
- * - Compteurs des positions supplémentaires (+CCU, +RO, +RC, etc.) - MENSUEL et ANNUEL
+ * - Compteurs des positions supplémentaires (+CCU, +RO, +RC, etc.)
+ * - Détails mensuels repliables en fin de modal
  * 
- * v1.2 - Ajout décompte mensuel/annuel des postes supplémentaires
- * v1.3 - Support statut_conge (C, CNA) - C? non compté car transitoire
- * v1.4 - Sections détails repliables par défaut, suppression doublons graphiques
+ * v1.4 - Sections détails repliables à la fin, RP/MA dans vacations, simplification
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -27,7 +23,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     conges: {}
   });
   
-  // v1.4: États pour les sections repliables (fermées par défaut)
+  // États pour les sections repliables (fermées par défaut)
   const [showDetailMois, setShowDetailMois] = useState(false);
   const [showDetailSupplements, setShowDetailSupplements] = useState(false);
 
@@ -36,24 +32,10 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'
   ];
 
-  const monthsFull = [
-    'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
-  ];
-
   // Liste des postes supplémentaires possibles
   const supplementTypes = ['+ACR', '+RO', '+RC', '+CCU', '+RE', '+OV'];
 
-  // Catégories de comptage - CORRIGÉES selon les marqueurs
-  const categories = [
-    { key: 'matin', label: 'Matinées (-)', color: '#FFC107', marker: '-' },
-    { key: 'soiree', label: 'Soirées (O)', color: '#FF5722', marker: 'O' },
-    { key: 'nuit', label: 'Nuits (X)', color: '#3F51B5', marker: 'X' },
-    { key: 'rp', label: 'RP', color: '#4CAF50' },
-    { key: 'ma', label: 'MA', color: '#f44336' }
-  ];
-
-  // v1.3: Couleurs pour les statuts congé définitifs (C? exclu car transitoire)
+  // Couleurs pour les statuts congé définitifs
   const congeColors = {
     'C': { bg: '#facc15', text: '#713f12', label: 'Accordé' },
     'CNA': { bg: '#fca5a5', text: '#991b1b', label: 'Refusé' }
@@ -87,7 +69,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     }
   }, [currentUser]);
 
-  // Calculer les statistiques - v1.3: Support statut_conge (C et CNA uniquement)
+  // Calculer les statistiques
   const loadStats = useCallback(async () => {
     if (!agentInfo?.id) return;
 
@@ -114,8 +96,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
       };
       const supplements = {};
       
-      // v1.3: Compteurs pour les statuts congé DÉFINITIFS uniquement (C et CNA)
-      // C? n'est pas compté car c'est un statut transitoire
       const conges = {
         'C': { count: 0, byMonth: {} },
         'CNA': { count: 0, byMonth: {} }
@@ -128,7 +108,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
           rp: 0, ma: 0,
           total: 0
         };
-        // Initialiser les congés par mois
         conges['C'].byMonth[i] = 0;
         conges['CNA'].byMonth[i] = 0;
       }
@@ -144,61 +123,51 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
         }
       });
 
-      // Analyser les données avec la BONNE logique
+      // Analyser les données
       (data || []).forEach(entry => {
         const month = new Date(entry.date).getMonth();
         const code = (entry.service_code || '').toUpperCase().trim();
         const statutConge = (entry.statut_conge || '').toUpperCase().trim();
 
-        // v1.3: Compter les statuts congé DÉFINITIFS uniquement (C et CNA)
-        // C? est ignoré car c'est un statut transitoire qui sera converti en C ou CNA
+        // Compter les statuts congé DÉFINITIFS uniquement (C et CNA)
         if (statutConge === 'C' || statutConge === 'CNA') {
           conges[statutConge].count++;
           conges[statutConge].byMonth[month]++;
         }
 
-        // === COMPTAGE DES VACATIONS selon les marqueurs ===
-        // Matinée = "-"
+        // === COMPTAGE DES VACATIONS ===
         if (code === '-') {
           byMonth[month].matin++;
           annual.matin++;
           byMonth[month].total++;
           annual.total++;
         }
-        // Soirée = "O"
         else if (code === 'O') {
           byMonth[month].soiree++;
           annual.soiree++;
           byMonth[month].total++;
           annual.total++;
         }
-        // Nuit = "X"
         else if (code === 'X') {
           byMonth[month].nuit++;
           annual.nuit++;
           byMonth[month].total++;
           annual.total++;
         }
-        // === COMPTAGE DES ABSENCES ===
-        // Repos périodique
         else if (code === 'RP' || code === 'RU') {
           byMonth[month].rp++;
           annual.rp++;
         }
-        // v1.3: Compatibilité avec ancien système (C ou CP dans service_code)
-        // Compte comme congé accordé si pas de statut_conge défini
         else if (code === 'C' || code === 'CP') {
           if (!statutConge) {
             conges['C'].count++;
             conges['C'].byMonth[month]++;
           }
         }
-        // Maladie
         else if (code === 'MA' || code === 'MALADIE') {
           byMonth[month].ma++;
           annual.ma++;
         }
-        // Autres services (D, DISPO, FO, HAB, etc.) - comptés dans total travaillé
         else if (code && !['RP', 'RU', 'C', 'CP', 'MA', 'MALADIE', 'NU', 'VT', 'I'].includes(code)) {
           byMonth[month].total++;
           annual.total++;
@@ -208,7 +177,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
         if (entry.postes_supplementaires && Array.isArray(entry.postes_supplementaires)) {
           entry.postes_supplementaires.forEach(sup => {
             const supCode = sup.toUpperCase();
-            // Initialiser si nouveau type de poste supp non prévu
             if (!supplements[supCode]) {
               supplements[supCode] = { count: 0, byMonth: {} };
               for (let i = 0; i < 12; i++) {
@@ -233,7 +201,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   useEffect(() => {
     if (isOpen) {
       loadAgentInfo();
-      // v1.4: Réinitialiser les sections repliables à la fermeture
       setShowDetailMois(false);
       setShowDetailSupplements(false);
     }
@@ -270,34 +237,19 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
       .sort((a, b) => b[1].count - a[1].count);
   };
 
-  // v1.3: Calculer le total des congés définitifs (C + CNA)
+  // Calculer le total des congés définitifs (C + CNA)
   const getTotalConges = () => {
     if (!stats.conges) return 0;
     return (stats.conges['C']?.count || 0) + (stats.conges['CNA']?.count || 0);
   };
 
-  // v1.3: Obtenir le total congé mensuel
-  const getMonthCongeTotal = (monthIdx) => {
-    if (!stats.conges) return 0;
-    return (stats.conges['C']?.byMonth[monthIdx] || 0) + (stats.conges['CNA']?.byMonth[monthIdx] || 0);
-  };
-
-  // v1.3: Obtenir les statuts congé actifs
-  const getActiveConges = () => {
-    if (!stats.conges) return [];
-    return Object.entries(stats.conges)
-      .filter(([_, data]) => data.count > 0)
-      .sort((a, b) => b[1].count - a[1].count);
-  };
-
   if (!isOpen) return null;
 
-  // Total des vacations (matins + soirs + nuits)
-  const totalVacations = stats.annual.matin + stats.annual.soiree + stats.annual.nuit;
+  // Totaux
+  const totalVacations = stats.annual.matin + stats.annual.soiree + stats.annual.nuit + stats.annual.rp + stats.annual.ma;
   const totalSupplements = getTotalSupplements();
   const activeSupplements = getActiveSupplements();
   const totalConges = getTotalConges();
-  const activeConges = getActiveConges();
 
   return (
     <div style={styles.overlay} onClick={onClose}>
@@ -337,7 +289,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
           <div style={styles.loading}>Chargement des statistiques...</div>
         ) : (
           <div style={styles.content}>
-            {/* Résumé annuel - Vacations */}
+            {/* Vacations (Matin, Soir, Nuit, RP, MA) */}
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>📅 Vacations {selectedYear}</h3>
               <div style={styles.vacationsGrid}>
@@ -348,9 +300,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                   </div>
                   <div style={styles.statLabel}>Matinées</div>
                   <div style={styles.statMarker}>( - )</div>
-                  <div style={styles.statPercent}>
-                    {getPercentage(stats.annual.matin, totalVacations)}
-                  </div>
                 </div>
                 
                 {/* Soirées */}
@@ -360,9 +309,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                   </div>
                   <div style={styles.statLabel}>Soirées</div>
                   <div style={styles.statMarker}>( O )</div>
-                  <div style={styles.statPercent}>
-                    {getPercentage(stats.annual.soiree, totalVacations)}
-                  </div>
                 </div>
                 
                 {/* Nuits */}
@@ -372,23 +318,35 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                   </div>
                   <div style={styles.statLabel}>Nuits</div>
                   <div style={styles.statMarker}>( X )</div>
-                  <div style={styles.statPercent}>
-                    {getPercentage(stats.annual.nuit, totalVacations)}
+                </div>
+
+                {/* RP */}
+                <div style={styles.statCard}>
+                  <div style={{...styles.statIcon, backgroundColor: '#4CAF50'}}>
+                    {stats.annual.rp}
                   </div>
+                  <div style={styles.statLabel}>Repos</div>
+                  <div style={styles.statMarker}>( RP )</div>
+                </div>
+
+                {/* MA */}
+                <div style={styles.statCard}>
+                  <div style={{...styles.statIcon, backgroundColor: '#f44336'}}>
+                    {stats.annual.ma}
+                  </div>
+                  <div style={styles.statLabel}>Maladie</div>
+                  <div style={styles.statMarker}>( MA )</div>
                 </div>
               </div>
               
               <div style={styles.totalBox}>
-                <strong>Total vacations :</strong> {totalVacations}
+                <strong>Total :</strong> {totalVacations}
               </div>
             </div>
 
-            {/* v1.3: Section Congés (C accordé, CNA refusé) - C? exclu car transitoire */}
+            {/* Congés (C / CNA) */}
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>🏖️ Congés {selectedYear}</h3>
-              <p style={styles.infoNote}>
-                💡 Les demandes en attente (C?) ne sont pas comptées car elles seront converties en C ou CNA.
-              </p>
               <div style={styles.congesGrid}>
                 {/* C - Accordé */}
                 <div style={{
@@ -431,34 +389,47 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               
               {totalConges > 0 && (
                 <div style={{...styles.totalBox, backgroundColor: 'rgba(250, 204, 21, 0.15)'}}>
-                  <strong>Total congés (définitifs) :</strong> {totalConges}
+                  <strong>Total congés :</strong> {totalConges}
                 </div>
               )}
             </div>
 
-            {/* Résumé annuel - Absences (RP + MA) */}
+            {/* Positions Supplémentaires */}
             <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>🏠 Autres Absences {selectedYear}</h3>
-              <div style={styles.absencesGrid}>
-                {/* RP */}
-                <div style={styles.statCardSmall}>
-                  <div style={{...styles.statIconSmall, backgroundColor: '#4CAF50'}}>
-                    {stats.annual.rp}
-                  </div>
-                  <div style={styles.statLabelSmall}>Repos (RP)</div>
-                </div>
-                
-                {/* MA */}
-                <div style={styles.statCardSmall}>
-                  <div style={{...styles.statIconSmall, backgroundColor: '#f44336'}}>
-                    {stats.annual.ma}
-                  </div>
-                  <div style={styles.statLabelSmall}>Maladie (MA)</div>
-                </div>
+              <h3 style={styles.sectionTitle}>⚡ Positions Supplémentaires {selectedYear}</h3>
+              
+              <div style={styles.supplementsSummary}>
+                {activeSupplements.length > 0 ? (
+                  activeSupplements.map(([sup, data]) => (
+                    <div key={sup} style={{
+                      ...styles.supplementCard,
+                      borderColor: supplementColors[sup] || '#FFD700',
+                      backgroundColor: `${supplementColors[sup] || '#FFD700'}20`
+                    }}>
+                      <div style={{...styles.supplementName, color: supplementColors[sup] || '#FFD700'}}>
+                        {sup}
+                      </div>
+                      <div style={styles.supplementCount}>{data.count}</div>
+                      <div style={styles.supplementPercent}>
+                        {getPercentage(data.count, totalSupplements)}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p style={styles.noData}>Aucune position supplémentaire enregistrée</p>
+                )}
               </div>
+              
+              {totalSupplements > 0 && (
+                <div style={styles.totalBox}>
+                  <strong>Total positions supplémentaires :</strong> {totalSupplements}
+                </div>
+              )}
             </div>
 
-            {/* v1.4: Tableau mensuel vacations - REPLIABLE */}
+            {/* === SECTIONS REPLIABLES À LA FIN === */}
+
+            {/* Détail par Mois - REPLIABLE */}
             <div style={styles.section}>
               <h3 
                 style={styles.sectionTitleClickable} 
@@ -528,41 +499,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               )}
             </div>
 
-            {/* === SECTION : Positions Supplémentaires Détaillées === */}
-            <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>⚡ Positions Supplémentaires {selectedYear}</h3>
-              
-              {/* Cartes récapitulatives annuelles */}
-              <div style={styles.supplementsSummary}>
-                {activeSupplements.length > 0 ? (
-                  activeSupplements.map(([sup, data]) => (
-                    <div key={sup} style={{
-                      ...styles.supplementCard,
-                      borderColor: supplementColors[sup] || '#FFD700',
-                      backgroundColor: `${supplementColors[sup] || '#FFD700'}20`
-                    }}>
-                      <div style={{...styles.supplementName, color: supplementColors[sup] || '#FFD700'}}>
-                        {sup}
-                      </div>
-                      <div style={styles.supplementCount}>{data.count}</div>
-                      <div style={styles.supplementPercent}>
-                        {getPercentage(data.count, totalSupplements)}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p style={styles.noData}>Aucune position supplémentaire enregistrée</p>
-                )}
-              </div>
-              
-              {totalSupplements > 0 && (
-                <div style={styles.totalBox}>
-                  <strong>Total positions supplémentaires :</strong> {totalSupplements}
-                </div>
-              )}
-            </div>
-
-            {/* v1.4: Tableau mensuel des positions supplémentaires - REPLIABLE */}
+            {/* Détail Postes Supplémentaires par Mois - REPLIABLE */}
             {totalSupplements > 0 && (
               <div style={styles.section}>
                 <h3 
@@ -634,37 +571,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                 )}
               </div>
             )}
-
-            {/* v1.3: Graphique visuel Congés (si données) */}
-            {totalConges > 0 && (
-              <div style={styles.section}>
-                <h3 style={styles.sectionTitle}>📈 Répartition Congés</h3>
-                <div style={styles.barChart}>
-                  {activeConges.map(([code, data]) => {
-                    const maxConge = Math.max(...activeConges.map(([_, d]) => d.count), 1);
-                    const width = (data.count / maxConge) * 100;
-                    
-                    return (
-                      <div key={code} style={styles.barRow}>
-                        <span style={{...styles.barLabel, color: congeColors[code]?.text || '#fff'}}>
-                          {code} ({congeColors[code]?.label})
-                        </span>
-                        <div style={styles.barContainer}>
-                          <div 
-                            style={{
-                              ...styles.bar,
-                              width: `${width}%`,
-                              backgroundColor: congeColors[code]?.bg || '#facc15'
-                            }}
-                          />
-                        </div>
-                        <span style={styles.barValue}>{data.count}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -734,7 +640,6 @@ const styles = {
     color: '#00f0ff', fontSize: '16px', marginBottom: '15px',
     paddingBottom: '10px', borderBottom: '1px solid rgba(0, 240, 255, 0.2)'
   },
-  // v1.4: Titre de section cliquable (accordéon)
   sectionTitleClickable: {
     color: '#00f0ff', 
     fontSize: '16px', 
@@ -748,65 +653,47 @@ const styles = {
     userSelect: 'none',
     transition: 'color 0.2s ease'
   },
-  // v1.4: Icône toggle
   toggleIcon: {
     fontSize: '12px',
     color: '#00f0ff',
     width: '16px',
     display: 'inline-block'
   },
-  // v1.3: Note info
-  infoNote: {
-    fontSize: '12px',
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontStyle: 'italic',
-    marginBottom: '15px',
-    padding: '8px 12px',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: '6px',
-    borderLeft: '3px solid #fef08a'
+  vacationsGrid: { 
+    display: 'grid', 
+    gridTemplateColumns: 'repeat(5, 1fr)', 
+    gap: '12px' 
   },
-  vacationsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' },
-  absencesGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' },
-  // v1.3: Grille pour les congés (2 colonnes car C? exclu)
-  congesGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px' },
+  congesGrid: { 
+    display: 'grid', 
+    gridTemplateColumns: 'repeat(2, 1fr)', 
+    gap: '15px' 
+  },
   statCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px',
-    padding: '20px 15px', textAlign: 'center'
+    backgroundColor: 'rgba(255, 255, 255, 0.05)', 
+    borderRadius: '12px',
+    padding: '15px 10px', 
+    textAlign: 'center'
   },
-  // v1.3: Carte congé avec bordure colorée
   statCardConge: {
     borderRadius: '12px',
     padding: '20px 15px', 
     textAlign: 'center',
     border: '2px solid'
   },
-  statCardSmall: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '10px',
-    padding: '12px 10px', textAlign: 'center'
-  },
   statIcon: {
-    width: '60px', height: '60px', borderRadius: '50%',
+    width: '50px', height: '50px', borderRadius: '50%',
     display: 'flex', justifyContent: 'center', alignItems: 'center',
-    margin: '0 auto 10px', fontSize: '22px', fontWeight: 'bold', color: 'white'
+    margin: '0 auto 8px', fontSize: '18px', fontWeight: 'bold', color: 'white'
   },
-  // v1.3: Icône congé
   statIconConge: {
     width: '60px', height: '60px', borderRadius: '50%',
     display: 'flex', justifyContent: 'center', alignItems: 'center',
     margin: '0 auto 10px', fontSize: '22px', fontWeight: 'bold'
   },
-  statIconSmall: {
-    width: '45px', height: '45px', borderRadius: '50%',
-    display: 'flex', justifyContent: 'center', alignItems: 'center',
-    margin: '0 auto 8px', fontSize: '16px', fontWeight: 'bold', color: 'white'
-  },
-  statLabel: { color: 'rgba(255, 255, 255, 0.9)', fontSize: '13px', marginBottom: '3px' },
-  statLabelSmall: { color: 'rgba(255, 255, 255, 0.7)', fontSize: '11px' },
-  statMarker: { color: 'rgba(255, 255, 255, 0.5)', fontSize: '11px', marginBottom: '5px' },
-  // v1.3: Marker congé
-  statMarkerConge: { fontSize: '10px', marginBottom: '5px', fontWeight: '500' },
-  statPercent: { color: '#00f0ff', fontSize: '14px', fontWeight: 'bold' },
+  statLabel: { color: 'rgba(255, 255, 255, 0.9)', fontSize: '12px', marginBottom: '2px' },
+  statMarker: { color: 'rgba(255, 255, 255, 0.5)', fontSize: '10px' },
+  statMarkerConge: { fontSize: '10px', fontWeight: '500' },
   totalBox: {
     textAlign: 'center', marginTop: '15px', padding: '12px',
     backgroundColor: 'rgba(0, 240, 255, 0.1)', borderRadius: '8px', color: 'white', fontSize: '15px'
@@ -819,7 +706,6 @@ const styles = {
   },
   tr: { borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
   td: { padding: '8px 4px', color: 'white', textAlign: 'center', fontSize: '11px' },
-  // Styles pour les postes supplémentaires
   supplementsSummary: {
     display: 'grid', 
     gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
@@ -830,8 +716,7 @@ const styles = {
     border: '1px solid',
     borderRadius: '12px', 
     padding: '15px 10px', 
-    textAlign: 'center',
-    transition: 'transform 0.2s ease'
+    textAlign: 'center'
   },
   supplementName: { 
     fontSize: '14px', 
@@ -848,16 +733,7 @@ const styles = {
     color: 'rgba(255, 255, 255, 0.6)',
     fontSize: '11px'
   },
-  noData: { color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', fontStyle: 'italic' },
-  barChart: { display: 'flex', flexDirection: 'column', gap: '12px' },
-  barRow: { display: 'flex', alignItems: 'center', gap: '10px' },
-  barLabel: { width: '120px', color: 'rgba(255, 255, 255, 0.8)', fontSize: '11px', textAlign: 'right' },
-  barContainer: {
-    flex: 1, height: '24px', backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: '12px', overflow: 'hidden'
-  },
-  bar: { height: '100%', borderRadius: '12px', transition: 'width 0.5s ease' },
-  barValue: { width: '40px', color: 'white', fontSize: '14px', fontWeight: 'bold' }
+  noData: { color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', fontStyle: 'italic' }
 };
 
 export default ModalStatistiques;
