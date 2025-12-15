@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search, Calendar, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { 
   SERVICE_CODES, 
@@ -63,10 +63,13 @@ const MODAL_COLORS = {
   'CBVD': 'bg-cyan-200 text-cyan-800',
 };
 
+// Codes PCD pour le sous-menu
+const PCD_POSTE_CODES = ['CCC', 'BO', 'CBVD'];
+
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 4.3.0 - Ajout catégorie PCD (CCC, BO, CBVD)
+ * @version 4.4.0 - PCD dans Poste (Réserve) avec sous-menu dropdown
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -83,7 +86,7 @@ const ModalCellEdit = ({
 }) => {
   // États pour service, poste et postes supplémentaires
   const [tempService, setTempService] = useState('');      // Horaire (-, O, X, I, RP, NU)
-  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, C, F, PCD, etc.)
+  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, C, F, etc.)
   const [tempPoste, setTempPoste] = useState('');
   const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
   
@@ -115,22 +118,41 @@ const ModalCellEdit = ({
   const [openSections, setOpenSections] = useState({
     serviceJour: false,
     habilitation: false,
-    joursRH: false,
-    pcd: false
+    joursRH: false
   });
 
-  // Liste de tous les codes de catégorie pour détection (incluant PCD)
+  // === ÉTAT POUR SOUS-MENU PCD ===
+  const [showPcdDropdown, setShowPcdDropdown] = useState(false);
+  const pcdButtonRef = useRef(null);
+
+  // Liste de tous les codes de catégorie pour détection (sans PCD car maintenant dans Poste)
   const ALL_CATEGORIE_CODES = [
     ...SERVICE_JOUR_CODES.map(c => c.code),
     ...HABILITATION_CODES.map(c => c.code),
     ...JOURS_RH_CODES.map(c => c.code),
     ...ABSENCES_CODES.map(c => c.code),
-    ...CONGES_CODES.map(c => c.code),
-    ...PCD_CODES.map(c => c.code)
+    ...CONGES_CODES.map(c => c.code)
   ];
 
   // Liste des codes horaire (incluant RP et NU)
   const ALL_HORAIRE_CODES = SERVICE_CODES.map(c => c.code);
+
+  // Fermer le dropdown PCD quand on clique ailleurs
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (pcdButtonRef.current && !pcdButtonRef.current.contains(event.target)) {
+        setShowPcdDropdown(false);
+      }
+    };
+
+    if (showPcdDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPcdDropdown]);
 
   // Initialiser les états avec les données existantes
   useEffect(() => {
@@ -142,7 +164,8 @@ const ModalCellEdit = ({
       const isNonStandardService = cellData.service && 
         cellData.service !== 'LIBRE' && 
         !ALL_HORAIRE_CODES.includes(cellData.service) &&
-        !ALL_CATEGORIE_CODES.includes(cellData.service);
+        !ALL_CATEGORIE_CODES.includes(cellData.service) &&
+        !PCD_POSTE_CODES.includes(cellData.service);
 
       if (hasExplicitTexteLibre) {
         setTempService('');
@@ -207,6 +230,7 @@ const ModalCellEdit = ({
     setEndDate('');
     setDateRangeWarning('');
     setSearchTerm('');
+    setShowPcdDropdown(false);
   }, [cellData, selectedCell]);
 
   // useEffect pour validation automatique de la plage de dates
@@ -350,6 +374,20 @@ const ModalCellEdit = ({
       ...prev,
       [section]: !prev[section]
     }));
+  };
+
+  // Vérifier si le poste sélectionné est un code PCD
+  const isPcdPosteSelected = PCD_POSTE_CODES.includes(tempPoste);
+
+  // Sélection d'un poste PCD depuis le dropdown
+  const selectPcdPoste = (code) => {
+    setTempPoste(tempPoste === code ? '' : code);
+    setShowPcdDropdown(false);
+  };
+
+  // Toggle le dropdown PCD
+  const togglePcdDropdown = () => {
+    setShowPcdDropdown(!showPcdDropdown);
   };
 
   // === FILTRAGE PAR RECHERCHE ===
@@ -560,7 +598,7 @@ const ModalCellEdit = ({
       return 'LIBRE';
     }
     
-    // Catégorie seule (ex: MA, C, FO RC, CCC, BO, CBVD)
+    // Catégorie seule (ex: MA, C, FO RC)
     if (tempCategorie && !tempService) {
       return tempCategorie;
     }
@@ -570,7 +608,7 @@ const ModalCellEdit = ({
       return tempService;
     }
     
-    // Combinaison catégorie + horaire (ex: "MA O", "FO RC -", "CCC -")
+    // Combinaison catégorie + horaire (ex: "MA O", "FO RC -")
     if (tempCategorie && tempService) {
       return `${tempCategorie} ${tempService}`;
     }
@@ -586,6 +624,7 @@ const ModalCellEdit = ({
     console.log('💾 Sauvegarde - tempService:', tempService);
     console.log('💾 Sauvegarde - tempCategorie:', tempCategorie);
     console.log('💾 Sauvegarde - finalService:', finalService);
+    console.log('💾 Sauvegarde - tempPoste:', tempPoste);
     
     let planningData;
     
@@ -712,6 +751,7 @@ const ModalCellEdit = ({
                 <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
                   <span className="text-xs text-blue-600 font-medium">Aperçu : </span>
                   <span className="text-sm font-semibold text-blue-800">{previewService}</span>
+                  {tempPoste && <span className="text-xs text-gray-600 ml-2">/ {tempPoste}</span>}
                   {hasExistingTexteLibre && <span className="text-xs text-purple-600 ml-2">({tempTexteLibre})</span>}
                 </div>
               )}
@@ -750,7 +790,7 @@ const ModalCellEdit = ({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Rechercher un code (ex: FO, MA, VL, CCC...)"
+                placeholder="Rechercher un code (ex: FO, MA, VL...)"
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
               />
               {searchTerm && (
@@ -781,7 +821,7 @@ const ModalCellEdit = ({
             </div>
           </div>
 
-          {/* === SECTION POSTE RÉSERVE (TOUJOURS VISIBLE SI APPLICABLE) === */}
+          {/* === SECTION POSTE RÉSERVE (AVEC BOUTON PCD ET DROPDOWN) === */}
           {hasPosteSelector && (
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">{getPosteLabel()}</label>
@@ -799,7 +839,50 @@ const ModalCellEdit = ({
                     {poste}
                   </button>
                 ))}
+                
+                {/* === BOUTON PCD AVEC DROPDOWN === */}
+                <div className="relative" ref={pcdButtonRef}>
+                  <button
+                    onClick={togglePcdDropdown}
+                    className={`w-full p-2 rounded text-center text-xs transition-all flex items-center justify-center gap-1 ${
+                      isPcdPosteSelected
+                        ? 'ring-2 ring-blue-500 bg-cyan-200 text-cyan-800 font-semibold'
+                        : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'
+                    }`}
+                  >
+                    <span>{isPcdPosteSelected ? tempPoste : 'PCD'}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform ${showPcdDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {/* Dropdown PCD */}
+                  {showPcdDropdown && (
+                    <div className="absolute top-full left-0 mt-1 w-full bg-white border border-cyan-300 rounded-lg shadow-lg z-10 overflow-hidden">
+                      {PCD_POSTE_CODES.map(code => (
+                        <button
+                          key={code}
+                          onClick={() => selectPcdPoste(code)}
+                          className={`w-full px-3 py-2 text-xs text-left transition-colors ${
+                            tempPoste === code
+                              ? 'bg-cyan-200 text-cyan-900 font-semibold'
+                              : 'bg-white text-cyan-800 hover:bg-cyan-100'
+                          }`}
+                        >
+                          {code}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+              
+              {/* Indicateur poste PCD sélectionné */}
+              {isPcdPosteSelected && (
+                <div className="mt-2 p-2 bg-cyan-50 rounded border border-cyan-200">
+                  <span className="text-xs text-cyan-700">
+                    Poste PCD sélectionné : <span className="font-semibold">{tempPoste}</span>
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
@@ -905,20 +988,6 @@ const ModalCellEdit = ({
               badge="VT, D2I, RU..."
             >
               {renderCodeButtons(JOURS_RH_CODES, selectCategorie, (code) => tempCategorie === code, 5)}
-            </AccordionSection>
-          )}
-
-          {/* PCD */}
-          {hasSearchResults(PCD_CODES) && (
-            <AccordionSection 
-              id="pcd" 
-              title="PCD" 
-              colorClass="bg-cyan-200"
-              isOpen={openSections.pcd || searchTerm.trim() !== ''}
-              onToggle={toggleSection}
-              badge="CCC, BO, CBVD"
-            >
-              {renderCodeButtons(PCD_CODES, selectCategorie, (code) => tempCategorie === code, 3)}
             </AccordionSection>
           )}
 
@@ -1161,7 +1230,7 @@ const ModalCellEdit = ({
               </button>
               <button 
                 onClick={handleSave}
-                disabled={!tempService && !tempCategorie}
+                disabled={!tempService && !tempCategorie && !tempPoste}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300"
               >
                 Sauvegarder
