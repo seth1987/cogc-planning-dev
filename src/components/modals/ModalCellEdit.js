@@ -20,7 +20,7 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.4.3 - Fix texte libre init (ne plus mettre 'LIBRE' comme texteLibre)
+ * @version 2.4.4 - Fix chargement texteLibre depuis cellData
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -83,15 +83,26 @@ const ModalCellEdit = ({
   // Initialiser les états avec les données existantes
   useEffect(() => {
     if (cellData) {
-      console.log('📦 CellData reçu:', cellData);
+      console.log('📦 CellData reçu:', JSON.stringify(cellData, null, 2));
+      console.log('📦 cellData.service:', cellData.service);
+      console.log('📦 cellData.texteLibre:', cellData.texteLibre);
+      console.log('📦 typeof cellData.texteLibre:', typeof cellData.texteLibre);
       
-      // Cas 1: texteLibre explicite dans les données
-      const hasExplicitTexteLibre = Boolean(cellData.texteLibre);
+      // Cas 1: texteLibre explicite dans les données (non null, non undefined, non vide)
+      const hasExplicitTexteLibre = cellData.texteLibre && cellData.texteLibre.trim() !== '';
       
       // Cas 2: service non standard (mais PAS 'LIBRE' lui-même qui est juste un marqueur)
       const isNonStandardService = cellData.service && 
         cellData.service !== 'LIBRE' && 
         !SERVICE_CODES.some(sc => sc.code === cellData.service);
+      
+      // Cas 3: Service est LIBRE mais pas de texteLibre (état transitoire ou erreur)
+      const isLibreWithoutText = cellData.service === 'LIBRE' && !hasExplicitTexteLibre;
+
+      console.log('🔍 Analyse cellData:');
+      console.log('   hasExplicitTexteLibre:', hasExplicitTexteLibre);
+      console.log('   isNonStandardService:', isNonStandardService);
+      console.log('   isLibreWithoutText:', isLibreWithoutText);
 
       if (hasExplicitTexteLibre) {
         // Texte libre explicite → utiliser tel quel
@@ -103,6 +114,12 @@ const ModalCellEdit = ({
         console.log('✏️ Service non standard détecté comme texte libre:', cellData.service);
         setTempService('LIBRE');
         setTempTexteLibre(cellData.service);
+      } else if (isLibreWithoutText) {
+        // Service LIBRE mais pas de texte → garder LIBRE et texte vide
+        // L'utilisateur devra cliquer sur LIBRE pour saisir le texte
+        console.log('⚠️ Service LIBRE sans texteLibre - état transitoire');
+        setTempService('LIBRE');
+        setTempTexteLibre('');
       } else {
         // Service standard
         console.log('📋 Service standard:', cellData.service);
@@ -114,6 +131,7 @@ const ModalCellEdit = ({
       setTempNote(cellData.note || '');
       setTempPostesSupplementaires(cellData.postesSupplementaires || []);
     } else {
+      console.log('📦 CellData est null/undefined - réinitialisation');
       setTempService('');
       setTempPoste('');
       setTempNote('');
@@ -490,25 +508,34 @@ const ModalCellEdit = ({
     let planningData;
     
     // Déterminer le service final
-    const isTexteLibre = tempService === 'LIBRE' && tempTexteLibre;
+    // FIX v2.4.4: Vérifier que tempTexteLibre est non-vide
+    const hasValidTexteLibre = tempTexteLibre && tempTexteLibre.trim() !== '';
+    const isTexteLibre = tempService === 'LIBRE' && hasValidTexteLibre;
     const finalService = isTexteLibre ? 'LIBRE' : tempService;
     
-    console.log('💾 Sauvegarde - tempService:', tempService, 'tempTexteLibre:', tempTexteLibre, 'isTexteLibre:', isTexteLibre);
+    console.log('💾 Sauvegarde - tempService:', tempService);
+    console.log('💾 Sauvegarde - tempTexteLibre:', tempTexteLibre);
+    console.log('💾 Sauvegarde - hasValidTexteLibre:', hasValidTexteLibre);
+    console.log('💾 Sauvegarde - isTexteLibre:', isTexteLibre);
+    console.log('💾 Sauvegarde - finalService:', finalService);
     
     // Construire l'objet de données
+    // FIX v2.4.4: Toujours créer un objet si texte libre valide
     if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote || isTexteLibre) {
       planningData = { 
         service: finalService,
         ...(tempPoste && { poste: tempPoste }),
         ...(tempPostesSupplementaires.length > 0 && { postesSupplementaires: tempPostesSupplementaires }),
         ...(tempNote && { note: tempNote }),
-        ...(isTexteLibre && { texteLibre: tempTexteLibre })
+        // FIX v2.4.4: Sauvegarder texteLibre seulement si valide
+        ...(isTexteLibre && { texteLibre: tempTexteLibre.trim() })
       };
     } else {
+      // Service simple (string)
       planningData = finalService;
     }
     
-    console.log('💾 Planning data final:', planningData);
+    console.log('💾 Planning data final:', JSON.stringify(planningData, null, 2));
     
     // === GESTION ÉDITION MULTIPLE ===
     if (applyToMultipleDays && endDate) {
@@ -551,7 +578,7 @@ const ModalCellEdit = ({
   };
 
   const hasExistingNote = Boolean(tempNote);
-  const hasExistingTexteLibre = Boolean(tempTexteLibre);
+  const hasExistingTexteLibre = Boolean(tempTexteLibre && tempTexteLibre.trim() !== '');
   const hasExistingPostesSupp = tempPostesSupplementaires.length > 0;
   const hasCroisementNote = tempNote?.toLowerCase().includes('croisement avec');
 
