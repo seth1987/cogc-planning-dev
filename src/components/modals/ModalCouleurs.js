@@ -1,16 +1,17 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { X, Download, Upload, RotateCcw, Palette, Save, Cloud, CloudOff, Loader, ChevronDown, ChevronUp, Search } from 'lucide-react';
-import { COLOR_CATEGORIES, HORAIRES_BASE, searchCodes } from '../../constants/defaultColors';
+import { COLOR_CATEGORIES, searchCodes, getHorairesForSubCategory } from '../../constants/defaultColors';
 import useColors from '../../hooks/useColors';
 
 /**
  * ModalCouleurs - Panneau de personnalisation des couleurs
  * 
- * VERSION 3.1 - Barre de recherche + catégories ouvertes/fermées par défaut
+ * VERSION 3.3 - Poste (Réserve) avec sous-catégories et horaires variables
  * 
  * - Barre de recherche pour filtrer les codes
- * - Horaires et Absences ouverts par défaut
+ * - Horaires, Poste (Réserve) et Absences ouverts par défaut
  * - Autres catégories fermées par défaut
+ * - Horaires variables par sous-catégorie (all ou jour)
  */
 const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null }) => {
   const {
@@ -283,8 +284,8 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
     );
   };
 
-  // Rendu de la catégorie Habilitation/Formation avec sous-catégories
-  const renderHabilitationCategory = (groupKey, category) => {
+  // Rendu d'une catégorie avec sous-catégories (Poste Réserve, Habilitation/Formation)
+  const renderSubCategoryGroup = (groupKey, category) => {
     const isExpanded = expandedGroups[groupKey];
     const groupColor = getGroupColor(groupKey);
     
@@ -301,14 +302,14 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
             <input
               type="color"
-              value={groupColor.bg || '#fed7aa'}
+              value={groupColor.bg || '#e0e7ff'}
               onChange={(e) => updateGroupColor(groupKey, 'bg', e.target.value)}
               style={colorPickerStyle}
               title="Fond par défaut"
             />
             <input
               type="color"
-              value={groupColor.text || '#9a3412'}
+              value={groupColor.text || '#3730a3'}
               onChange={(e) => updateGroupColor(groupKey, 'text', e.target.value)}
               style={colorPickerStyle}
               title="Texte par défaut"
@@ -322,6 +323,9 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
               const mode = getSubCategoryMode(subCatCode);
               const isGroupMode = mode === 'group';
               const subCatColor = colors.services?.[subCatCode] || subCat.defaultColor || groupColor;
+              
+              // Récupérer les horaires spécifiques à cette sous-catégorie
+              const horaires = getHorairesForSubCategory(subCatCode);
               
               return (
                 <div key={subCatCode} style={{ 
@@ -338,6 +342,17 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '13px' }}>{subCatCode}</span>
                       <span style={{ color: '#888', fontSize: '11px' }}>{subCat.label}</span>
+                      {horaires.length === 2 && (
+                        <span style={{ 
+                          color: '#666', 
+                          fontSize: '9px', 
+                          backgroundColor: 'rgba(255,255,255,0.1)',
+                          padding: '2px 6px',
+                          borderRadius: '4px'
+                        }}>
+                          Matin/Soir
+                        </span>
+                      )}
                     </div>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -363,14 +378,14 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
                       <div style={{ display: 'flex', gap: '8px' }}>
                         <input
                           type="color"
-                          value={subCatColor.bg || groupColor.bg || '#fed7aa'}
+                          value={subCatColor.bg || groupColor.bg || '#e0e7ff'}
                           onChange={(e) => updateSubCategoryColor(subCatCode, 'bg', e.target.value)}
                           style={colorPickerStyle}
                           title={isGroupMode ? "Couleur pour tout le groupe" : "Couleur de base"}
                         />
                         <input
                           type="color"
-                          value={subCatColor.text || groupColor.text || '#9a3412'}
+                          value={subCatColor.text || groupColor.text || '#3730a3'}
                           onChange={(e) => updateSubCategoryColor(subCatCode, 'text', e.target.value)}
                           style={colorPickerStyle}
                           title={isGroupMode ? "Texte pour tout le groupe" : "Texte de base"}
@@ -384,14 +399,14 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
                       marginTop: '10px', paddingTop: '10px',
                       borderTop: '1px dashed rgba(255, 255, 255, 0.1)'
                     }}>
-                      {HORAIRES_BASE.map(horaire => {
+                      {horaires.map(horaire => {
                         const combinedCode = `${subCatCode} ${horaire.code}`;
                         const combinedColor = colors.services?.[combinedCode] || subCatColor;
                         
                         return (
                           <div key={combinedCode} style={{
                             display: 'grid',
-                            gridTemplateColumns: '80px 1fr 40px 40px',
+                            gridTemplateColumns: '100px 1fr 40px 40px',
                             padding: '6px 0', alignItems: 'center', gap: '8px'
                           }}>
                             <span style={{ color: '#fff', fontFamily: 'monospace', fontSize: '11px', fontWeight: 'bold' }}>
@@ -400,13 +415,13 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
                             <span style={{ color: '#888', fontSize: '11px' }}>{horaire.label}</span>
                             <input
                               type="color"
-                              value={combinedColor.bg || subCatColor.bg || '#fed7aa'}
+                              value={combinedColor.bg || subCatColor.bg || '#e0e7ff'}
                               onChange={(e) => updateServiceColor(combinedCode, 'bg', e.target.value)}
                               style={smallPickerStyle}
                             />
                             <input
                               type="color"
-                              value={combinedColor.text || subCatColor.text || '#9a3412'}
+                              value={combinedColor.text || subCatColor.text || '#3730a3'}
                               onChange={(e) => updateServiceColor(combinedCode, 'text', e.target.value)}
                               style={smallPickerStyle}
                             />
@@ -459,7 +474,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
             />
             <input
               type="text"
-              placeholder="Rechercher un code (ex: FO, HAB, MA...)"
+              placeholder="Rechercher un code (ex: FO, CRC, MA...)"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
@@ -523,7 +538,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
 
               {Object.entries(COLOR_CATEGORIES).map(([groupKey, category]) => {
                 if (category.hasSubCategories) {
-                  return renderHabilitationCategory(groupKey, category);
+                  return renderSubCategoryGroup(groupKey, category);
                 }
                 return renderNormalCategory(groupKey, category);
               })}
