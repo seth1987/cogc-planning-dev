@@ -1,6 +1,6 @@
 /**
  * Couleurs par défaut pour les services et éléments du planning
- * VERSION 3.3 - Poste (Réserve) avec sous-catégories et horaires
+ * VERSION 3.4 - Séparation Horaires/Repos + Disclaimers roulement/réserve
  */
 
 // Horaires de base pour les combinaisons
@@ -21,28 +21,26 @@ export const HORAIRES_JOUR = [
 // ========================
 
 export const COLOR_CATEGORIES = {
-  // Horaires : OUVERT par défaut
+  // Horaires (Roulement) : OUVERT par défaut - pour agents en roulement
   horaires: {
     id: 'horaires',
-    label: 'Horaire',
-    description: 'Matin, Soir, Nuit, Repos, Non utilisé',
+    label: 'Horaires (Roulement)',
+    description: 'Uniquement si vous êtes en roulement',
     defaultOpen: true,
     defaultColor: { bg: '#ffffff', text: '#1e40af' },
     items: {
       '-': { label: 'Matin (06h-14h)' },
       'O': { label: 'Soir (14h-22h)' },
       'X': { label: 'Nuit (22h-06h)' },
-      'I': { label: 'Jour' },
-      'RP': { label: 'Repos programmé', defaultColor: { bg: '#dcfce7', text: '#166534' } },
-      'NU': { label: 'Non utilisé', defaultColor: { bg: '#f3f4f6', text: '#374151' } }
+      'I': { label: 'Jour' }
     }
   },
   
-  // Poste (Réserve) : OUVERT par défaut, avec sous-catégories
+  // Poste (Réserve) : OUVERT par défaut - pour agents de réserve
   posteReserve: {
     id: 'posteReserve',
     label: 'Poste (Réserve)',
-    description: 'CRC, ACR, RC, RO, CCU, RE, CAC, SOUF avec horaires',
+    description: 'Uniquement si vous êtes à la réserve',
     defaultOpen: true,
     defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
     hasSubCategories: true,
@@ -50,7 +48,7 @@ export const COLOR_CATEGORIES = {
       'CRC': {
         label: 'CRC - Coordinateur Régional',
         defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
-        horaires: 'all', // -, O, X
+        horaires: 'all',
       },
       'ACR': {
         label: 'ACR - Agent Circulation',
@@ -65,7 +63,7 @@ export const COLOR_CATEGORIES = {
       'RO': {
         label: 'RO - Régulateur Ouest',
         defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
-        horaires: 'jour', // - et O seulement
+        horaires: 'jour',
       },
       'CCU': {
         label: 'CCU - Centre Commandement Unifié',
@@ -88,7 +86,20 @@ export const COLOR_CATEGORIES = {
         horaires: 'jour',
       }
     },
-    items: {} // Sera rempli dynamiquement
+    items: {}
+  },
+  
+  // Repos / Non utilisé : OUVERT par défaut
+  repos: {
+    id: 'repos',
+    label: 'Repos / Non utilisé',
+    description: 'RP, NU',
+    defaultOpen: true,
+    defaultColor: { bg: '#dcfce7', text: '#166534' },
+    items: {
+      'RP': { label: 'Repos programmé', defaultColor: { bg: '#dcfce7', text: '#166534' } },
+      'NU': { label: 'Non utilisé', defaultColor: { bg: '#f3f4f6', text: '#374151' } }
+    }
   },
   
   // Absences : OUVERT par défaut
@@ -179,7 +190,7 @@ export const COLOR_CATEGORIES = {
         horaires: 'all',
       }
     },
-    items: {} // Sera rempli dynamiquement
+    items: {}
   },
   
   // Jours RH : FERMÉ par défaut
