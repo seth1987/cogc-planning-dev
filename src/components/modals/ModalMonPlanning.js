@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Palette } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
-import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE, POSTES_PAR_GROUPE } from '../../constants/config';
+import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE, POSTES_PAR_GROUPE, STATUT_CONGE_CODES } from '../../constants/config';
 import useColors from '../../hooks/useColors';
 import ModalCouleurs from './ModalCouleurs';
 
@@ -19,7 +19,16 @@ import ModalCouleurs from './ModalCouleurs';
  * v1.8 - Couleurs séparées du planning général (contexte 'perso')
  * v1.9 - FIX: ModalCouleurs sorti de l'overlay pour éviter fermeture au color picker
  * v2.0 - NEW: Support synchronisation couleurs multi-appareils
+ * v2.1 - NEW: Support statut_conge combinable (C, C?, CNA) avec service/poste
  */
+
+// Couleurs pour les statuts congé (même que PlanningTable)
+const STATUT_CONGE_COLORS = {
+  'C': { bg: '#facc15', text: '#713f12' },      // Jaune vif - Congé accordé
+  'C?': { bg: '#fef08a', text: '#854d0e' },     // Jaune clair - En attente
+  'CNA': { bg: '#fca5a5', text: '#991b1b' }     // Rouge clair - Refusé
+};
+
 const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear }) => {
   // FIX v1.4: Utiliser initialYear si fourni, sinon année système
   const [currentDate, setCurrentDate] = useState(() => {
@@ -47,6 +56,9 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [tempPoste, setTempPoste] = useState('');
   const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
   const [tempNote, setTempNote] = useState('');
+  
+  // v2.1: État pour le statut congé
+  const [tempStatutConge, setTempStatutConge] = useState('');
 
   // Mois et années pour navigation
   const months = [
@@ -197,6 +209,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     setTempPoste(existing?.poste_code || '');
     setTempPostesSupplementaires(existing?.postes_supplementaires || []);
     setTempNote(existing?.commentaire || '');
+    // v2.1: Charger le statut congé existant
+    setTempStatutConge(existing?.statut_conge || '');
   };
 
   // Fermer l'éditeur
@@ -207,6 +221,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     setTempPoste('');
     setTempPostesSupplementaires([]);
     setTempNote('');
+    setTempStatutConge('');
   };
 
   // Fermer le modal principal et synchroniser si nécessaire
@@ -241,6 +256,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
           poste_code: tempPoste || null,
           postes_supplementaires: tempPostesSupplementaires.length > 0 ? tempPostesSupplementaires : null,
           commentaire: tempNote || null,
+          // v2.1: Sauvegarder le statut congé
+          statut_conge: tempStatutConge || null,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'agent_id,date'
@@ -306,6 +323,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
    * v1.6: Utilise le hook useColors pour obtenir les couleurs personnalisées
    */
   const getCellBackgroundColor = (planning) => {
+    // v2.1: Si statut congé seul (pas de service), utiliser couleur du statut
+    if (planning?.statut_conge && !planning?.service_code) {
+      return STATUT_CONGE_COLORS[planning.statut_conge]?.bg || 'rgba(255, 255, 255, 0.08)';
+    }
+    
     if (!planning?.service_code) return 'rgba(255, 255, 255, 0.08)';
     
     const code = planning.service_code.toUpperCase();
@@ -319,6 +341,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   };
 
   const getCellTextColor = (planning) => {
+    // v2.1: Si statut congé seul (pas de service), utiliser couleur du statut
+    if (planning?.statut_conge && !planning?.service_code) {
+      return STATUT_CONGE_COLORS[planning.statut_conge]?.text || 'white';
+    }
+    
     if (!planning?.service_code) return 'white';
     
     const code = planning.service_code.toUpperCase();
@@ -329,6 +356,105 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     }
     
     return colorConfig.text;
+  };
+
+  // v2.1: Fonction pour obtenir le style du statut congé
+  const getStatutCongeStyle = (statutConge) => {
+    if (!statutConge || !STATUT_CONGE_COLORS[statutConge]) return {};
+    return STATUT_CONGE_COLORS[statutConge];
+  };
+
+  // v2.1: Rendu du contenu de la cellule avec support statut_conge
+  const renderCellContent = (planning) => {
+    if (!planning) return null;
+    
+    const serviceCode = planning.service_code;
+    const posteCode = planning.poste_code;
+    const statutConge = planning.statut_conge;
+    const postesSupp = planning.postes_supplementaires;
+    
+    // Cas 1: Statut congé seul (pas de service ni poste)
+    if (statutConge && !serviceCode && !posteCode) {
+      return (
+        <span 
+          style={{
+            ...styles.serviceCode,
+            fontSize: '10px',
+            fontWeight: 'bold',
+            padding: '1px 3px',
+            borderRadius: '3px',
+            backgroundColor: STATUT_CONGE_COLORS[statutConge]?.bg,
+            color: STATUT_CONGE_COLORS[statutConge]?.text
+          }}
+        >
+          {statutConge}
+        </span>
+      );
+    }
+    
+    // Cas 2: Service avec éventuellement poste et/ou statut congé
+    return (
+      <>
+        {/* Service code */}
+        {serviceCode && (
+          <span style={{
+            ...styles.serviceCode, 
+            color: getCellTextColor(planning)
+          }}>{serviceCode}</span>
+        )}
+        
+        {/* Ligne du bas : Poste et/ou Statut congé */}
+        {(posteCode || statutConge) && (
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            gap: '2px',
+            marginTop: '1px'
+          }}>
+            {/* Poste */}
+            {posteCode && (
+              <span style={{
+                ...styles.posteCode, 
+                color: getCellTextColor(planning), 
+                opacity: 0.75
+              }}>{posteCode}</span>
+            )}
+            
+            {/* Séparateur si poste ET statut */}
+            {posteCode && statutConge && (
+              <span style={{ 
+                fontSize: '6px', 
+                opacity: 0.5,
+                color: getCellTextColor(planning)
+              }}>|</span>
+            )}
+            
+            {/* Statut congé */}
+            {statutConge && (
+              <span style={{
+                fontSize: '6px',
+                fontWeight: 'bold',
+                padding: '0px 2px',
+                borderRadius: '2px',
+                backgroundColor: STATUT_CONGE_COLORS[statutConge]?.bg,
+                color: STATUT_CONGE_COLORS[statutConge]?.text
+              }}>{statutConge}</span>
+            )}
+          </div>
+        )}
+        
+        {/* Postes supplémentaires */}
+        {postesSupp?.length > 0 && (
+          <span style={{
+            ...styles.supplement,
+            color: colors.postesSupp?.text || '#a855f7'
+          }}>
+            {postesSupp.map(p => p.replace('+', '')).join(' ')}
+          </span>
+        )}
+      </>
+    );
   };
 
   if (!isOpen) return null;
@@ -406,27 +532,9 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                         ...styles.dayNumber, 
                         color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
                       }}>{dayInfo.day}</span>
-                      {dayInfo.planning?.service_code && (
-                        <span style={{
-                          ...styles.serviceCode, 
-                          color: getCellTextColor(dayInfo.planning)
-                        }}>{dayInfo.planning.service_code}</span>
-                      )}
-                      {dayInfo.planning?.poste_code && (
-                        <span style={{
-                          ...styles.posteCode, 
-                          color: getCellTextColor(dayInfo.planning), 
-                          opacity: 0.75
-                        }}>{dayInfo.planning.poste_code}</span>
-                      )}
-                      {dayInfo.planning?.postes_supplementaires?.length > 0 && (
-                        <span style={{
-                          ...styles.supplement,
-                          color: colors.postesSupp?.text || '#a855f7'
-                        }}>
-                          {dayInfo.planning.postes_supplementaires.map(p => p.replace('+', '')).join(' ')}
-                        </span>
-                      )}
+                      
+                      {/* v2.1: Utiliser renderCellContent pour le contenu */}
+                      {dayInfo.planning && renderCellContent(dayInfo.planning)}
                     </div>
                   );
                 })}
@@ -434,14 +542,15 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
             )}
           </div>
 
-          {/* Légende compacte */}
+          {/* Légende compacte - v2.1: Ajout C, C?, CNA */}
           <div style={styles.legend}>
             <span style={{...styles.legendItem, backgroundColor: getServiceColor('-').bg || 'rgba(255,255,255,0.1)', color: getServiceColor('-').text || 'white', border: '1px solid rgba(255,255,255,0.2)'}}>- O X</span>
             <span style={{...styles.legendItem, backgroundColor: getServiceColor('RP').bg, color: getServiceColor('RP').text}}>RP</span>
-            <span style={{...styles.legendItem, backgroundColor: getServiceColor('C').bg, color: getServiceColor('C').text}}>C</span>
+            <span style={{...styles.legendItem, backgroundColor: STATUT_CONGE_COLORS['C'].bg, color: STATUT_CONGE_COLORS['C'].text}}>C</span>
+            <span style={{...styles.legendItem, backgroundColor: STATUT_CONGE_COLORS['C?'].bg, color: STATUT_CONGE_COLORS['C?'].text}}>C?</span>
+            <span style={{...styles.legendItem, backgroundColor: STATUT_CONGE_COLORS['CNA'].bg, color: STATUT_CONGE_COLORS['CNA'].text}}>CNA</span>
             <span style={{...styles.legendItem, backgroundColor: getServiceColor('MA').bg, color: getServiceColor('MA').text}}>MA</span>
             <span style={{...styles.legendItem, backgroundColor: getServiceColor('D').bg, color: getServiceColor('D').text}}>D</span>
-            <span style={{...styles.legendItem, backgroundColor: getServiceColor('FO').bg, color: getServiceColor('FO').text}}>FO</span>
           </div>
         </div>
 
@@ -477,6 +586,64 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* v2.1: Section Statut Congé (NOUVEAU) */}
+              <div style={styles.section}>
+                <label style={styles.sectionLabel}>
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span style={{
+                      padding: '2px 6px',
+                      backgroundColor: '#fef08a',
+                      color: '#854d0e',
+                      borderRadius: '4px',
+                      fontSize: '10px',
+                      fontWeight: 'bold'
+                    }}>Congés</span>
+                    Statut congé
+                    <span style={{ fontWeight: 'normal', fontSize: '10px', color: '#999' }}>(combinable)</span>
+                  </span>
+                </label>
+                <div style={styles.statutCongeGrid}>
+                  {STATUT_CONGE_CODES && STATUT_CONGE_CODES.filter(s => s.code !== '').map(({ code, desc }) => (
+                    <button
+                      key={code}
+                      onClick={() => setTempStatutConge(tempStatutConge === code ? '' : code)}
+                      style={{
+                        ...styles.statutCongeBtn,
+                        ...(tempStatutConge === code ? {
+                          ...styles.statutCongeBtnSelected,
+                          backgroundColor: STATUT_CONGE_COLORS[code]?.bg,
+                          color: STATUT_CONGE_COLORS[code]?.text
+                        } : {
+                          backgroundColor: STATUT_CONGE_COLORS[code]?.bg + '80',
+                          color: STATUT_CONGE_COLORS[code]?.text
+                        })
+                      }}
+                    >
+                      <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{code}</span>
+                      <span style={{ fontSize: '9px', marginTop: '2px' }}>{desc}</span>
+                    </button>
+                  ))}
+                </div>
+                {tempStatutConge && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '6px 10px',
+                    backgroundColor: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    color: '#92400e'
+                  }}>
+                    Statut sélectionné : <strong>{tempStatutConge}</strong>
+                    {tempService && <span style={{ marginLeft: '4px' }}>(combiné avec {tempService})</span>}
+                  </div>
+                )}
               </div>
 
               {/* Section Poste (si applicable) */}
@@ -544,9 +711,9 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                 <div style={styles.rightActions}>
                   <button style={styles.cancelBtn} onClick={closeEditor}>Annuler</button>
                   <button 
-                    style={{...styles.saveBtn, opacity: !tempService ? 0.5 : 1}}
+                    style={{...styles.saveBtn, opacity: (!tempService && !tempStatutConge) ? 0.5 : 1}}
                     onClick={saveEdit}
-                    disabled={!tempService}
+                    disabled={!tempService && !tempStatutConge}
                   >
                     Sauvegarder
                   </button>
@@ -569,7 +736,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
 };
 
 // ============================================
-// STYLES - v1.6: Ajout bouton palette
+// STYLES - v2.1: Ajout styles statut congé
 // ============================================
 const styles = {
   overlay: {
@@ -704,6 +871,19 @@ const styles = {
   serviceBtnSelected: { backgroundColor: '#e3f2fd', borderColor: '#2196F3', boxShadow: '0 0 0 2px rgba(33, 150, 243, 0.3)' },
   serviceBtnCode: { display: 'block', fontWeight: 'bold', fontSize: '13px', color: '#333' },
   serviceBtnDesc: { display: 'block', fontSize: '8px', color: '#666', marginTop: '2px' },
+  
+  // v2.1: Styles pour statut congé
+  statutCongeGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' },
+  statutCongeBtn: {
+    padding: '10px 6px', borderRadius: '6px', border: '2px solid transparent',
+    cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s',
+    display: 'flex', flexDirection: 'column', alignItems: 'center'
+  },
+  statutCongeBtnSelected: { 
+    borderColor: '#333', 
+    boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.2)' 
+  },
+  
   posteGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' },
   posteBtn: {
     padding: '8px', borderRadius: '6px', border: '1px solid #ddd',
