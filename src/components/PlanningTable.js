@@ -19,7 +19,37 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * FIX v2.16: Affichage correct du texte libre (service=LIBRE + texteLibre)
  * NEW v2.17: Synchronisation multi-appareils des couleurs via Supabase
  * FIX v2.18: Debug log pour currentUser
+ * FIX v2.19: Support des codes combinés (ex: "FO CRC -", "MA O")
  */
+
+// Horaires simples pour détecter les combinaisons
+const HORAIRES_SIMPLES = ['-', 'O', 'X', 'I', 'RP', 'NU'];
+
+// Fonction pour extraire la catégorie d'un code combiné
+// "FO CRC -" → "FO CRC"
+// "MA O" → "MA"
+// "HAB" → "HAB"
+// "-" → "-"
+const extractCategoryFromCombined = (serviceCode) => {
+  if (!serviceCode) return null;
+  
+  const trimmed = serviceCode.trim();
+  const parts = trimmed.split(' ');
+  
+  // Si c'est un code simple, le retourner tel quel
+  if (parts.length === 1) return trimmed;
+  
+  // Vérifier si le dernier élément est un horaire simple
+  const lastPart = parts[parts.length - 1];
+  if (HORAIRES_SIMPLES.includes(lastPart)) {
+    // Extraire tout sauf le dernier (la catégorie)
+    const category = parts.slice(0, -1).join(' ');
+    return category || lastPart; // Si catégorie vide, retourner l'horaire
+  }
+  
+  // Sinon retourner le code complet
+  return trimmed;
+};
 
 // Composant barre de navigation rendu via portail - VERSION COMPACTE
 const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd, onOpenColors }) => {
@@ -168,9 +198,21 @@ const PlanningTable = ({
   };
   
   // Fonction pour obtenir le style de couleur d'une cellule
+  // Supporte les codes combinés (ex: "FO CRC -" utilise la couleur de "FO CRC")
   const getCellColorStyle = (serviceCode) => {
     if (!serviceCode) return {};
-    const colorConfig = getServiceColor(serviceCode);
+    
+    // 1. D'abord essayer le code exact
+    let colorConfig = getServiceColor(serviceCode);
+    
+    // 2. Si pas de couleur trouvée (transparent), essayer d'extraire la catégorie
+    if (!colorConfig || colorConfig.bg === 'transparent') {
+      const category = extractCategoryFromCombined(serviceCode);
+      if (category && category !== serviceCode) {
+        colorConfig = getServiceColor(category);
+      }
+    }
+    
     if (!colorConfig) return {};
     
     return {
