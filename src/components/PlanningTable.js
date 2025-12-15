@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users, Palette } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users, Palette, Type } from 'lucide-react';
 import { MONTHS } from '../constants/config';
 import { DEFAULT_COLORS } from '../constants/defaultColors';
 import useColors from '../hooks/useColors';
@@ -16,6 +16,7 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * FIX v2.13: Calcul correct des jours de la semaine avec l'année dynamique
  * FIX v2.14: Réduction hauteur barre navigation (moins intrusive sur mobile)
  * NEW v2.15: Personnalisation des couleurs via ModalCouleurs
+ * FIX v2.16: Affichage correct du texte libre (service=LIBRE + texteLibre)
  */
 
 // Composant barre de navigation rendu via portail - VERSION COMPACTE
@@ -208,6 +209,7 @@ const PlanningTable = ({
     let cellStyle = {};
     let baseCellClass = 'border px-1 py-1 text-center text-xs cursor-pointer hover:opacity-80 transition-all min-w-[55px] min-h-[40px] relative ';
     let hasNote = false;
+    let isTexteLibre = false;
     
     if (planningData) {
       if (typeof planningData === 'string') {
@@ -216,14 +218,30 @@ const PlanningTable = ({
       } else if (typeof planningData === 'object') {
         const service = planningData.service || '';
         const poste = planningData.poste || '';
+        const texteLibre = planningData.texteLibre || '';
         const postesSupplementaires = planningData.postesSupplementaires || 
           (planningData.posteSupplementaire ? [planningData.posteSupplementaire] : []);
         
         hasNote = Boolean(planningData.note);
-        cellStyle = getCellColorStyle(service);
+        isTexteLibre = service === 'LIBRE' && texteLibre;
+        
+        // Couleur selon le type
+        if (isTexteLibre) {
+          // Utiliser la couleur configurée pour le texte libre
+          const texteLibreColors = colors.texteLibre || { bg: '#fef3c7', text: '#92400e' };
+          cellStyle = {
+            backgroundColor: texteLibreColors.bg,
+            color: texteLibreColors.text,
+          };
+        } else {
+          cellStyle = getCellColorStyle(service);
+        }
         
         // Couleur des postes supplémentaires
         const postesColor = colors.postesSupp?.text || '#8b5cf6';
+        
+        // Texte à afficher : texteLibre si LIBRE, sinon service
+        const displayText = isTexteLibre ? texteLibre : service;
         
         cellContent = (
           <div className="flex flex-col h-full justify-between">
@@ -232,8 +250,13 @@ const PlanningTable = ({
                 <StickyNote className="w-3 h-3 text-amber-500" />
               </div>
             )}
+            {isTexteLibre && (
+              <div className="absolute top-0 left-0 p-0.5" title="Texte libre">
+                <Type className="w-3 h-3 text-purple-500" />
+              </div>
+            )}
             <div className="flex flex-col">
-              <span className="font-medium">{service}</span>
+              <span className={`font-medium ${isTexteLibre ? 'text-[10px]' : ''}`}>{displayText}</span>
               {poste && <span className="text-xs font-bold">{poste}</span>}
             </div>
             {postesSupplementaires.length > 0 && (
@@ -503,14 +526,22 @@ const PlanningTable = ({
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Equipes du jour :</p>
+            <p className="font-medium mb-1">Texte libre :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-blue-600" />
-                <span>Clic sur en-tete jour</span>
+                <Type className="w-4 h-4 text-purple-500" />
+                <span>Texte personnalise</span>
               </div>
-              <p className="text-gray-500 text-xs">Voir qui travaille</p>
-              <p className="text-gray-500 text-xs">Par creneaux horaires</p>
+              <div className="flex items-center gap-2">
+                <span 
+                  className="inline-block px-1 h-4 rounded text-[8px] flex items-center"
+                  style={{ 
+                    backgroundColor: colors.texteLibre?.bg || '#fef3c7',
+                    color: colors.texteLibre?.text || '#92400e'
+                  }}
+                >RDV</span>
+                <span>Fond jaune clair</span>
+              </div>
             </div>
           </div>
         </div>
