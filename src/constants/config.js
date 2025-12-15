@@ -93,6 +93,11 @@ export const CODE_COLORS = {
   'AH': 'bg-yellow-100 text-yellow-800',
   'DD': 'bg-yellow-100 text-yellow-800',
   
+  // === PCD (Cyan/Turquoise) ===
+  'CCC': 'bg-cyan-200 text-cyan-800',
+  'BO': 'bg-cyan-200 text-cyan-800',
+  'CBVD': 'bg-cyan-200 text-cyan-800',
+  
   // === SPECIAL ===
   'TQ': 'bg-pink-500 text-white',
   'figé': 'bg-gray-500 text-white',
@@ -188,6 +193,13 @@ export const JOURS_RH_CODES = [
   { code: 'AY', desc: 'AY' },
   { code: 'AH', desc: 'AH' },
   { code: 'DD', desc: 'DD' }
+];
+
+// PCD (cyan/turquoise) - codes spécifiques PCD
+export const PCD_CODES = [
+  { code: 'CCC', desc: 'CCC' },
+  { code: 'BO', desc: 'BO' },
+  { code: 'CBVD', desc: 'CBVD' }
 ];
 
 // Absences - MA et F uniquement
