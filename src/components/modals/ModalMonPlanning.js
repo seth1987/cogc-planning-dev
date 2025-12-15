@@ -14,6 +14,7 @@ import {
   STATUT_CONGE_CODES,
   PCD_CODES
 } from '../../constants/config';
+import { getPaieType, PAIE_ICONS } from '../../constants/paie2026';
 import useColors from '../../hooks/useColors';
 import ModalCouleurs from './ModalCouleurs';
 
@@ -30,6 +31,8 @@ import ModalCouleurs from './ModalCouleurs';
  *   - Texte libre
  *   - Dropdown PCD pour réserves
  *   - Section Notes améliorée
+ * 
+ * v3.1 - Icônes paie 2026 (Digiposte/Virement) dans les cellules du calendrier
  */
 
 // Couleurs pour les statuts congé
@@ -715,6 +718,19 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
               <div style={styles.daysGrid}>
                 {calendarDays.map((dayInfo, idx) => {
                   const isWeekend = idx % 7 >= 5;
+                  
+                  // v3.1: Vérifier si c'est une date de paie 2026
+                  const paieType = dayInfo.currentMonth ? getPaieType(dayInfo.day, currentMonth, currentYear) : null;
+                  let paieIcon = null;
+                  if (paieType === 'digiposte') {
+                    paieIcon = PAIE_ICONS.perso.digiposte;
+                  } else if (paieType === 'virement') {
+                    // Fallback vers general si perso n'existe pas
+                    paieIcon = PAIE_ICONS.perso.euro || PAIE_ICONS.general.euro;
+                  } else if (paieType === 'both') {
+                    paieIcon = PAIE_ICONS.perso.digiposte;
+                  }
+                  
                   return (
                     <div
                       key={idx}
@@ -724,12 +740,41 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                         ...(selectedDay?.date === dayInfo.date ? styles.selectedDay : {}),
                         ...(isWeekend && dayInfo.currentMonth ? styles.weekendDay : {}),
                         backgroundColor: dayInfo.currentMonth ? getCellBackgroundColor(dayInfo.planning) : 'transparent',
-                        color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
+                        color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)',
+                        // v3.1: Icône paie en arrière-plan
+                        backgroundImage: paieIcon ? `url(${paieIcon})` : 'none',
+                        backgroundSize: '24px 24px',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat',
+                        position: 'relative',
                       }}
                       onClick={() => handleDayClick(dayInfo)}
                     >
-                      <span style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: 1, color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)' }}>{dayInfo.day}</span>
-                      {dayInfo.planning && renderCellContent(dayInfo.planning)}
+                      {/* Overlay semi-transparent pour lisibilité si icône présente */}
+                      {paieIcon && dayInfo.currentMonth && (
+                        <div 
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            backgroundColor: getCellBackgroundColor(dayInfo.planning) === 'rgba(255, 255, 255, 0.08)' 
+                              ? 'rgba(26, 26, 46, 0.7)' 
+                              : `${getCellBackgroundColor(dayInfo.planning)}dd`,
+                            borderRadius: '6px',
+                            pointerEvents: 'none',
+                          }}
+                        />
+                      )}
+                      <span style={{ 
+                        fontSize: '12px', 
+                        fontWeight: 'bold', 
+                        lineHeight: 1, 
+                        color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)',
+                        position: 'relative',
+                        zIndex: 1,
+                      }}>{dayInfo.day}</span>
+                      <div style={{ position: 'relative', zIndex: 1 }}>
+                        {dayInfo.planning && renderCellContent(dayInfo.planning)}
+                      </div>
                     </div>
                   );
                 })}
@@ -746,6 +791,28 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
             <span style={{...styles.legendItem, backgroundColor: STATUT_CONGE_COLORS['CNA'].bg, color: STATUT_CONGE_COLORS['CNA'].text}}>CNA</span>
             <span style={{...styles.legendItem, backgroundColor: getServiceColor('MA').bg, color: getServiceColor('MA').text}}>MA</span>
             <span style={{...styles.legendItem, backgroundColor: getServiceColor('D').bg, color: getServiceColor('D').text}}>D</span>
+          </div>
+          
+          {/* Légende Paie 2026 */}
+          <div style={styles.paieLegend}>
+            <div style={styles.paieLegendItem}>
+              <div style={{
+                width: '24px', height: '24px', borderRadius: '4px',
+                backgroundImage: `url(${PAIE_ICONS.perso.digiposte})`,
+                backgroundSize: '20px 20px', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+                border: '1px solid rgba(255,255,255,0.2)'
+              }} />
+              <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>Digiposte</span>
+            </div>
+            <div style={styles.paieLegendItem}>
+              <div style={{
+                width: '24px', height: '24px', borderRadius: '4px',
+                backgroundImage: `url(${PAIE_ICONS.general.euro})`,
+                backgroundSize: '20px 20px', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+                border: '1px solid rgba(255,255,255,0.2)'
+              }} />
+              <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>Virement</span>
+            </div>
           </div>
         </div>
 
@@ -1226,6 +1293,13 @@ const styles = {
     borderTop: '1px solid rgba(255,255,255,0.1)'
   },
   legendItem: { padding: '3px 6px', borderRadius: '6px', fontSize: '9px', fontWeight: 'bold' },
+  paieLegend: {
+    display: 'flex', justifyContent: 'center', gap: '16px', padding: '8px 8px 12px',
+    borderTop: '1px solid rgba(255,255,255,0.05)'
+  },
+  paieLegendItem: {
+    display: 'flex', alignItems: 'center', gap: '6px'
+  },
   
   // Styles modal d'édition
   editOverlay: {
