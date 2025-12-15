@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Palette } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE, POSTES_PAR_GROUPE } from '../../constants/config';
+import useColors from '../../hooks/useColors';
+import ModalCouleurs from './ModalCouleurs';
 
 /**
  * ModalMonPlanning - Calendrier personnel de l'agent connecté
@@ -10,6 +13,8 @@ import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE
  * 
  * v1.3 - Harmonisation couleurs avec Planning complet
  * v1.4 - FIX: Calcul correct des jours de la semaine (année dynamique)
+ * v1.5 - FIX: Responsive mobile + utilisation CODE_COLORS
+ * v1.6 - NEW: Bouton palette + ModalCouleurs (même système que planning général)
  */
 const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear }) => {
   // FIX v1.4: Utiliser initialYear si fourni, sinon année système
@@ -24,6 +29,10 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [agentInfo, setAgentInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
+  
+  // v1.6: Hook pour les couleurs personnalisées
+  const { colors, getServiceColor } = useColors();
+  const [showColorModal, setShowColorModal] = useState(false);
   
   // Tracker si des modifications ont été faites
   const hasChanges = useRef(false);
@@ -281,81 +290,63 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     return POSTES_CODES;
   };
 
-  // Couleur selon le service - ALIGNÉ SUR PLANNING COMPLET (CODE_COLORS)
-  const getServiceColor = (planning) => {
-    if (!planning?.service_code) return 'transparent';
+  /**
+   * v1.6: Utilise le hook useColors pour obtenir les couleurs personnalisées
+   */
+  const getCellBackgroundColor = (planning) => {
+    if (!planning?.service_code) return 'rgba(255, 255, 255, 0.08)';
     
     const code = planning.service_code.toUpperCase();
+    const colorConfig = getServiceColor(code);
     
-    // Services -, O, X : PAS de couleur de fond (comme planning complet)
-    if (code === '-' || code === 'O' || code === 'X') return 'rgba(255, 255, 255, 0.15)';
+    if (!colorConfig || colorConfig.bg === 'transparent') {
+      return 'rgba(255, 255, 255, 0.08)';
+    }
     
-    // Repos - Vert clair (bg-green-100)
-    if (code === 'RP' || code === 'RU') return '#dcfce7';
-    
-    // Congés - Jaune/Or (bg-yellow-400)
-    if (code === 'C' || code === 'CP') return '#facc15';
-    
-    // Maladie - Rouge clair (bg-red-200)
-    if (code === 'MA') return '#fecaca';
-    
-    // Dispo - Bleu clair (bg-blue-200)
-    if (code === 'D' || code === 'DISPO') return '#bfdbfe';
-    
-    // Formation - Orange clair (bg-orange-200)
-    if (code === 'FO' || code === 'HAB' || code === 'HAB-QF' || code === 'VL' || code === 'VM' || code === 'EIA') return '#fed7aa';
-    
-    // Inactif (bg-gray-300)
-    if (code === 'INACTIN') return '#d1d5db';
-    
-    // Inactif/Visite (bg-pink-100)
-    if (code === 'I') return '#fce7f3';
-    
-    // Non utilisé (bg-gray-100)
-    if (code === 'NU') return '#f3f4f6';
-    
-    // VT Temps partiel (bg-yellow-100)
-    if (code === 'VT') return '#fef9c3';
-    
-    // D2I (bg-gray-300)
-    if (code === 'D2I') return '#d1d5db';
-    
-    return 'rgba(255, 255, 255, 0.1)'; // Défaut transparent
+    return colorConfig.bg;
   };
 
-  // Couleur du texte selon le fond
-  const getTextColor = (planning) => {
+  const getCellTextColor = (planning) => {
     if (!planning?.service_code) return 'white';
     
     const code = planning.service_code.toUpperCase();
+    const colorConfig = getServiceColor(code);
     
-    // Fonds clairs → texte foncé
-    if (['RP', 'RU', 'C', 'CP', 'MA', 'D', 'DISPO', 'FO', 'HAB', 'HAB-QF', 'VL', 'VM', 'EIA', 'INACTIN', 'I', 'NU', 'VT', 'D2I'].includes(code)) {
-      return '#1f2937'; // gray-800
+    if (!colorConfig || colorConfig.bg === 'transparent') {
+      return 'white';
     }
     
-    return 'white';
+    return colorConfig.text;
   };
 
   if (!isOpen) return null;
 
   const calendarDays = generateCalendarDays();
-  const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+  const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
   return (
     <div style={styles.overlay} onClick={handleClose}>
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
-        {/* Header */}
+        {/* Header avec bouton palette */}
         <div style={styles.header}>
           <h2 style={styles.title}>📆 Mon Planning</h2>
-          <button style={styles.closeBtn} onClick={handleClose}>✕</button>
+          <div style={styles.headerActions}>
+            <button 
+              style={styles.paletteBtn} 
+              onClick={() => setShowColorModal(true)}
+              title="Personnaliser les couleurs"
+            >
+              <Palette size={18} />
+            </button>
+            <button style={styles.closeBtn} onClick={handleClose}>✕</button>
+          </div>
         </div>
 
         {/* Info agent */}
         {agentInfo && (
           <div style={styles.agentInfo}>
             <span style={styles.agentName}>{agentInfo.nom} {agentInfo.prenom}</span>
-            <span style={styles.agentGroup}>{agentInfo.groupe}</span>
+            <span style={styles.agentGroup}>{agentInfo.groupe?.split(' - ')[0]}</span>
           </div>
         )}
 
@@ -369,8 +360,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
         {/* Calendrier */}
         <div style={styles.calendar}>
           <div style={styles.weekHeader}>
-            {weekDays.map(day => (
-              <div key={day} style={styles.weekDay}>{day}</div>
+            {weekDays.map((day, idx) => (
+              <div key={idx} style={{
+                ...styles.weekDay,
+                color: idx >= 5 ? '#f87171' : 'rgba(255, 255, 255, 0.6)'
+              }}>{day}</div>
             ))}
           </div>
 
@@ -378,46 +372,69 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
             <div style={styles.loading}>Chargement...</div>
           ) : (
             <div style={styles.daysGrid}>
-              {calendarDays.map((dayInfo, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    ...styles.dayCell,
-                    ...(dayInfo.currentMonth ? styles.currentMonthDay : styles.otherMonthDay),
-                    ...(selectedDay?.date === dayInfo.date ? styles.selectedDay : {}),
-                    backgroundColor: dayInfo.currentMonth ? getServiceColor(dayInfo.planning) : 'transparent',
-                    color: dayInfo.currentMonth ? getTextColor(dayInfo.planning) : 'rgba(255,255,255,0.3)'
-                  }}
-                  onClick={() => handleDayClick(dayInfo)}
-                >
-                  <span style={{...styles.dayNumber, color: dayInfo.currentMonth ? getTextColor(dayInfo.planning) : 'rgba(255,255,255,0.3)'}}>{dayInfo.day}</span>
-                  {dayInfo.planning?.service_code && (
-                    <span style={{...styles.serviceCode, color: getTextColor(dayInfo.planning)}}>{dayInfo.planning.service_code}</span>
-                  )}
-                  {dayInfo.planning?.poste_code && (
-                    <span style={{...styles.posteCode, color: getTextColor(dayInfo.planning), opacity: 0.8}}>{dayInfo.planning.poste_code}</span>
-                  )}
-                  {dayInfo.planning?.postes_supplementaires?.length > 0 && (
-                    <span style={styles.supplement}>
-                      {dayInfo.planning.postes_supplementaires.join(' ')}
-                    </span>
-                  )}
-                </div>
-              ))}
+              {calendarDays.map((dayInfo, idx) => {
+                const isWeekend = idx % 7 >= 5;
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      ...styles.dayCell,
+                      ...(dayInfo.currentMonth ? styles.currentMonthDay : styles.otherMonthDay),
+                      ...(selectedDay?.date === dayInfo.date ? styles.selectedDay : {}),
+                      ...(isWeekend && dayInfo.currentMonth ? styles.weekendDay : {}),
+                      backgroundColor: dayInfo.currentMonth ? getCellBackgroundColor(dayInfo.planning) : 'transparent',
+                      color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
+                    }}
+                    onClick={() => handleDayClick(dayInfo)}
+                  >
+                    <span style={{
+                      ...styles.dayNumber, 
+                      color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
+                    }}>{dayInfo.day}</span>
+                    {dayInfo.planning?.service_code && (
+                      <span style={{
+                        ...styles.serviceCode, 
+                        color: getCellTextColor(dayInfo.planning)
+                      }}>{dayInfo.planning.service_code}</span>
+                    )}
+                    {dayInfo.planning?.poste_code && (
+                      <span style={{
+                        ...styles.posteCode, 
+                        color: getCellTextColor(dayInfo.planning), 
+                        opacity: 0.75
+                      }}>{dayInfo.planning.poste_code}</span>
+                    )}
+                    {dayInfo.planning?.postes_supplementaires?.length > 0 && (
+                      <span style={{
+                        ...styles.supplement,
+                        color: colors.postesSupp?.text || '#a855f7'
+                      }}>
+                        {dayInfo.planning.postes_supplementaires.map(p => p.replace('+', '')).join(' ')}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
-        {/* Légende - Alignée sur Planning complet */}
+        {/* Légende compacte */}
         <div style={styles.legend}>
-          <span style={{...styles.legendItem, backgroundColor: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)'}}>- O X</span>
-          <span style={{...styles.legendItem, backgroundColor: '#dcfce7', color: '#166534'}}>RP</span>
-          <span style={{...styles.legendItem, backgroundColor: '#facc15', color: '#713f12'}}>C</span>
-          <span style={{...styles.legendItem, backgroundColor: '#fecaca', color: '#991b1b'}}>MA</span>
-          <span style={{...styles.legendItem, backgroundColor: '#bfdbfe', color: '#1e40af'}}>D</span>
-          <span style={{...styles.legendItem, backgroundColor: '#fed7aa', color: '#9a3412'}}>FO</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('-').bg || 'rgba(255,255,255,0.1)', color: getServiceColor('-').text || 'white', border: '1px solid rgba(255,255,255,0.2)'}}>- O X</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('RP').bg, color: getServiceColor('RP').text}}>RP</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('C').bg, color: getServiceColor('C').text}}>C</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('MA').bg, color: getServiceColor('MA').text}}>MA</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('D').bg, color: getServiceColor('D').text}}>D</span>
+          <span style={{...styles.legendItem, backgroundColor: getServiceColor('FO').bg, color: getServiceColor('FO').text}}>FO</span>
         </div>
       </div>
+
+      {/* Modal Couleurs */}
+      <ModalCouleurs 
+        isOpen={showColorModal} 
+        onClose={() => setShowColorModal(false)} 
+      />
 
       {/* Modal d'édition (comme ModalCellEdit) */}
       {editMode && selectedDay && (
@@ -477,7 +494,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
             {/* Section Postes supplémentaires */}
             <div style={styles.section}>
               <label style={styles.sectionLabel}>
-                Postes supplémentaires <span style={styles.labelHint}>(sélection multiple)</span>
+                Postes supplémentaires <span style={styles.labelHint}>(multi)</span>
               </label>
               <div style={styles.suppGrid}>
                 {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => (
@@ -503,7 +520,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
 
             {/* Section Note */}
             <div style={styles.section}>
-              <label style={styles.sectionLabel}>Note / Commentaire</label>
+              <label style={styles.sectionLabel}>Note</label>
               <textarea
                 value={tempNote}
                 onChange={e => setTempNote(e.target.value)}
@@ -533,137 +550,174 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   );
 };
 
+// ============================================
+// STYLES - v1.6: Ajout bouton palette
+// ============================================
 const styles = {
   overlay: {
     position: 'fixed',
     top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 9999,
-    padding: '20px'
+    padding: '8px'
   },
   modal: {
     backgroundColor: '#1a1a2e',
-    borderRadius: '16px',
+    borderRadius: '12px',
     width: '100%',
-    maxWidth: '600px',
-    maxHeight: '90vh',
+    maxWidth: '420px',
+    maxHeight: '95vh',
     overflow: 'auto',
     border: '1px solid rgba(0, 240, 255, 0.3)',
-    boxShadow: '0 0 40px rgba(0, 240, 255, 0.2)'
+    boxShadow: '0 0 30px rgba(0, 240, 255, 0.15)'
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '20px',
+    padding: '12px 16px',
     borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
   },
-  title: { margin: 0, color: '#00f0ff', fontSize: '20px' },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  title: { margin: 0, color: '#00f0ff', fontSize: '16px' },
+  paletteBtn: {
+    background: 'rgba(0, 240, 255, 0.15)',
+    border: '1px solid rgba(0, 240, 255, 0.3)',
+    borderRadius: '6px',
+    padding: '6px',
+    cursor: 'pointer',
+    color: '#00f0ff',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.2s'
+  },
   closeBtn: {
     background: 'none', border: 'none', color: 'white',
-    fontSize: '24px', cursor: 'pointer', padding: '5px 10px'
+    fontSize: '20px', cursor: 'pointer', padding: '4px 8px'
   },
   agentInfo: {
     display: 'flex', justifyContent: 'center', alignItems: 'center',
-    gap: '15px', padding: '15px', backgroundColor: 'rgba(0, 102, 179, 0.2)'
+    gap: '10px', padding: '10px', backgroundColor: 'rgba(0, 102, 179, 0.2)'
   },
-  agentName: { color: 'white', fontWeight: 'bold' },
+  agentName: { color: 'white', fontWeight: 'bold', fontSize: '13px' },
   agentGroup: {
     color: '#00f0ff', backgroundColor: 'rgba(0, 240, 255, 0.2)',
-    padding: '4px 12px', borderRadius: '12px', fontSize: '12px'
+    padding: '3px 10px', borderRadius: '10px', fontSize: '11px'
   },
   monthNav: {
     display: 'flex', justifyContent: 'center', alignItems: 'center',
-    gap: '20px', padding: '15px'
+    gap: '12px', padding: '10px'
   },
   navBtn: {
     background: 'rgba(0, 240, 255, 0.2)', border: '1px solid rgba(0, 240, 255, 0.4)',
-    color: 'white', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontSize: '16px'
+    color: 'white', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px'
   },
-  monthTitle: { color: 'white', fontSize: '18px', fontWeight: 'bold', minWidth: '180px', textAlign: 'center' },
-  calendar: { padding: '0 20px' },
-  weekHeader: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px', marginBottom: '10px' },
-  weekDay: { textAlign: 'center', color: 'rgba(255, 255, 255, 0.6)', fontSize: '12px', fontWeight: 'bold', padding: '8px 0' },
-  loading: { textAlign: 'center', color: 'white', padding: '40px' },
-  daysGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px' },
+  monthTitle: { color: 'white', fontSize: '15px', fontWeight: 'bold', minWidth: '140px', textAlign: 'center' },
+  calendar: { padding: '0 8px 8px' },
+  weekHeader: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '4px' },
+  weekDay: { textAlign: 'center', fontSize: '11px', fontWeight: 'bold', padding: '4px 0' },
+  loading: { textAlign: 'center', color: 'white', padding: '30px' },
+  daysGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' },
   dayCell: {
-    aspectRatio: '1', borderRadius: '8px', display: 'flex', flexDirection: 'column',
-    justifyContent: 'center', alignItems: 'center', cursor: 'pointer',
-    border: '1px solid transparent', transition: 'all 0.2s ease', minHeight: '50px'
+    aspectRatio: '1', 
+    borderRadius: '6px', 
+    display: 'flex', 
+    flexDirection: 'column',
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    cursor: 'pointer',
+    border: '1px solid transparent', 
+    transition: 'all 0.15s ease', 
+    minHeight: '42px',
+    padding: '2px'
   },
-  currentMonthDay: { backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)' },
-  otherMonthDay: { opacity: 0.3, cursor: 'default' },
-  selectedDay: { border: '2px solid #00f0ff', boxShadow: '0 0 10px rgba(0, 240, 255, 0.5)' },
-  dayNumber: { fontSize: '14px', fontWeight: 'bold' },
-  serviceCode: { fontSize: '10px', fontWeight: 'bold', textShadow: '0 1px 2px rgba(0,0,0,0.3)' },
-  posteCode: { fontSize: '8px' },
-  supplement: { fontSize: '7px', color: '#a855f7', fontStyle: 'italic', fontWeight: 'bold' },
-  legend: { display: 'flex', justifyContent: 'center', gap: '8px', padding: '15px', flexWrap: 'wrap' },
-  legendItem: { padding: '4px 10px', borderRadius: '10px', fontSize: '10px', fontWeight: 'bold' },
+  currentMonthDay: { backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.08)' },
+  otherMonthDay: { opacity: 0.25, cursor: 'default' },
+  selectedDay: { border: '2px solid #00f0ff', boxShadow: '0 0 8px rgba(0, 240, 255, 0.4)' },
+  weekendDay: { borderColor: 'rgba(248, 113, 113, 0.2)' },
+  dayNumber: { fontSize: '12px', fontWeight: 'bold', lineHeight: 1 },
+  serviceCode: { fontSize: '9px', fontWeight: 'bold', marginTop: '1px', lineHeight: 1 },
+  posteCode: { fontSize: '7px', lineHeight: 1 },
+  supplement: { fontSize: '6px', fontStyle: 'italic', fontWeight: 'bold', lineHeight: 1 },
+  legend: { 
+    display: 'flex', 
+    justifyContent: 'center', 
+    gap: '4px', 
+    padding: '8px', 
+    flexWrap: 'wrap',
+    borderTop: '1px solid rgba(255,255,255,0.1)'
+  },
+  legendItem: { padding: '3px 6px', borderRadius: '6px', fontSize: '9px', fontWeight: 'bold' },
   
   // Styles pour la modal d'édition
   editOverlay: {
     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex',
-    justifyContent: 'center', alignItems: 'center', zIndex: 10000
+    justifyContent: 'center', alignItems: 'center', zIndex: 10000,
+    padding: '10px'
   },
   editModal: {
-    backgroundColor: 'white', borderRadius: '12px', padding: '20px',
-    width: '100%', maxWidth: '500px', maxHeight: '85vh', overflow: 'auto'
+    backgroundColor: 'white', borderRadius: '12px', padding: '16px',
+    width: '100%', maxWidth: '400px', maxHeight: '85vh', overflow: 'auto'
   },
-  editHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' },
-  editTitle: { margin: 0, fontSize: '18px', color: '#333' },
-  editSubtitle: { margin: '5px 0 0', fontSize: '14px', color: '#666' },
+  editHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' },
+  editTitle: { margin: 0, fontSize: '16px', color: '#333' },
+  editSubtitle: { margin: '4px 0 0', fontSize: '12px', color: '#666' },
   editCloseBtn: {
-    background: 'none', border: 'none', fontSize: '20px',
-    color: '#999', cursor: 'pointer', padding: '0 5px'
+    background: 'none', border: 'none', fontSize: '18px',
+    color: '#999', cursor: 'pointer', padding: '0 4px'
   },
-  section: { marginBottom: '20px' },
-  sectionLabel: { display: 'block', fontSize: '14px', fontWeight: '600', color: '#333', marginBottom: '10px' },
-  labelHint: { fontWeight: 'normal', fontSize: '12px', color: '#999' },
-  serviceGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' },
+  section: { marginBottom: '16px' },
+  sectionLabel: { display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '8px' },
+  labelHint: { fontWeight: 'normal', fontSize: '10px', color: '#999' },
+  serviceGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' },
   serviceBtn: {
-    padding: '10px 8px', borderRadius: '8px', border: '1px solid #ddd',
+    padding: '8px 4px', borderRadius: '6px', border: '1px solid #ddd',
     backgroundColor: '#f5f5f5', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s'
   },
   serviceBtnSelected: { backgroundColor: '#e3f2fd', borderColor: '#2196F3', boxShadow: '0 0 0 2px rgba(33, 150, 243, 0.3)' },
-  serviceBtnCode: { display: 'block', fontWeight: 'bold', fontSize: '14px', color: '#333' },
-  serviceBtnDesc: { display: 'block', fontSize: '10px', color: '#666', marginTop: '3px' },
-  posteGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' },
+  serviceBtnCode: { display: 'block', fontWeight: 'bold', fontSize: '13px', color: '#333' },
+  serviceBtnDesc: { display: 'block', fontSize: '8px', color: '#666', marginTop: '2px' },
+  posteGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' },
   posteBtn: {
-    padding: '10px', borderRadius: '8px', border: '1px solid #ddd',
-    backgroundColor: '#f5f5f5', cursor: 'pointer', fontWeight: '600', fontSize: '12px', color: '#333'
+    padding: '8px', borderRadius: '6px', border: '1px solid #ddd',
+    backgroundColor: '#f5f5f5', cursor: 'pointer', fontWeight: '600', fontSize: '11px', color: '#333'
   },
   posteBtnSelected: { backgroundColor: '#e3f2fd', borderColor: '#2196F3' },
-  suppGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' },
+  suppGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' },
   suppBtn: {
-    padding: '10px', borderRadius: '8px', border: '1px solid #ddd',
+    padding: '8px', borderRadius: '6px', border: '1px solid #ddd',
     backgroundColor: '#f5f5f5', cursor: 'pointer', position: 'relative', textAlign: 'center'
   },
   suppBtnSelected: { backgroundColor: '#e8f5e9', borderColor: '#4CAF50' },
-  suppCode: { fontWeight: '600', fontSize: '11px', fontStyle: 'italic', color: '#333' },
-  checkMark: { position: 'absolute', top: '3px', right: '5px', color: '#4CAF50', fontSize: '12px' },
-  selectedSupp: { marginTop: '10px', padding: '8px', backgroundColor: '#f5f5f5', borderRadius: '6px', fontSize: '12px', color: '#666' },
+  suppCode: { fontWeight: '600', fontSize: '10px', fontStyle: 'italic', color: '#333' },
+  checkMark: { position: 'absolute', top: '2px', right: '4px', color: '#4CAF50', fontSize: '10px' },
+  selectedSupp: { marginTop: '8px', padding: '6px', backgroundColor: '#f5f5f5', borderRadius: '6px', fontSize: '11px', color: '#666' },
   noteInput: {
-    width: '100%', minHeight: '80px', padding: '10px', borderRadius: '8px',
-    border: '1px solid #ddd', fontSize: '14px', resize: 'vertical', boxSizing: 'border-box'
+    width: '100%', minHeight: '60px', padding: '8px', borderRadius: '6px',
+    border: '1px solid #ddd', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box'
   },
-  editActions: { display: 'flex', justifyContent: 'space-between', paddingTop: '15px', borderTop: '1px solid #eee' },
+  editActions: { display: 'flex', justifyContent: 'space-between', paddingTop: '12px', borderTop: '1px solid #eee' },
   deleteBtn: {
-    padding: '10px 20px', backgroundColor: '#f44336', color: 'white',
-    border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600'
+    padding: '8px 14px', backgroundColor: '#f44336', color: 'white',
+    border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px'
   },
-  rightActions: { display: 'flex', gap: '10px' },
+  rightActions: { display: 'flex', gap: '8px' },
   cancelBtn: {
-    padding: '10px 20px', backgroundColor: 'white', color: '#666',
-    border: '1px solid #ddd', borderRadius: '8px', cursor: 'pointer'
+    padding: '8px 14px', backgroundColor: 'white', color: '#666',
+    border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '12px'
   },
   saveBtn: {
-    padding: '10px 20px', backgroundColor: '#2196F3', color: 'white',
-    border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600'
+    padding: '8px 14px', backgroundColor: '#2196F3', color: 'white',
+    border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px'
   }
 };
 

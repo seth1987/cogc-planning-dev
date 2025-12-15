@@ -123,6 +123,7 @@ export const GROUPES_PAR_STATUT = {
   ]
 };
 
+// SERVICE_CODES - Le texte libre est géré par un bouton séparé dans ModalCellEdit
 export const SERVICE_CODES = [
   { code: '-', desc: 'Matin (06h-14h)' },
   { code: 'O', desc: 'Soir (14h-22h)' },
@@ -136,8 +137,7 @@ export const SERVICE_CODES = [
   { code: 'HAB', desc: 'Habilitation/Formation' },
   { code: 'FO', desc: 'Formation' },
   { code: 'VT', desc: 'Temps partiel' },
-  { code: 'D2I', desc: 'D2I' },
-  { code: '__LIBRE__', desc: '✏️ Texte libre...' }
+  { code: 'D2I', desc: 'D2I' }
 ];
 
 // Postes pour agents réserve (CENT et S/S supprimés)
@@ -154,7 +154,7 @@ export const POSTES_CODES_WITH_LIBRE = [
   { code: 'RO', desc: 'RO' },
   { code: 'CAC', desc: 'CAC' },
   { code: 'SOUF', desc: 'SOUF' },
-  { code: '__LIBRE__', desc: '✏️ Texte libre...' }
+  { code: 'LIBRE', desc: '✏️ Texte libre...' }
 ];
 
 // Postes spécifiques par groupe (pour les agents avec choix de poste limité)
@@ -185,4 +185,4 @@ export const POSTES_SUPPLEMENTAIRES = [
 ];
 
 // Constante pour détecter si une valeur est en mode texte libre
-export const LIBRE_MARKER = '__LIBRE__';
+export const LIBRE_MARKER = 'LIBRE';
