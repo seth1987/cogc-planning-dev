@@ -11,7 +11,7 @@ import {
   HABILITATION_CODES,
   JOURS_RH_CODES,
   ABSENCES_CODES,
-  CONGES_CODES,
+  STATUT_CONGE_CODES,
   PCD_CODES
 } from '../../constants/config';
 
@@ -27,7 +27,7 @@ const MODAL_COLORS = {
   // Absences
   'MA': 'bg-red-200 text-red-800 font-semibold',
   'F': 'bg-purple-200 text-purple-800 font-semibold',
-  // Sous-groupe Congés (C,CP)
+  // Statut congé (stocké dans statut_conge)
   'C': 'bg-yellow-400 text-yellow-900 font-semibold',
   'C?': 'bg-yellow-200 text-yellow-800 font-semibold',
   'CNA': 'bg-red-300 text-red-900 font-semibold',
@@ -53,6 +53,7 @@ const MODAL_COLORS = {
   'RU': 'bg-yellow-100 text-yellow-800',
   'RA': 'bg-yellow-100 text-yellow-800',
   'RN': 'bg-yellow-100 text-yellow-800',
+  'RQ': 'bg-yellow-100 text-yellow-800',
   'TY': 'bg-yellow-100 text-yellow-800',
   'AY': 'bg-yellow-100 text-yellow-800',
   'AH': 'bg-yellow-100 text-yellow-800',
@@ -68,7 +69,7 @@ const PCD_POSTE_CODES = ['CCCBO', 'CBVD'];
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 4.4.1 - PCD avec codes CCCBO et CBVD
+ * @version 4.5.0 - Ajout statut_conge combinable (C, C?, CNA)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -85,9 +86,12 @@ const ModalCellEdit = ({
 }) => {
   // États pour service, poste et postes supplémentaires
   const [tempService, setTempService] = useState('');      // Horaire (-, O, X, I, RP, NU)
-  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, C, F, etc.)
+  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, F, etc.)
   const [tempPoste, setTempPoste] = useState('');
   const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
+  
+  // === NOUVEL ÉTAT POUR STATUT CONGÉ ===
+  const [tempStatutConge, setTempStatutConge] = useState(''); // C, C?, CNA ou ''
   
   // États pour la gestion des notes
   const [tempNote, setTempNote] = useState('');
@@ -124,17 +128,19 @@ const ModalCellEdit = ({
   const [showPcdDropdown, setShowPcdDropdown] = useState(false);
   const pcdButtonRef = useRef(null);
 
-  // Liste de tous les codes de catégorie pour détection (sans PCD car maintenant dans Poste)
+  // Liste de tous les codes de catégorie pour détection (sans C, C?, CNA car dans statut_conge)
   const ALL_CATEGORIE_CODES = [
     ...SERVICE_JOUR_CODES.map(c => c.code),
     ...HABILITATION_CODES.map(c => c.code),
     ...JOURS_RH_CODES.map(c => c.code),
-    ...ABSENCES_CODES.map(c => c.code),
-    ...CONGES_CODES.map(c => c.code)
+    ...ABSENCES_CODES.map(c => c.code)
   ];
 
   // Liste des codes horaire (incluant RP et NU)
   const ALL_HORAIRE_CODES = SERVICE_CODES.map(c => c.code);
+
+  // Liste des codes statut congé
+  const STATUT_CONGE_LIST = ['C', 'C?', 'CNA'];
 
   // Fermer le dropdown PCD quand on clique ailleurs
   useEffect(() => {
@@ -158,13 +164,17 @@ const ModalCellEdit = ({
     if (cellData) {
       console.log('📦 CellData reçu:', JSON.stringify(cellData, null, 2));
       
+      // === INITIALISER STATUT CONGÉ ===
+      setTempStatutConge(cellData.statut_conge || cellData.statutConge || '');
+      
       // Déterminer si c'est un texte libre
       const hasExplicitTexteLibre = cellData.texteLibre && cellData.texteLibre.trim() !== '';
       const isNonStandardService = cellData.service && 
         cellData.service !== 'LIBRE' && 
         !ALL_HORAIRE_CODES.includes(cellData.service) &&
         !ALL_CATEGORIE_CODES.includes(cellData.service) &&
-        !PCD_POSTE_CODES.includes(cellData.service);
+        !PCD_POSTE_CODES.includes(cellData.service) &&
+        !STATUT_CONGE_LIST.includes(cellData.service);
 
       if (hasExplicitTexteLibre) {
         setTempService('');
@@ -182,8 +192,17 @@ const ModalCellEdit = ({
         // Analyser le service stocké
         const storedService = cellData.service || '';
         
+        // Vérifier si c'est un ancien code congé (migration)
+        if (STATUT_CONGE_LIST.includes(storedService)) {
+          // Migration : ancien format où C/C?/CNA était dans service_code
+          setTempService('');
+          setTempCategorie('');
+          if (!cellData.statut_conge && !cellData.statutConge) {
+            setTempStatutConge(storedService);
+          }
+        }
         // Vérifier si c'est un horaire simple
-        if (ALL_HORAIRE_CODES.includes(storedService)) {
+        else if (ALL_HORAIRE_CODES.includes(storedService)) {
           setTempService(storedService);
           setTempCategorie('');
         }
@@ -223,6 +242,7 @@ const ModalCellEdit = ({
       setTempNote('');
       setTempTexteLibre('');
       setTempPostesSupplementaires([]);
+      setTempStatutConge('');
     }
     // Reset édition multiple et recherche
     setApplyToMultipleDays(false);
@@ -364,6 +384,15 @@ const ModalCellEdit = ({
       if (code !== 'LIBRE') {
         setTempTexteLibre('');
       }
+    }
+  };
+
+  // === SÉLECTION STATUT CONGÉ ===
+  const selectStatutConge = (code) => {
+    if (tempStatutConge === code) {
+      setTempStatutConge(''); // Désélectionner
+    } else {
+      setTempStatutConge(code);
     }
   };
 
@@ -518,14 +547,15 @@ const ModalCellEdit = ({
     let cellValue = agentData?.[day] || agentData?.[String(day)] || agentData?.[Number(day)];
     if (!cellValue) return null;
     if (typeof cellValue === 'string') {
-      return { service: cellValue, poste: null, note: null, postesSupplementaires: null };
+      return { service: cellValue, poste: null, note: null, postesSupplementaires: null, statut_conge: null };
     }
     return {
       service: cellValue.service || null,
       poste: cellValue.poste || null,
       note: cellValue.note || null,
       postesSupplementaires: cellValue.postesSupplementaires || null,
-      texteLibre: cellValue.texteLibre || null
+      texteLibre: cellValue.texteLibre || null,
+      statut_conge: cellValue.statut_conge || null
     };
   };
 
@@ -555,7 +585,8 @@ const ModalCellEdit = ({
         poste: agent2Data.poste || '',
         postesSupplementaires: agent2Data.postesSupplementaires || [],
         note: `Croisement avec ${agent2Name}`,
-        texteLibre: agent2Data.texteLibre || ''
+        texteLibre: agent2Data.texteLibre || '',
+        statut_conge: agent2Data.statut_conge || ''
       };
 
       const newAgent2Data = {
@@ -563,7 +594,8 @@ const ModalCellEdit = ({
         poste: agent1Data.poste || tempPoste || '',
         postesSupplementaires: agent1Data.postesSupplementaires || tempPostesSupplementaires || [],
         note: `Croisement avec ${agent1Name}`,
-        texteLibre: agent1Data.texteLibre || tempTexteLibre || ''
+        texteLibre: agent1Data.texteLibre || tempTexteLibre || '',
+        statut_conge: agent1Data.statut_conge || tempStatutConge || ''
       };
 
       if (onCroisement) {
@@ -597,7 +629,7 @@ const ModalCellEdit = ({
       return 'LIBRE';
     }
     
-    // Catégorie seule (ex: MA, C, FO RC)
+    // Catégorie seule (ex: MA, FO RC)
     if (tempCategorie && !tempService) {
       return tempCategorie;
     }
@@ -624,16 +656,19 @@ const ModalCellEdit = ({
     console.log('💾 Sauvegarde - tempCategorie:', tempCategorie);
     console.log('💾 Sauvegarde - finalService:', finalService);
     console.log('💾 Sauvegarde - tempPoste:', tempPoste);
+    console.log('💾 Sauvegarde - tempStatutConge:', tempStatutConge);
     
     let planningData;
     
-    if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote || isTexteLibre) {
+    // Toujours créer un objet si statut_conge est défini
+    if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote || isTexteLibre || tempStatutConge) {
       planningData = { 
         service: finalService,
         ...(tempPoste && { poste: tempPoste }),
         ...(tempPostesSupplementaires.length > 0 && { postesSupplementaires: tempPostesSupplementaires }),
         ...(tempNote && { note: tempNote }),
-        ...(isTexteLibre && { texteLibre: tempTexteLibre.trim() })
+        ...(isTexteLibre && { texteLibre: tempTexteLibre.trim() }),
+        ...(tempStatutConge && { statut_conge: tempStatutConge })
       };
     } else {
       planningData = finalService;
@@ -746,11 +781,16 @@ const ModalCellEdit = ({
                 <p className="text-xs text-gray-400">{agentGroup}</p>
               )}
               {/* Aperçu du service */}
-              {previewService && (
+              {(previewService || tempStatutConge) && (
                 <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
                   <span className="text-xs text-blue-600 font-medium">Aperçu : </span>
-                  <span className="text-sm font-semibold text-blue-800">{previewService}</span>
+                  <span className="text-sm font-semibold text-blue-800">{previewService || '-'}</span>
                   {tempPoste && <span className="text-xs text-gray-600 ml-2">/ {tempPoste}</span>}
+                  {tempStatutConge && (
+                    <span className={`ml-2 px-1.5 py-0.5 rounded text-xs font-semibold ${MODAL_COLORS[tempStatutConge]}`}>
+                      {tempStatutConge}
+                    </span>
+                  )}
                   {hasExistingTexteLibre && <span className="text-xs text-purple-600 ml-2">({tempTexteLibre})</span>}
                 </div>
               )}
@@ -818,6 +858,37 @@ const ModalCellEdit = ({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* === SECTION STATUT CONGÉ (NOUVEAU - combinable) === */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <span className="inline-flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-semibold">Congés</span>
+                <span>Statut congé</span>
+                <span className="text-xs text-gray-500 font-normal">(combinable avec horaire/poste)</span>
+              </span>
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {STATUT_CONGE_CODES.filter(c => c.code !== '').map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectStatutConge(code)}
+                  className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempStatutConge === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-xs mt-0.5">{desc}</div>
+                </button>
+              ))}
+            </div>
+            {tempStatutConge && (
+              <div className="mt-2 p-2 bg-yellow-50 rounded border border-yellow-200">
+                <span className="text-xs text-yellow-700">
+                  Statut congé sélectionné : <span className="font-semibold">{tempStatutConge}</span>
+                  {tempService && <span className="ml-1"> (combiné avec {tempService})</span>}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* === SECTION POSTE RÉSERVE (AVEC BOUTON PCD ET DROPDOWN) === */}
@@ -892,28 +963,6 @@ const ModalCellEdit = ({
             </label>
             <div className="grid grid-cols-2 gap-2">
               {ABSENCES_CODES.map(({ code, desc }) => (
-                <button
-                  key={code}
-                  onClick={() => selectCategorie(code)}
-                  className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempCategorie === code)}`}
-                >
-                  <div className="font-semibold">{code}</div>
-                  <div className="text-xs mt-0.5">{desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* === SOUS-GROUPE C,CP (Congés) === */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <span className="inline-flex items-center gap-2">
-                <span className="px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-semibold">C,CP</span>
-                <span>Congés</span>
-              </span>
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {CONGES_CODES.map(({ code, desc }) => (
                 <button
                   key={code}
                   onClick={() => selectCategorie(code)}
@@ -1229,7 +1278,7 @@ const ModalCellEdit = ({
               </button>
               <button 
                 onClick={handleSave}
-                disabled={!tempService && !tempCategorie && !tempPoste}
+                disabled={!tempService && !tempCategorie && !tempPoste && !tempStatutConge}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300"
               >
                 Sauvegarder
