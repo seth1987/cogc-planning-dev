@@ -1,22 +1,31 @@
 /**
  * Couleurs par défaut pour les services et éléments du planning
- * VERSION 2.0 - Catégories alignées avec ModalCellEdit v3
+ * VERSION 3.0 - Sous-catégories avec horaires pour Habilitation/Formation
  * 
  * Structure:
- * - Chaque catégorie a une couleur de groupe (defaultColor)
- * - Chaque élément peut avoir sa propre couleur (optionnel)
- * - Logique fallback: élément spécifique → couleur du groupe → défaut
+ * - Catégories principales avec couleur de groupe
+ * - Sous-catégories (ex: FO RO) avec combinaisons horaires (FO RO -, FO RO O, FO RO X)
+ * - Toggle groupe/individuel par sous-catégorie
  */
+
+// Horaires de base pour les combinaisons
+export const HORAIRES_BASE = [
+  { code: '-', label: 'Matin' },
+  { code: 'O', label: 'Soir' },
+  { code: 'X', label: 'Nuit' },
+];
 
 // ========================
 // DÉFINITION DES CATÉGORIES
 // ========================
 
 export const COLOR_CATEGORIES = {
+  // Horaires : MASQUÉ dans le modal (pas besoin de personnaliser)
   horaires: {
     id: 'horaires',
     label: 'Horaires',
     description: 'Services de base (matin, soir, nuit)',
+    hidden: true, // Ne pas afficher dans ModalCouleurs
     defaultColor: { bg: '#ffffff', text: '#1e40af' },
     items: {
       '-': { label: 'Matin (06h-14h)' },
@@ -46,22 +55,54 @@ export const COLOR_CATEGORIES = {
     }
   },
   
+  // Habilitation/Formation : AVEC sous-catégories et combinaisons horaires
   habilitationFormation: {
     id: 'habilitationFormation',
     label: 'Habilitation / Formation',
-    description: 'HAB, FO RO, FO RC, FO CRC...',
+    description: 'HAB, FO RO, FO RC, FO CRC... avec horaires',
     defaultColor: { bg: '#fed7aa', text: '#9a3412' }, // Orange
-    items: {
-      'HAB': { label: 'Habilitation' },
-      'FO': { label: 'Formation (générique)' },
-      'FO RO': { label: 'FO RO' },
-      'FO RC': { label: 'FO RC' },
-      'FO CAC': { label: 'FO CAC' },
-      'FO CRC': { label: 'FO CRC' },
-      'FO ACR': { label: 'FO ACR' },
-      'FO CCU': { label: 'FO CCU' },
-      'FO RE': { label: 'FO RE' }
-    }
+    hasSubCategories: true, // Flag pour le modal
+    subCategories: {
+      'HAB': {
+        label: 'Habilitation',
+        defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        // Combinaisons générées automatiquement : HAB -, HAB O, HAB X
+      },
+      'FO': {
+        label: 'Formation (générique)',
+        defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+      },
+      'FO RO': {
+        label: 'FO RO',
+        defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+      },
+      'FO RC': {
+        label: 'FO RC',
+        defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+      },
+      'FO CAC': {
+        label: 'FO CAC',
+        defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+      },
+      'FO CRC': {
+        label: 'FO CRC',
+        defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+      },
+      'FO ACR': {
+        label: 'FO ACR',
+        defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+      },
+      'FO CCU': {
+        label: 'FO CCU',
+        defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+      },
+      'FO RE': {
+        label: 'FO RE',
+        defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+      }
+    },
+    // Items générés à partir des sous-catégories + horaires
+    items: {} // Sera rempli dynamiquement
   },
   
   joursRH: {
@@ -95,30 +136,65 @@ export const COLOR_CATEGORIES = {
   }
 };
 
+// Générer les items pour habilitationFormation (sous-catégorie + horaires)
+const generateHabilitationItems = () => {
+  const items = {};
+  const subCats = COLOR_CATEGORIES.habilitationFormation.subCategories;
+  
+  Object.entries(subCats).forEach(([subCatCode, subCat]) => {
+    // Item de base (sans horaire) - ex: "HAB", "FO RO"
+    items[subCatCode] = {
+      label: subCat.label,
+      defaultColor: subCat.defaultColor,
+      isSubCategory: true,
+    };
+    
+    // Combinaisons avec horaires - ex: "HAB -", "HAB O", "HAB X"
+    HORAIRES_BASE.forEach(horaire => {
+      const combinedCode = `${subCatCode} ${horaire.code}`;
+      items[combinedCode] = {
+        label: `${subCat.label} ${horaire.label}`,
+        defaultColor: subCat.defaultColor,
+        parentSubCategory: subCatCode, // Référence au parent
+        horaire: horaire.code,
+      };
+    });
+  });
+  
+  return items;
+};
+
+// Appliquer les items générés
+COLOR_CATEGORIES.habilitationFormation.items = generateHabilitationItems();
+
 // ========================
 // STRUCTURE DES COULEURS PAR DÉFAUT
 // ========================
 
-// Génère le DEFAULT_COLORS à partir des catégories
 const generateDefaultColors = () => {
   const services = {};
   
   Object.values(COLOR_CATEGORIES).forEach(category => {
     const groupColor = category.defaultColor;
     
-    Object.entries(category.items).forEach(([code, item]) => {
-      // Utiliser la couleur spécifique de l'item ou la couleur du groupe
-      services[code] = item.defaultColor || groupColor;
-    });
+    // Items normaux
+    if (category.items) {
+      Object.entries(category.items).forEach(([code, item]) => {
+        services[code] = item.defaultColor || groupColor;
+      });
+    }
   });
   
   return {
     services,
-    postesSupp: { text: '#8b5cf6' },  // Violet pour +ACR, +RO, etc.
-    texteLibre: { bg: '#fef3c7', text: '#92400e' },  // Fond ambre
-    // Stockage des couleurs de groupe (pour le fallback)
+    // État des toggles groupe/individuel par sous-catégorie
+    subCategoryModes: {}, // { 'HAB': 'group', 'FO RO': 'individual', ... }
+    postesSupp: { text: '#8b5cf6' },
+    texteLibre: { bg: '#fef3c7', text: '#92400e' },
     groups: Object.fromEntries(
-      Object.entries(COLOR_CATEGORIES).map(([key, cat]) => [key, cat.defaultColor])
+      Object.entries(COLOR_CATEGORIES)
+        .filter(([_, cat]) => !cat.hidden)
+        .map(([key, cat]) => [key, cat.defaultColor])
     )
   };
 };
@@ -129,14 +205,15 @@ export const DEFAULT_COLORS = generateDefaultColors();
 // LABELS POUR L'INTERFACE
 // ========================
 
-// Génère les labels à partir des catégories
 const generateServiceLabels = () => {
   const labels = {};
   
   Object.values(COLOR_CATEGORIES).forEach(category => {
-    Object.entries(category.items).forEach(([code, item]) => {
-      labels[code] = item.label;
-    });
+    if (category.items) {
+      Object.entries(category.items).forEach(([code, item]) => {
+        labels[code] = item.label;
+      });
+    }
   });
   
   return labels;
@@ -150,14 +227,12 @@ export const SERVICE_LABELS = generateServiceLabels();
 
 /**
  * Trouve la catégorie d'un code de service
- * @param {string} code - Code du service (ex: "FO RO", "MA", "-")
- * @returns {object|null} - Catégorie ou null
  */
 export const findCategoryForCode = (code) => {
   if (!code) return null;
   
   for (const [categoryKey, category] of Object.entries(COLOR_CATEGORIES)) {
-    if (category.items[code]) {
+    if (category.items && category.items[code]) {
       return { key: categoryKey, ...category };
     }
   }
@@ -166,34 +241,85 @@ export const findCategoryForCode = (code) => {
 };
 
 /**
+ * Trouve la sous-catégorie parent d'un code combiné
+ * "FO RO -" → "FO RO"
+ * "HAB O" → "HAB"
+ */
+export const findParentSubCategory = (code) => {
+  if (!code) return null;
+  
+  const habItems = COLOR_CATEGORIES.habilitationFormation.items;
+  const item = habItems[code];
+  
+  if (item?.parentSubCategory) {
+    return item.parentSubCategory;
+  }
+  
+  // Si c'est une sous-catégorie elle-même
+  if (item?.isSubCategory) {
+    return code;
+  }
+  
+  return null;
+};
+
+/**
+ * Vérifie si tous les éléments d'une sous-catégorie ont la même couleur
+ */
+export const isSubCategoryUniform = (subCatCode, customColors) => {
+  if (!customColors?.services) return true;
+  
+  const horaireCodes = HORAIRES_BASE.map(h => `${subCatCode} ${h.code}`);
+  const colors = horaireCodes.map(code => {
+    const c = customColors.services[code];
+    return c ? `${c.bg}|${c.text}` : null;
+  }).filter(Boolean);
+  
+  // Si aucune couleur personnalisée, c'est uniforme
+  if (colors.length === 0) return true;
+  
+  // Si toutes les couleurs sont identiques
+  return colors.every(c => c === colors[0]);
+};
+
+/**
  * Résout la couleur d'un code avec fallback
- * @param {string} code - Code du service
- * @param {object} customColors - Couleurs personnalisées de l'utilisateur
- * @returns {object} - { bg, text }
  */
 export const resolveColorForCode = (code, customColors = {}) => {
   if (!code) return { bg: 'transparent', text: '#000000' };
   
   // 1. Chercher dans les couleurs personnalisées (élément spécifique)
   if (customColors.services?.[code]) {
-    return customColors.services[code];
+    const custom = customColors.services[code];
+    if (custom.bg && custom.bg !== 'transparent') {
+      return custom;
+    }
   }
   
-  // 2. Trouver la catégorie du code
+  // 2. Chercher la sous-catégorie parent (pour habilitation/formation)
+  const parentSubCat = findParentSubCategory(code);
+  if (parentSubCat && customColors.services?.[parentSubCat]) {
+    const parentColor = customColors.services[parentSubCat];
+    if (parentColor.bg && parentColor.bg !== 'transparent') {
+      return parentColor;
+    }
+  }
+  
+  // 3. Trouver la catégorie du code
   const category = findCategoryForCode(code);
   
   if (category) {
-    // 3. Chercher la couleur du groupe personnalisée
+    // 4. Chercher la couleur du groupe personnalisée
     if (customColors.groups?.[category.key]) {
       return customColors.groups[category.key];
     }
     
-    // 4. Utiliser la couleur par défaut de l'item ou du groupe
+    // 5. Utiliser la couleur par défaut de l'item ou du groupe
     const itemDefault = category.items[code]?.defaultColor;
     return itemDefault || category.defaultColor;
   }
   
-  // 5. Fallback final
+  // 6. Fallback final
   return { bg: 'transparent', text: '#000000' };
 };
 
