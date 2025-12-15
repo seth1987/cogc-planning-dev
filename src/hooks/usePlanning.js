@@ -7,7 +7,7 @@ import { MONTHS, CURRENT_YEAR } from '../constants/config';
  * Hook personnalisé pour la gestion du planning
  * Centralise le chargement, la mise à jour et la suppression des données de planning
  * 
- * @version 1.3.0 - Debug logs pour problème fin décembre
+ * @version 1.4.0 - Support complet texte libre (lecture/écriture)
  * @param {Object} user - L'utilisateur authentifié
  * @param {string} currentMonth - Le mois actuellement sélectionné
  * @param {number} currentYear - L'année actuellement sélectionnée
@@ -105,7 +105,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       console.log('🔍 DEBUG Résultats Supabase:');
       console.log('   → Nombre total d\'entrées:', planningFromDB?.length || 0);
       
-      // Organiser les données de planning AVEC les notes et postes supplémentaires
+      // Organiser les données de planning AVEC les notes, postes supplémentaires ET texte libre
       const planningData = {};
       agentsResult.forEach(agent => {
         const agentName = `${agent.nom} ${agent.prenom}`;
@@ -115,6 +115,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       // 🔍 DEBUG: Compteurs pour diagnostic
       let entriesProcessed = 0;
       let entriesIgnored = 0;
+      let texteLibreCount = 0;
       const daysLoaded = new Set();
       const lateDecemberEntries = []; // Jours 25-31
       
@@ -140,19 +141,28 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
               });
             }
             
-            // Construire l'objet de données de cellule avec note ET postes supplémentaires
+            // 🔍 DEBUG: Log si texte libre présent
+            if (entry.texte_libre) {
+              texteLibreCount++;
+              console.log(`📝 Texte libre trouvé: ${agentName} jour ${day} → "${entry.texte_libre}"`);
+            }
+            
+            // Construire l'objet de données de cellule avec note, postes supplémentaires ET texte libre
             const cellData = {
               service: entry.service_code,
               ...(entry.poste_code && { poste: entry.poste_code }),
               ...(entry.commentaire && { note: entry.commentaire }),
               ...(entry.postes_supplementaires && entry.postes_supplementaires.length > 0 && { 
                 postesSupplementaires: entry.postes_supplementaires 
-              })
+              }),
+              // ✅ FIX v1.4.0: Inclure texte_libre depuis la DB
+              ...(entry.texte_libre && { texteLibre: entry.texte_libre })
             };
             
             // Si pas de données supplémentaires, garder le format simple
             if (!entry.poste_code && !entry.commentaire && 
-                (!entry.postes_supplementaires || entry.postes_supplementaires.length === 0)) {
+                (!entry.postes_supplementaires || entry.postes_supplementaires.length === 0) &&
+                !entry.texte_libre) {
               planningData[agentName][day] = entry.service_code;
             } else {
               planningData[agentName][day] = cellData;
@@ -168,6 +178,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       console.log('🔍 DEBUG Résumé chargement:');
       console.log('   → Entrées traitées:', entriesProcessed);
       console.log('   → Entrées ignorées (agent non trouvé):', entriesIgnored);
+      console.log('   → Entrées avec texte libre:', texteLibreCount);
       console.log('   → Jours uniques chargés:', [...daysLoaded].sort((a,b) => a-b).join(', '));
       console.log('   → Nombre de jours:', daysLoaded.size);
       
@@ -208,9 +219,10 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
 
   /**
    * Récupère les données d'une cellule spécifique
+   * @version 1.4.0 - Support texteLibre
    * @param {string} agentName - Nom complet de l'agent
    * @param {number} day - Jour du mois
-   * @returns {Object|null} Données de la cellule {service, poste, note, postesSupplementaires} ou null
+   * @returns {Object|null} Données de la cellule {service, poste, note, postesSupplementaires, texteLibre} ou null
    */
   const getCellData = useCallback((agentName, day) => {
     const cellValue = planning[agentName]?.[day];
@@ -218,22 +230,25 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
     if (!cellValue) return null;
     
     if (typeof cellValue === 'string') {
-      return { service: cellValue, poste: null, note: null, postesSupplementaires: null };
+      return { service: cellValue, poste: null, note: null, postesSupplementaires: null, texteLibre: null };
     }
     
     return {
       service: cellValue.service || null,
       poste: cellValue.poste || null,
       note: cellValue.note || null,
-      postesSupplementaires: cellValue.postesSupplementaires || null
+      postesSupplementaires: cellValue.postesSupplementaires || null,
+      // ✅ FIX v1.4.0: Inclure texteLibre
+      texteLibre: cellValue.texteLibre || null
     };
   }, [planning]);
 
   /**
-   * Met à jour une cellule du planning avec support des notes et postes supplémentaires
+   * Met à jour une cellule du planning avec support des notes, postes supplémentaires et texte libre
+   * @version 1.4.0 - Support texteLibre
    * @param {string} agentName - Nom complet de l'agent
    * @param {number} day - Jour du mois
-   * @param {string|Object} value - Valeur: string (service simple), object {service, poste?, note?, postesSupplementaires?}, ou '' pour supprimer
+   * @param {string|Object} value - Valeur: string (service simple), object {service, poste?, note?, postesSupplementaires?, texteLibre?}, ou '' pour supprimer
    */
   const updateCell = useCallback(async (agentName, day, value) => {
     try {
@@ -247,6 +262,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       
       // 🔍 DEBUG: Log de la mise à jour
       console.log(`🔍 DEBUG updateCell: ${agentName} jour ${day} → date calculée: ${date}`);
+      console.log(`🔍 DEBUG updateCell value:`, value);
       
       if (value === '') {
         // Suppression de l'entrée
@@ -259,9 +275,13 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
         const postesSupplementaires = typeof value === 'object' 
           ? (value.postesSupplementaires || null) 
           : null;
+        // ✅ FIX v1.4.0: Extraire texteLibre
+        const texteLibre = typeof value === 'object' ? (value.texteLibre || null) : null;
         
-        // Sauvegarde avec note ET postes supplémentaires
-        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires);
+        console.log(`📝 Sauvegarde avec texteLibre: "${texteLibre}"`);
+        
+        // Sauvegarde avec note, postes supplémentaires ET texteLibre
+        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires, texteLibre);
       }
       
       // Mise à jour optimiste du state local
