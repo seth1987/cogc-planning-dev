@@ -7,12 +7,16 @@ import useColors from '../../hooks/useColors';
  * ModalCouleurs - Panneau de personnalisation des couleurs
  * 
  * v1.1 - Support du prop context pour couleurs séparées (general/perso)
+ * v1.2 - Ajout logs debug pour tracer les changements
  * 
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {function} onClose - Callback de fermeture
  * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
  */
 const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
+  // DEBUG: Log à chaque render
+  console.log(`🎨 [ModalCouleurs] Render - context: ${context}, isOpen: ${isOpen}`);
+  
   // Utilise le hook avec le contexte passé en prop
   const {
     colors,
@@ -23,6 +27,9 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
     exportColors,
     importColors,
   } = useColors(context);
+  
+  // DEBUG: Log les couleurs actuelles
+  console.log(`🎨 [ModalCouleurs] Couleurs chargées:`, Object.keys(colors.services).length, 'services');
   
   const fileInputRef = useRef(null);
 
@@ -44,6 +51,12 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
     if (window.confirm('Réinitialiser toutes les couleurs aux valeurs par défaut ?')) {
       resetColors();
     }
+  };
+
+  // DEBUG: Wrapper pour updateServiceColor
+  const handleColorChange = (code, colorType, value) => {
+    console.log(`🎨 [ModalCouleurs] handleColorChange APPELÉ - code: ${code}, type: ${colorType}, value: ${value}`);
+    updateServiceColor(code, colorType, value);
   };
 
   const colorPickerStyle = {
@@ -173,7 +186,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                   <input
                     type="color"
                     value={colors.services[code]?.bg === 'transparent' ? '#1a1a2e' : colors.services[code]?.bg || '#1a1a2e'}
-                    onChange={(e) => updateServiceColor(code, 'bg', e.target.value)}
+                    onChange={(e) => handleColorChange(code, 'bg', e.target.value)}
                     style={colorPickerStyle}
                   />
                 </div>
@@ -181,7 +194,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                   <input
                     type="color"
                     value={colors.services[code]?.text || '#ffffff'}
-                    onChange={(e) => updateServiceColor(code, 'text', e.target.value)}
+                    onChange={(e) => handleColorChange(code, 'text', e.target.value)}
                     style={colorPickerStyle}
                   />
                 </div>
@@ -206,7 +219,10 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                 <input
                   type="color"
                   value={colors.postesSupp?.text || '#8b5cf6'}
-                  onChange={(e) => updatePostesSupp(e.target.value)}
+                  onChange={(e) => {
+                    console.log(`🎨 [ModalCouleurs] updatePostesSupp APPELÉ - value: ${e.target.value}`);
+                    updatePostesSupp(e.target.value);
+                  }}
                   style={colorPickerStyle}
                 />
               </div>
@@ -218,7 +234,10 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                 <input
                   type="color"
                   value={colors.texteLibre?.bg || '#fef3c7'}
-                  onChange={(e) => updateTexteLibre('bg', e.target.value)}
+                  onChange={(e) => {
+                    console.log(`🎨 [ModalCouleurs] updateTexteLibre bg APPELÉ - value: ${e.target.value}`);
+                    updateTexteLibre('bg', e.target.value);
+                  }}
                   style={colorPickerStyle}
                 />
               </div>
@@ -226,7 +245,10 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
                 <input
                   type="color"
                   value={colors.texteLibre?.text || '#92400e'}
-                  onChange={(e) => updateTexteLibre('text', e.target.value)}
+                  onChange={(e) => {
+                    console.log(`🎨 [ModalCouleurs] updateTexteLibre text APPELÉ - value: ${e.target.value}`);
+                    updateTexteLibre('text', e.target.value);
+                  }}
                   style={colorPickerStyle}
                 />
               </div>
