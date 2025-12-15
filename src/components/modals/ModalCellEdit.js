@@ -58,18 +58,17 @@ const MODAL_COLORS = {
   'AH': 'bg-yellow-100 text-yellow-800',
   'DD': 'bg-yellow-100 text-yellow-800',
   // PCD (cyan/turquoise)
-  'CCC': 'bg-cyan-200 text-cyan-800',
-  'BO': 'bg-cyan-200 text-cyan-800',
+  'CCCBO': 'bg-cyan-200 text-cyan-800',
   'CBVD': 'bg-cyan-200 text-cyan-800',
 };
 
-// Codes PCD pour le sous-menu
-const PCD_POSTE_CODES = ['CCC', 'BO', 'CBVD'];
+// Codes PCD pour le sous-menu (2 options)
+const PCD_POSTE_CODES = ['CCCBO', 'CBVD'];
 
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 4.4.0 - PCD dans Poste (Réserve) avec sous-menu dropdown
+ * @version 4.4.1 - PCD avec codes CCCBO et CBVD
  */
 const ModalCellEdit = ({ 
   selectedCell, 
