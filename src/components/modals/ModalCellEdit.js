@@ -54,22 +54,13 @@ const MODAL_COLORS = {
   'DD': 'bg-yellow-100 text-yellow-800',
 };
 
-// Codes de repos séparés des horaires
-const REPOS_CODES = [
-  { code: 'RP', desc: 'Repos' },
-  { code: 'NU', desc: 'Non utilisé' }
-];
-
-// Horaires sans RP et NU
-const HORAIRES_CODES = SERVICE_CODES.filter(s => !['RP', 'NU'].includes(s.code));
-
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 4.0.0 - Accordéons + Barre de recherche
- *   - Toujours ouvert: Horaires (Roulement), Postes (Réserves), Absences, Texte libre
- *   - Fermé par défaut: Repos/NU, Service de jour, Habilitation, Jours RH
- *   - Barre de recherche pour filtrer tous les codes
+ * @version 4.1.0 - Fix recherche + Horaires simplifié
+ *   - Horaires toujours visible (même pendant recherche) pour permettre combinaisons
+ *   - RP et NU dans Horaires (pas de catégorie séparée)
+ *   - Barre de recherche pour filtrer les autres catégories
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -116,7 +107,6 @@ const ModalCellEdit = ({
   // === NOUVEAUX ÉTATS POUR ACCORDÉONS ET RECHERCHE ===
   const [searchTerm, setSearchTerm] = useState('');
   const [openSections, setOpenSections] = useState({
-    repos: false,
     serviceJour: false,
     habilitation: false,
     joursRH: false
@@ -751,35 +741,27 @@ const ModalCellEdit = ({
             </div>
           </div>
 
-          {/* === SECTION HORAIRES (TOUJOURS OUVERT) === */}
-          {hasSearchResults(HORAIRES_CODES) && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Horaires (Roulement)
-                <span className="text-xs text-gray-400 ml-2 font-normal">Agents en roulement</span>
-              </label>
-              <div className="grid grid-cols-4 gap-2">
-                {filterBySearch(HORAIRES_CODES).map(({ code, desc }) => (
-                  <button
-                    key={code}
-                    onClick={() => selectHoraire(code)}
-                    className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempService === code)}`}
-                  >
-                    <div className="font-semibold">{code}</div>
-                    <div className="text-[10px] mt-0.5 leading-tight">{desc}</div>
-                  </button>
-                ))}
-              </div>
+          {/* === SECTION HORAIRES (TOUJOURS VISIBLE - jamais filtrée) === */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Horaires</label>
+            <div className="grid grid-cols-6 gap-2">
+              {SERVICE_CODES.map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectHoraire(code)}
+                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempService === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-[10px] mt-0.5 leading-tight">{desc}</div>
+                </button>
+              ))}
             </div>
-          )}
+          </div>
 
-          {/* === SECTION POSTE RÉSERVE (TOUJOURS OUVERT SI APPLICABLE) === */}
+          {/* === SECTION POSTE RÉSERVE (TOUJOURS VISIBLE SI APPLICABLE) === */}
           {hasPosteSelector && (
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {getPosteLabel()}
-                <span className="text-xs text-gray-400 ml-2 font-normal">Agents de réserve</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{getPosteLabel()}</label>
               <div className="grid grid-cols-4 gap-2">
                 {availablePostes.map(poste => (
                   <button
@@ -798,26 +780,24 @@ const ModalCellEdit = ({
             </div>
           )}
 
-          {/* === SECTION ABSENCES (TOUJOURS OUVERT) === */}
-          {hasSearchResults(ABSENCES_CODES) && (
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Absences <span className="text-xs text-gray-500">(combinable avec horaire ou seul)</span>
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {filterBySearch(ABSENCES_CODES).map(({ code, desc }) => (
-                  <button
-                    key={code}
-                    onClick={() => selectCategorie(code)}
-                    className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempCategorie === code)}`}
-                  >
-                    <div className="font-semibold">{code}</div>
-                    <div className="text-xs mt-0.5">{desc}</div>
-                  </button>
-                ))}
-              </div>
+          {/* === SECTION ABSENCES (TOUJOURS VISIBLE - jamais filtrée) === */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Absences <span className="text-xs text-gray-500">(combinable avec horaire)</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {ABSENCES_CODES.map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectCategorie(code)}
+                  className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempCategorie === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-xs mt-0.5">{desc}</div>
+                </button>
+              ))}
             </div>
-          )}
+          </div>
 
           {/* === BOUTON TEXTE LIBRE (TOUJOURS VISIBLE) === */}
           <div className="mb-4">
@@ -839,22 +819,8 @@ const ModalCellEdit = ({
             </button>
           </div>
 
-          {/* === SECTIONS ACCORDÉON (FERMÉES PAR DÉFAUT) === */}
+          {/* === SECTIONS ACCORDÉON (FERMÉES PAR DÉFAUT, FILTRABLES) === */}
           
-          {/* Repos / NU */}
-          {hasSearchResults(REPOS_CODES) && (
-            <AccordionSection 
-              id="repos" 
-              title="Repos / Non utilisé" 
-              colorClass="bg-green-200"
-              isOpen={openSections.repos || searchTerm.trim() !== ''}
-              onToggle={toggleSection}
-              badge="RP, NU"
-            >
-              {renderCodeButtons(REPOS_CODES, selectHoraire, (code) => tempService === code, 2)}
-            </AccordionSection>
-          )}
-
           {/* Service de jour */}
           {hasSearchResults(SERVICE_JOUR_CODES) && (
             <AccordionSection 
