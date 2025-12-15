@@ -7,12 +7,13 @@ import { supabase } from '../../lib/supabaseClient';
  * Affiche les statistiques de l'agent :
  * - Compteurs par type de vacation : - (Matin), O (Soir), X (Nuit)
  * - Compteurs RP, MA
- * - Compteurs statut congé : C (accordé), C? (en attente), CNA (refusé)
+ * - Compteurs congés définitifs : C (accordé), CNA (refusé)
+ *   Note: C? (en attente) n'est PAS compté car statut transitoire
  * - Pourcentages mensuels et annuels
  * - Compteurs des positions supplémentaires (+CCU, +RO, +RC, etc.) - MENSUEL et ANNUEL
  * 
  * v1.2 - Ajout décompte mensuel/annuel des postes supplémentaires
- * v1.3 - Support statut_conge (C, C?, CNA) séparé du service_code
+ * v1.3 - Support statut_conge (C, CNA) - C? non compté car transitoire
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -22,7 +23,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     byMonth: {},
     annual: {},
     supplements: {},
-    conges: {}  // v1.3: Statistiques congé séparées
+    conges: {}  // v1.3: Statistiques congé (C et CNA uniquement)
   });
 
   const months = [
@@ -47,10 +48,9 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     { key: 'ma', label: 'MA', color: '#f44336' }
   ];
 
-  // v1.3: Couleurs pour les statuts congé
+  // v1.3: Couleurs pour les statuts congé définitifs (C? exclu car transitoire)
   const congeColors = {
     'C': { bg: '#facc15', text: '#713f12', label: 'Accordé' },
-    'C?': { bg: '#fef08a', text: '#854d0e', label: 'En attente' },
     'CNA': { bg: '#fca5a5', text: '#991b1b', label: 'Refusé' }
   };
 
@@ -82,7 +82,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     }
   }, [currentUser]);
 
-  // Calculer les statistiques - v1.3: Support statut_conge
+  // Calculer les statistiques - v1.3: Support statut_conge (C et CNA uniquement)
   const loadStats = useCallback(async () => {
     if (!agentInfo?.id) return;
 
@@ -109,10 +109,10 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
       };
       const supplements = {};
       
-      // v1.3: Compteurs pour les statuts congé
+      // v1.3: Compteurs pour les statuts congé DÉFINITIFS uniquement (C et CNA)
+      // C? n'est pas compté car c'est un statut transitoire
       const conges = {
         'C': { count: 0, byMonth: {} },
-        'C?': { count: 0, byMonth: {} },
         'CNA': { count: 0, byMonth: {} }
       };
 
@@ -125,7 +125,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
         };
         // Initialiser les congés par mois
         conges['C'].byMonth[i] = 0;
-        conges['C?'].byMonth[i] = 0;
         conges['CNA'].byMonth[i] = 0;
       }
 
@@ -146,8 +145,9 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
         const code = (entry.service_code || '').toUpperCase().trim();
         const statutConge = (entry.statut_conge || '').toUpperCase().trim();
 
-        // v1.3: Compter les statuts congé (nouveau champ)
-        if (statutConge && conges[statutConge]) {
+        // v1.3: Compter les statuts congé DÉFINITIFS uniquement (C et CNA)
+        // C? est ignoré car c'est un statut transitoire qui sera converti en C ou CNA
+        if (statutConge === 'C' || statutConge === 'CNA') {
           conges[statutConge].count++;
           conges[statutConge].byMonth[month]++;
         }
@@ -180,10 +180,9 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
           byMonth[month].rp++;
           annual.rp++;
         }
-        // v1.3: Les congés sont maintenant dans statut_conge, pas service_code
-        // On garde compatibilité avec ancien système si C ou CP dans service_code
+        // v1.3: Compatibilité avec ancien système (C ou CP dans service_code)
+        // Compte comme congé accordé si pas de statut_conge défini
         else if (code === 'C' || code === 'CP') {
-          // Compter comme congé accordé si pas de statut_conge défini
           if (!statutConge) {
             conges['C'].count++;
             conges['C'].byMonth[month]++;
@@ -263,18 +262,16 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
       .sort((a, b) => b[1].count - a[1].count);
   };
 
-  // v1.3: Calculer le total des congés
+  // v1.3: Calculer le total des congés définitifs (C + CNA)
   const getTotalConges = () => {
     if (!stats.conges) return 0;
-    return Object.values(stats.conges).reduce((sum, c) => sum + c.count, 0);
+    return (stats.conges['C']?.count || 0) + (stats.conges['CNA']?.count || 0);
   };
 
   // v1.3: Obtenir le total congé mensuel
   const getMonthCongeTotal = (monthIdx) => {
     if (!stats.conges) return 0;
-    return Object.values(stats.conges).reduce((sum, c) => {
-      return sum + (c.byMonth[monthIdx] || 0);
-    }, 0);
+    return (stats.conges['C']?.byMonth[monthIdx] || 0) + (stats.conges['CNA']?.byMonth[monthIdx] || 0);
   };
 
   // v1.3: Obtenir les statuts congé actifs
@@ -378,9 +375,12 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               </div>
             </div>
 
-            {/* v1.3: Section Congés (C, C?, CNA) */}
+            {/* v1.3: Section Congés (C accordé, CNA refusé) - C? exclu car transitoire */}
             <div style={styles.section}>
               <h3 style={styles.sectionTitle}>🏖️ Congés {selectedYear}</h3>
+              <p style={styles.infoNote}>
+                💡 Les demandes en attente (C?) ne sont pas comptées car elles seront converties en C ou CNA.
+              </p>
               <div style={styles.congesGrid}>
                 {/* C - Accordé */}
                 <div style={{
@@ -398,25 +398,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                   <div style={{...styles.statLabel, color: congeColors['C'].text}}>C</div>
                   <div style={{...styles.statMarkerConge, color: congeColors['C'].text}}>
                     {congeColors['C'].label}
-                  </div>
-                </div>
-                
-                {/* C? - En attente */}
-                <div style={{
-                  ...styles.statCardConge,
-                  backgroundColor: `${congeColors['C?'].bg}30`,
-                  borderColor: congeColors['C?'].bg
-                }}>
-                  <div style={{
-                    ...styles.statIconConge, 
-                    backgroundColor: congeColors['C?'].bg,
-                    color: congeColors['C?'].text
-                  }}>
-                    {stats.conges?.['C?']?.count || 0}
-                  </div>
-                  <div style={{...styles.statLabel, color: congeColors['C?'].text}}>C?</div>
-                  <div style={{...styles.statMarkerConge, color: congeColors['C?'].text}}>
-                    {congeColors['C?'].label}
                   </div>
                 </div>
                 
@@ -442,7 +423,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               
               {totalConges > 0 && (
                 <div style={{...styles.totalBox, backgroundColor: 'rgba(250, 204, 21, 0.15)'}}>
-                  <strong>Total demandes congés :</strong> {totalConges}
+                  <strong>Total congés (définitifs) :</strong> {totalConges}
                 </div>
               )}
             </div>
@@ -471,7 +452,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
 
             {/* Tableau mensuel vacations */}
             <div style={styles.section}>
-              <h3 style={styles.sectionTitle}>📆 Détail Vacations par Mois</h3>
+              <h3 style={styles.sectionTitle}>📆 Détail par Mois</h3>
               <div style={styles.tableContainer}>
                 <table style={styles.table}>
                   <thead>
@@ -482,7 +463,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                       <th style={{...styles.th, color: '#3F51B5'}}>X</th>
                       <th style={{...styles.th, color: '#4CAF50'}}>RP</th>
                       <th style={{...styles.th, color: '#facc15'}}>C</th>
-                      <th style={{...styles.th, color: '#fef08a'}}>C?</th>
                       <th style={{...styles.th, color: '#fca5a5'}}>CNA</th>
                       <th style={{...styles.th, color: '#f44336'}}>MA</th>
                       <th style={styles.th}>Total</th>
@@ -505,9 +485,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                         <td style={{...styles.td, color: '#facc15', fontWeight: stats.conges?.['C']?.byMonth[idx] > 0 ? 'bold' : 'normal'}}>
                           {stats.conges?.['C']?.byMonth[idx] || 0}
                         </td>
-                        <td style={{...styles.td, color: '#fef08a', fontWeight: stats.conges?.['C?']?.byMonth[idx] > 0 ? 'bold' : 'normal'}}>
-                          {stats.conges?.['C?']?.byMonth[idx] || 0}
-                        </td>
                         <td style={{...styles.td, color: '#fca5a5', fontWeight: stats.conges?.['CNA']?.byMonth[idx] > 0 ? 'bold' : 'normal'}}>
                           {stats.conges?.['CNA']?.byMonth[idx] || 0}
                         </td>
@@ -525,7 +502,6 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
                       <td style={{...styles.td, color: '#3F51B5', fontWeight: 'bold'}}>{stats.annual.nuit}</td>
                       <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.rp}</td>
                       <td style={{...styles.td, color: '#facc15', fontWeight: 'bold'}}>{stats.conges?.['C']?.count || 0}</td>
-                      <td style={{...styles.td, color: '#fef08a', fontWeight: 'bold'}}>{stats.conges?.['C?']?.count || 0}</td>
                       <td style={{...styles.td, color: '#fca5a5', fontWeight: 'bold'}}>{stats.conges?.['CNA']?.count || 0}</td>
                       <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.ma}</td>
                       <td style={{...styles.td, fontWeight: 'bold'}}>{stats.annual.total}</td>
@@ -665,7 +641,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               </div>
             </div>
 
-            {/* v1.3: Graphique visuel Congés */}
+            {/* v1.3: Graphique visuel Congés (si données) */}
             {totalConges > 0 && (
               <div style={styles.section}>
                 <h3 style={styles.sectionTitle}>📈 Répartition Congés</h3>
@@ -795,10 +771,21 @@ const styles = {
     color: '#00f0ff', fontSize: '16px', marginBottom: '15px',
     paddingBottom: '10px', borderBottom: '1px solid rgba(0, 240, 255, 0.2)'
   },
+  // v1.3: Note info
+  infoNote: {
+    fontSize: '12px',
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontStyle: 'italic',
+    marginBottom: '15px',
+    padding: '8px 12px',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: '6px',
+    borderLeft: '3px solid #fef08a'
+  },
   vacationsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' },
   absencesGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' },
-  // v1.3: Grille pour les congés
-  congesGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' },
+  // v1.3: Grille pour les congés (2 colonnes car C? exclu)
+  congesGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px' },
   statCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px',
     padding: '20px 15px', textAlign: 'center'
