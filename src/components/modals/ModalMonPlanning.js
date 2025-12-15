@@ -15,6 +15,9 @@ import ModalCouleurs from './ModalCouleurs';
  * v1.4 - FIX: Calcul correct des jours de la semaine (année dynamique)
  * v1.5 - FIX: Responsive mobile + utilisation CODE_COLORS
  * v1.6 - NEW: Bouton palette + ModalCouleurs (même système que planning général)
+ * v1.7 - FIX: Synchronisation couleurs - reloadColors() à la fermeture du panneau
+ * v1.8 - Couleurs séparées du planning général (contexte 'perso')
+ * v1.9 - FIX: ModalCouleurs sorti de l'overlay pour éviter fermeture au color picker
  */
 const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear }) => {
   // FIX v1.4: Utiliser initialYear si fourni, sinon année système
@@ -30,8 +33,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
   
-  // v1.6: Hook pour les couleurs personnalisées
-  const { colors, getServiceColor } = useColors();
+  // v1.8: Hook pour les couleurs personnalisées avec contexte 'perso' (séparé du général)
+  const { colors, getServiceColor, reloadColors } = useColors('perso');
   const [showColorModal, setShowColorModal] = useState(false);
   
   // Tracker si des modifications ont été faites
@@ -215,6 +218,14 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     onClose();
   };
 
+  // v1.7: Fermer le modal couleurs ET recharger les couleurs
+  const handleCloseColorModal = () => {
+    setShowColorModal(false);
+    // Recharger les couleurs depuis localStorage pour synchroniser
+    reloadColors();
+    console.log('🎨 Couleurs perso rechargées après fermeture du panneau');
+  };
+
   // Sauvegarder modification
   const saveEdit = async () => {
     if (!selectedDay || !agentInfo) return;
@@ -324,229 +335,234 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const calendarDays = generateCalendarDays();
   const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
+  // v1.9: Utilisation de Fragment pour sortir ModalCouleurs de l'overlay
   return (
-    <div style={styles.overlay} onClick={handleClose}>
-      <div style={styles.modal} onClick={e => e.stopPropagation()}>
-        {/* Header avec bouton palette */}
-        <div style={styles.header}>
-          <h2 style={styles.title}>📆 Mon Planning</h2>
-          <div style={styles.headerActions}>
-            <button 
-              style={styles.paletteBtn} 
-              onClick={() => setShowColorModal(true)}
-              title="Personnaliser les couleurs"
-            >
-              <Palette size={18} />
-            </button>
-            <button style={styles.closeBtn} onClick={handleClose}>✕</button>
-          </div>
-        </div>
-
-        {/* Info agent */}
-        {agentInfo && (
-          <div style={styles.agentInfo}>
-            <span style={styles.agentName}>{agentInfo.nom} {agentInfo.prenom}</span>
-            <span style={styles.agentGroup}>{agentInfo.groupe?.split(' - ')[0]}</span>
-          </div>
-        )}
-
-        {/* Navigation mois */}
-        <div style={styles.monthNav}>
-          <button style={styles.navBtn} onClick={prevMonth}>◀</button>
-          <span style={styles.monthTitle}>{months[currentMonth]} {currentYear}</span>
-          <button style={styles.navBtn} onClick={nextMonth}>▶</button>
-        </div>
-
-        {/* Calendrier */}
-        <div style={styles.calendar}>
-          <div style={styles.weekHeader}>
-            {weekDays.map((day, idx) => (
-              <div key={idx} style={{
-                ...styles.weekDay,
-                color: idx >= 5 ? '#f87171' : 'rgba(255, 255, 255, 0.6)'
-              }}>{day}</div>
-            ))}
+    <>
+      {/* Overlay principal de Mon Planning */}
+      <div style={styles.overlay} onClick={handleClose}>
+        <div style={styles.modal} onClick={e => e.stopPropagation()}>
+          {/* Header avec bouton palette */}
+          <div style={styles.header}>
+            <h2 style={styles.title}>📆 Mon Planning</h2>
+            <div style={styles.headerActions}>
+              <button 
+                style={styles.paletteBtn} 
+                onClick={() => setShowColorModal(true)}
+                title="Personnaliser les couleurs (Mon Planning)"
+              >
+                <Palette size={18} />
+              </button>
+              <button style={styles.closeBtn} onClick={handleClose}>✕</button>
+            </div>
           </div>
 
-          {loading ? (
-            <div style={styles.loading}>Chargement...</div>
-          ) : (
-            <div style={styles.daysGrid}>
-              {calendarDays.map((dayInfo, idx) => {
-                const isWeekend = idx % 7 >= 5;
-                return (
-                  <div
-                    key={idx}
-                    style={{
-                      ...styles.dayCell,
-                      ...(dayInfo.currentMonth ? styles.currentMonthDay : styles.otherMonthDay),
-                      ...(selectedDay?.date === dayInfo.date ? styles.selectedDay : {}),
-                      ...(isWeekend && dayInfo.currentMonth ? styles.weekendDay : {}),
-                      backgroundColor: dayInfo.currentMonth ? getCellBackgroundColor(dayInfo.planning) : 'transparent',
-                      color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
-                    }}
-                    onClick={() => handleDayClick(dayInfo)}
-                  >
-                    <span style={{
-                      ...styles.dayNumber, 
-                      color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
-                    }}>{dayInfo.day}</span>
-                    {dayInfo.planning?.service_code && (
-                      <span style={{
-                        ...styles.serviceCode, 
-                        color: getCellTextColor(dayInfo.planning)
-                      }}>{dayInfo.planning.service_code}</span>
-                    )}
-                    {dayInfo.planning?.poste_code && (
-                      <span style={{
-                        ...styles.posteCode, 
-                        color: getCellTextColor(dayInfo.planning), 
-                        opacity: 0.75
-                      }}>{dayInfo.planning.poste_code}</span>
-                    )}
-                    {dayInfo.planning?.postes_supplementaires?.length > 0 && (
-                      <span style={{
-                        ...styles.supplement,
-                        color: colors.postesSupp?.text || '#a855f7'
-                      }}>
-                        {dayInfo.planning.postes_supplementaires.map(p => p.replace('+', '')).join(' ')}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+          {/* Info agent */}
+          {agentInfo && (
+            <div style={styles.agentInfo}>
+              <span style={styles.agentName}>{agentInfo.nom} {agentInfo.prenom}</span>
+              <span style={styles.agentGroup}>{agentInfo.groupe?.split(' - ')[0]}</span>
             </div>
           )}
-        </div>
 
-        {/* Légende compacte */}
-        <div style={styles.legend}>
-          <span style={{...styles.legendItem, backgroundColor: getServiceColor('-').bg || 'rgba(255,255,255,0.1)', color: getServiceColor('-').text || 'white', border: '1px solid rgba(255,255,255,0.2)'}}>- O X</span>
-          <span style={{...styles.legendItem, backgroundColor: getServiceColor('RP').bg, color: getServiceColor('RP').text}}>RP</span>
-          <span style={{...styles.legendItem, backgroundColor: getServiceColor('C').bg, color: getServiceColor('C').text}}>C</span>
-          <span style={{...styles.legendItem, backgroundColor: getServiceColor('MA').bg, color: getServiceColor('MA').text}}>MA</span>
-          <span style={{...styles.legendItem, backgroundColor: getServiceColor('D').bg, color: getServiceColor('D').text}}>D</span>
-          <span style={{...styles.legendItem, backgroundColor: getServiceColor('FO').bg, color: getServiceColor('FO').text}}>FO</span>
-        </div>
-      </div>
+          {/* Navigation mois */}
+          <div style={styles.monthNav}>
+            <button style={styles.navBtn} onClick={prevMonth}>◀</button>
+            <span style={styles.monthTitle}>{months[currentMonth]} {currentYear}</span>
+            <button style={styles.navBtn} onClick={nextMonth}>▶</button>
+          </div>
 
-      {/* Modal Couleurs */}
-      <ModalCouleurs 
-        isOpen={showColorModal} 
-        onClose={() => setShowColorModal(false)} 
-      />
-
-      {/* Modal d'édition (comme ModalCellEdit) */}
-      {editMode && selectedDay && (
-        <div style={styles.editOverlay} onClick={closeEditor}>
-          <div style={styles.editModal} onClick={e => e.stopPropagation()}>
-            <div style={styles.editHeader}>
-              <div>
-                <h3 style={styles.editTitle}>
-                  {selectedDay.day} {months[currentMonth]} {currentYear}
-                </h3>
-                <p style={styles.editSubtitle}>{agentInfo?.nom} {agentInfo?.prenom}</p>
-              </div>
-              <button style={styles.editCloseBtn} onClick={closeEditor}>✕</button>
+          {/* Calendrier */}
+          <div style={styles.calendar}>
+            <div style={styles.weekHeader}>
+              {weekDays.map((day, idx) => (
+                <div key={idx} style={{
+                  ...styles.weekDay,
+                  color: idx >= 5 ? '#f87171' : 'rgba(255, 255, 255, 0.6)'
+                }}>{day}</div>
+              ))}
             </div>
 
-            {/* Section Service */}
-            <div style={styles.section}>
-              <label style={styles.sectionLabel}>Service / Horaire</label>
-              <div style={styles.serviceGrid}>
-                {SERVICE_CODES.filter(s => s.code !== '__LIBRE__').map(({ code, desc }) => (
-                  <button
-                    key={code}
-                    onClick={() => setTempService(code)}
-                    style={{
-                      ...styles.serviceBtn,
-                      ...(tempService === code ? styles.serviceBtnSelected : {})
-                    }}
-                  >
-                    <span style={styles.serviceBtnCode}>{code}</span>
-                    <span style={styles.serviceBtnDesc}>{desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Section Poste (si applicable) */}
-            {hasPosteSelector() && (
-              <div style={styles.section}>
-                <label style={styles.sectionLabel}>Poste</label>
-                <div style={styles.posteGrid}>
-                  {getAvailablePostes().map(poste => (
-                    <button
-                      key={poste}
-                      onClick={() => setTempPoste(tempPoste === poste ? '' : poste)}
+            {loading ? (
+              <div style={styles.loading}>Chargement...</div>
+            ) : (
+              <div style={styles.daysGrid}>
+                {calendarDays.map((dayInfo, idx) => {
+                  const isWeekend = idx % 7 >= 5;
+                  return (
+                    <div
+                      key={idx}
                       style={{
-                        ...styles.posteBtn,
-                        ...(tempPoste === poste ? styles.posteBtnSelected : {})
+                        ...styles.dayCell,
+                        ...(dayInfo.currentMonth ? styles.currentMonthDay : styles.otherMonthDay),
+                        ...(selectedDay?.date === dayInfo.date ? styles.selectedDay : {}),
+                        ...(isWeekend && dayInfo.currentMonth ? styles.weekendDay : {}),
+                        backgroundColor: dayInfo.currentMonth ? getCellBackgroundColor(dayInfo.planning) : 'transparent',
+                        color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
+                      }}
+                      onClick={() => handleDayClick(dayInfo)}
+                    >
+                      <span style={{
+                        ...styles.dayNumber, 
+                        color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
+                      }}>{dayInfo.day}</span>
+                      {dayInfo.planning?.service_code && (
+                        <span style={{
+                          ...styles.serviceCode, 
+                          color: getCellTextColor(dayInfo.planning)
+                        }}>{dayInfo.planning.service_code}</span>
+                      )}
+                      {dayInfo.planning?.poste_code && (
+                        <span style={{
+                          ...styles.posteCode, 
+                          color: getCellTextColor(dayInfo.planning), 
+                          opacity: 0.75
+                        }}>{dayInfo.planning.poste_code}</span>
+                      )}
+                      {dayInfo.planning?.postes_supplementaires?.length > 0 && (
+                        <span style={{
+                          ...styles.supplement,
+                          color: colors.postesSupp?.text || '#a855f7'
+                        }}>
+                          {dayInfo.planning.postes_supplementaires.map(p => p.replace('+', '')).join(' ')}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Légende compacte */}
+          <div style={styles.legend}>
+            <span style={{...styles.legendItem, backgroundColor: getServiceColor('-').bg || 'rgba(255,255,255,0.1)', color: getServiceColor('-').text || 'white', border: '1px solid rgba(255,255,255,0.2)'}}>- O X</span>
+            <span style={{...styles.legendItem, backgroundColor: getServiceColor('RP').bg, color: getServiceColor('RP').text}}>RP</span>
+            <span style={{...styles.legendItem, backgroundColor: getServiceColor('C').bg, color: getServiceColor('C').text}}>C</span>
+            <span style={{...styles.legendItem, backgroundColor: getServiceColor('MA').bg, color: getServiceColor('MA').text}}>MA</span>
+            <span style={{...styles.legendItem, backgroundColor: getServiceColor('D').bg, color: getServiceColor('D').text}}>D</span>
+            <span style={{...styles.legendItem, backgroundColor: getServiceColor('FO').bg, color: getServiceColor('FO').text}}>FO</span>
+          </div>
+        </div>
+
+        {/* Modal d'édition (comme ModalCellEdit) - reste dans l'overlay */}
+        {editMode && selectedDay && (
+          <div style={styles.editOverlay} onClick={closeEditor}>
+            <div style={styles.editModal} onClick={e => e.stopPropagation()}>
+              <div style={styles.editHeader}>
+                <div>
+                  <h3 style={styles.editTitle}>
+                    {selectedDay.day} {months[currentMonth]} {currentYear}
+                  </h3>
+                  <p style={styles.editSubtitle}>{agentInfo?.nom} {agentInfo?.prenom}</p>
+                </div>
+                <button style={styles.editCloseBtn} onClick={closeEditor}>✕</button>
+              </div>
+
+              {/* Section Service */}
+              <div style={styles.section}>
+                <label style={styles.sectionLabel}>Service / Horaire</label>
+                <div style={styles.serviceGrid}>
+                  {SERVICE_CODES.filter(s => s.code !== '__LIBRE__').map(({ code, desc }) => (
+                    <button
+                      key={code}
+                      onClick={() => setTempService(code)}
+                      style={{
+                        ...styles.serviceBtn,
+                        ...(tempService === code ? styles.serviceBtnSelected : {})
                       }}
                     >
-                      {poste}
+                      <span style={styles.serviceBtnCode}>{code}</span>
+                      <span style={styles.serviceBtnDesc}>{desc}</span>
                     </button>
                   ))}
                 </div>
               </div>
-            )}
 
-            {/* Section Postes supplémentaires */}
-            <div style={styles.section}>
-              <label style={styles.sectionLabel}>
-                Postes supplémentaires <span style={styles.labelHint}>(multi)</span>
-              </label>
-              <div style={styles.suppGrid}>
-                {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => (
-                  <button
-                    key={code}
-                    onClick={() => togglePosteSupp(code)}
-                    style={{
-                      ...styles.suppBtn,
-                      ...(tempPostesSupplementaires.includes(code) ? styles.suppBtnSelected : {})
-                    }}
-                  >
-                    <span style={styles.suppCode}>{code}</span>
-                    {tempPostesSupplementaires.includes(code) && <span style={styles.checkMark}>✓</span>}
-                  </button>
-                ))}
-              </div>
-              {tempPostesSupplementaires.length > 0 && (
-                <div style={styles.selectedSupp}>
-                  Sélectionnés : <em>{tempPostesSupplementaires.join(', ')}</em>
+              {/* Section Poste (si applicable) */}
+              {hasPosteSelector() && (
+                <div style={styles.section}>
+                  <label style={styles.sectionLabel}>Poste</label>
+                  <div style={styles.posteGrid}>
+                    {getAvailablePostes().map(poste => (
+                      <button
+                        key={poste}
+                        onClick={() => setTempPoste(tempPoste === poste ? '' : poste)}
+                        style={{
+                          ...styles.posteBtn,
+                          ...(tempPoste === poste ? styles.posteBtnSelected : {})
+                        }}
+                      >
+                        {poste}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
-            </div>
 
-            {/* Section Note */}
-            <div style={styles.section}>
-              <label style={styles.sectionLabel}>Note</label>
-              <textarea
-                value={tempNote}
-                onChange={e => setTempNote(e.target.value)}
-                placeholder="Ajouter une note..."
-                style={styles.noteInput}
-              />
-            </div>
+              {/* Section Postes supplémentaires */}
+              <div style={styles.section}>
+                <label style={styles.sectionLabel}>
+                  Postes supplémentaires <span style={styles.labelHint}>(multi)</span>
+                </label>
+                <div style={styles.suppGrid}>
+                  {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => (
+                    <button
+                      key={code}
+                      onClick={() => togglePosteSupp(code)}
+                      style={{
+                        ...styles.suppBtn,
+                        ...(tempPostesSupplementaires.includes(code) ? styles.suppBtnSelected : {})
+                      }}
+                    >
+                      <span style={styles.suppCode}>{code}</span>
+                      {tempPostesSupplementaires.includes(code) && <span style={styles.checkMark}>✓</span>}
+                    </button>
+                  ))}
+                </div>
+                {tempPostesSupplementaires.length > 0 && (
+                  <div style={styles.selectedSupp}>
+                    Sélectionnés : <em>{tempPostesSupplementaires.join(', ')}</em>
+                  </div>
+                )}
+              </div>
 
-            {/* Boutons d'action */}
-            <div style={styles.editActions}>
-              <button style={styles.deleteBtn} onClick={deleteEntry}>Effacer</button>
-              <div style={styles.rightActions}>
-                <button style={styles.cancelBtn} onClick={closeEditor}>Annuler</button>
-                <button 
-                  style={{...styles.saveBtn, opacity: !tempService ? 0.5 : 1}}
-                  onClick={saveEdit}
-                  disabled={!tempService}
-                >
-                  Sauvegarder
-                </button>
+              {/* Section Note */}
+              <div style={styles.section}>
+                <label style={styles.sectionLabel}>Note</label>
+                <textarea
+                  value={tempNote}
+                  onChange={e => setTempNote(e.target.value)}
+                  placeholder="Ajouter une note..."
+                  style={styles.noteInput}
+                />
+              </div>
+
+              {/* Boutons d'action */}
+              <div style={styles.editActions}>
+                <button style={styles.deleteBtn} onClick={deleteEntry}>Effacer</button>
+                <div style={styles.rightActions}>
+                  <button style={styles.cancelBtn} onClick={closeEditor}>Annuler</button>
+                  <button 
+                    style={{...styles.saveBtn, opacity: !tempService ? 0.5 : 1}}
+                    onClick={saveEdit}
+                    disabled={!tempService}
+                  >
+                    Sauvegarder
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+
+      {/* v1.9: Modal Couleurs HORS de l'overlay pour éviter la fermeture au clic color picker */}
+      <ModalCouleurs 
+        isOpen={showColorModal} 
+        onClose={handleCloseColorModal}
+        context="perso"
+      />
+    </>
   );
 };
 
