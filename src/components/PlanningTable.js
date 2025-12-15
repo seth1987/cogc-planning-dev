@@ -18,6 +18,7 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * NEW v2.15: Personnalisation des couleurs via ModalCouleurs
  * FIX v2.16: Affichage correct du texte libre (service=LIBRE + texteLibre)
  * NEW v2.17: Synchronisation multi-appareils des couleurs via Supabase
+ * FIX v2.18: Debug log pour currentUser
  */
 
 // Composant barre de navigation rendu via portail - VERSION COMPACTE
@@ -99,6 +100,12 @@ const PlanningTable = ({
 }) => {
   const year = currentYear || new Date().getFullYear();
   const userEmail = currentUser?.email || null;
+  
+  // DEBUG: Log pour tracer currentUser et userEmail
+  useEffect(() => {
+    console.log('🎨 PlanningTable - currentUser:', currentUser);
+    console.log('🎨 PlanningTable - userEmail extrait:', userEmail);
+  }, [currentUser, userEmail]);
   
   // Hook pour les couleurs personnalisées (avec sync si userEmail présent)
   const { colors, getServiceColor, reloadColors } = useColors('general', userEmail);
