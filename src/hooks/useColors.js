@@ -4,34 +4,48 @@ import { DEFAULT_COLORS, COLORS_STORAGE_KEY } from '../constants/defaultColors';
 /**
  * Hook pour gérer les couleurs personnalisées du planning
  * Stockage dans localStorage avec fallback sur les valeurs par défaut
+ * 
+ * v1.1 - Ajout reloadColors() pour synchroniser entre composants
  */
 export const useColors = () => {
   const [colors, setColors] = useState(DEFAULT_COLORS);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Charger les couleurs depuis localStorage au montage
-  useEffect(() => {
+  // Fusionner les couleurs stockées avec les défauts
+  const mergeWithDefaults = useCallback((stored) => {
+    return {
+      services: { ...DEFAULT_COLORS.services, ...stored?.services },
+      postesSupp: { ...DEFAULT_COLORS.postesSupp, ...stored?.postesSupp },
+      texteLibre: { ...DEFAULT_COLORS.texteLibre, ...stored?.texteLibre },
+    };
+  }, []);
+
+  // Charger les couleurs depuis localStorage
+  const loadColorsFromStorage = useCallback(() => {
     try {
       const stored = localStorage.getItem(COLORS_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Fusionner avec les défauts pour gérer les nouvelles clés
-        setColors(mergeWithDefaults(parsed));
+        return mergeWithDefaults(parsed);
       }
     } catch (error) {
       console.error('Erreur chargement couleurs:', error);
     }
-    setIsLoaded(true);
-  }, []);
+    return DEFAULT_COLORS;
+  }, [mergeWithDefaults]);
 
-  // Fusionner les couleurs stockées avec les défauts
-  const mergeWithDefaults = (stored) => {
-    return {
-      services: { ...DEFAULT_COLORS.services, ...stored.services },
-      postesSupp: { ...DEFAULT_COLORS.postesSupp, ...stored.postesSupp },
-      texteLibre: { ...DEFAULT_COLORS.texteLibre, ...stored.texteLibre },
-    };
-  };
+  // Charger les couleurs depuis localStorage au montage
+  useEffect(() => {
+    setColors(loadColorsFromStorage());
+    setIsLoaded(true);
+  }, [loadColorsFromStorage]);
+
+  // Recharger les couleurs depuis localStorage (pour synchronisation entre composants)
+  const reloadColors = useCallback(() => {
+    const loaded = loadColorsFromStorage();
+    setColors(loaded);
+    return loaded;
+  }, [loadColorsFromStorage]);
 
   // Sauvegarder les couleurs
   const saveColors = useCallback((newColors) => {
@@ -132,7 +146,7 @@ export const useColors = () => {
       reader.onerror = () => reject(new Error('Erreur de lecture'));
       reader.readAsText(file);
     });
-  }, [saveColors]);
+  }, [saveColors, mergeWithDefaults]);
 
   // Obtenir la couleur d'un service (avec fallback)
   const getServiceColor = useCallback((serviceCode) => {
@@ -150,6 +164,7 @@ export const useColors = () => {
     exportColors,
     importColors,
     getServiceColor,
+    reloadColors, // v1.1: Nouvelle fonction pour synchronisation
   };
 };
 
