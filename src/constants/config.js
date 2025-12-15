@@ -43,7 +43,7 @@ export const CODE_COLORS = {
   'RP': 'bg-green-100 text-green-700',
   'RU': 'bg-green-100 text-green-700',
   
-  // === C,CP - CONGES : JAUNE/OR ===
+  // === STATUT CONGE : Stocké dans statut_conge, affiché séparément ===
   'C': 'bg-yellow-400 text-yellow-900 font-semibold',
   'C?': 'bg-yellow-200 text-yellow-800 font-semibold',    // Congé en attente
   'CNA': 'bg-red-300 text-red-900 font-semibold',         // Congé Non Accordé
@@ -208,12 +208,17 @@ export const ABSENCES_CODES = [
   { code: 'F', desc: 'Férié' }
 ];
 
-// Sous-groupe C,CP - Congés et dérivés
-export const CONGES_CODES = [
-  { code: 'C', desc: 'Congés' },
+// STATUT CONGE - Stocké dans colonne statut_conge, combinable avec service_code
+// C, C?, CNA peuvent être associés à un service et un poste
+export const STATUT_CONGE_CODES = [
+  { code: '', desc: 'Aucun' },
+  { code: 'C', desc: 'Congé accordé' },
   { code: 'C?', desc: 'Congé en attente' },
-  { code: 'CNA', desc: 'Congé Non Accordé' }
+  { code: 'CNA', desc: 'Congé refusé' }
 ];
+
+// Alias pour compatibilité descendante (ancien nom)
+export const CONGES_CODES = STATUT_CONGE_CODES;
 
 // Postes pour agents réserve (CENT et S/S supprimés)
 export const POSTES_CODES = ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'SOUF'];
