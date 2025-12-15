@@ -1,7 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Palette } from 'lucide-react';
+import { Palette, Search, X, ChevronDown, ChevronRight, Type, Check, Edit3, StickyNote, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
-import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, GROUPES_AVEC_POSTE, POSTES_PAR_GROUPE, STATUT_CONGE_CODES } from '../../constants/config';
+import { 
+  SERVICE_CODES, 
+  POSTES_CODES, 
+  POSTES_SUPPLEMENTAIRES, 
+  GROUPES_AVEC_POSTE, 
+  POSTES_PAR_GROUPE,
+  SERVICE_JOUR_CODES,
+  HABILITATION_CODES,
+  JOURS_RH_CODES,
+  ABSENCES_CODES,
+  STATUT_CONGE_CODES,
+  PCD_CODES
+} from '../../constants/config';
 import useColors from '../../hooks/useColors';
 import ModalCouleurs from './ModalCouleurs';
 
@@ -9,28 +21,69 @@ import ModalCouleurs from './ModalCouleurs';
  * ModalMonPlanning - Calendrier personnel de l'agent connecté
  * 
  * Affiche un calendrier mensuel avec les services de l'agent.
- * Permet de modifier ses propres services avec le même popup que le planning général.
+ * Permet de modifier ses propres services avec les MÊMES OPTIONS que le planning général.
  * 
- * v1.3 - Harmonisation couleurs avec Planning complet
- * v1.4 - FIX: Calcul correct des jours de la semaine (année dynamique)
- * v1.5 - FIX: Responsive mobile + utilisation CODE_COLORS
- * v1.6 - NEW: Bouton palette + ModalCouleurs (même système que planning général)
- * v1.7 - FIX: Synchronisation couleurs - reloadColors() à la fermeture du panneau
- * v1.8 - Couleurs séparées du planning général (contexte 'perso')
- * v1.9 - FIX: ModalCouleurs sorti de l'overlay pour éviter fermeture au color picker
- * v2.0 - NEW: Support synchronisation couleurs multi-appareils
- * v2.1 - NEW: Support statut_conge combinable (C, C?, CNA) avec service/poste
+ * v3.0 - REFONTE COMPLÈTE : Alignement éditeur avec ModalCellEdit
+ *   - Barre de recherche
+ *   - Sections accordéon (Service jour, Habilitation, Jours RH)
+ *   - Absences séparées (MA, F)
+ *   - Texte libre
+ *   - Dropdown PCD pour réserves
+ *   - Section Notes améliorée
  */
 
-// Couleurs pour les statuts congé (même que PlanningTable)
+// Couleurs pour les statuts congé
 const STATUT_CONGE_COLORS = {
-  'C': { bg: '#facc15', text: '#713f12' },      // Jaune vif - Congé accordé
-  'C?': { bg: '#fef08a', text: '#854d0e' },     // Jaune clair - En attente
-  'CNA': { bg: '#fca5a5', text: '#991b1b' }     // Rouge clair - Refusé
+  'C': { bg: '#facc15', text: '#713f12' },
+  'C?': { bg: '#fef08a', text: '#854d0e' },
+  'CNA': { bg: '#fca5a5', text: '#991b1b' }
 };
 
+// Couleurs pour la modal d'édition
+const MODAL_COLORS = {
+  '-': { bg: '#f3f4f6', text: '#374151' },
+  'O': { bg: '#f3f4f6', text: '#374151' },
+  'X': { bg: '#f3f4f6', text: '#374151' },
+  'I': { bg: '#f3f4f6', text: '#374151' },
+  'RP': { bg: '#dcfce7', text: '#166534' },
+  'NU': { bg: '#e5e7eb', text: '#6b7280' },
+  'MA': { bg: '#fecaca', text: '#991b1b' },
+  'F': { bg: '#e9d5ff', text: '#6b21a8' },
+  'C': { bg: '#facc15', text: '#713f12' },
+  'C?': { bg: '#fef08a', text: '#854d0e' },
+  'CNA': { bg: '#fca5a5', text: '#991b1b' },
+  'VL': { bg: '#dbeafe', text: '#1e40af' },
+  'D': { bg: '#dbeafe', text: '#1e40af' },
+  'EIA': { bg: '#dbeafe', text: '#1e40af' },
+  'DPX': { bg: '#dbeafe', text: '#1e40af' },
+  'PSE': { bg: '#dbeafe', text: '#1e40af' },
+  'INAC': { bg: '#dbeafe', text: '#1e40af' },
+  'VM': { bg: '#dbeafe', text: '#1e40af' },
+  'HAB': { bg: '#fed7aa', text: '#9a3412' },
+  'FO RO': { bg: '#fed7aa', text: '#9a3412' },
+  'FO RC': { bg: '#fed7aa', text: '#9a3412' },
+  'FO CAC': { bg: '#fed7aa', text: '#9a3412' },
+  'FO CRC': { bg: '#fed7aa', text: '#9a3412' },
+  'FO ACR': { bg: '#fed7aa', text: '#9a3412' },
+  'FO CCU': { bg: '#fed7aa', text: '#9a3412' },
+  'VT': { bg: '#fef9c3', text: '#854d0e' },
+  'D2I': { bg: '#fef9c3', text: '#854d0e' },
+  'RU': { bg: '#fef9c3', text: '#854d0e' },
+  'RA': { bg: '#fef9c3', text: '#854d0e' },
+  'RN': { bg: '#fef9c3', text: '#854d0e' },
+  'RQ': { bg: '#fef9c3', text: '#854d0e' },
+  'TY': { bg: '#fef9c3', text: '#854d0e' },
+  'AY': { bg: '#fef9c3', text: '#854d0e' },
+  'AH': { bg: '#fef9c3', text: '#854d0e' },
+  'DD': { bg: '#fef9c3', text: '#854d0e' },
+  'CCCBO': { bg: '#a5f3fc', text: '#0e7490' },
+  'CBVD': { bg: '#a5f3fc', text: '#0e7490' }
+};
+
+// Codes PCD pour le sous-menu
+const PCD_POSTE_CODES = ['CCCBO', 'CBVD'];
+
 const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear }) => {
-  // FIX v1.4: Utiliser initialYear si fourni, sinon année système
   const [currentDate, setCurrentDate] = useState(() => {
     const now = new Date();
     if (initialYear) {
@@ -43,24 +96,41 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState(null);
   
-  // v2.0: Hook avec email utilisateur pour synchronisation cloud
   const { colors, getServiceColor, reloadColors } = useColors('perso', currentUser?.email);
   const [showColorModal, setShowColorModal] = useState(false);
   
-  // Tracker si des modifications ont été faites
   const hasChanges = useRef(false);
   
-  // États pour l'édition (comme ModalCellEdit)
+  // === ÉTATS ÉDITION (ALIGNÉS AVEC ModalCellEdit) ===
   const [editMode, setEditMode] = useState(false);
-  const [tempService, setTempService] = useState('');
+  const [tempService, setTempService] = useState('');       // Horaire (-, O, X, I, RP, NU)
+  const [tempCategorie, setTempCategorie] = useState('');   // Catégorie (MA, F, VL, HAB, etc.)
   const [tempPoste, setTempPoste] = useState('');
   const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
-  const [tempNote, setTempNote] = useState('');
-  
-  // v2.1: État pour le statut congé
   const [tempStatutConge, setTempStatutConge] = useState('');
+  const [tempNote, setTempNote] = useState('');
+  const [tempTexteLibre, setTempTexteLibre] = useState('');
+  
+  // === ÉTATS RECHERCHE ET ACCORDÉONS ===
+  const [searchTerm, setSearchTerm] = useState('');
+  const [openSections, setOpenSections] = useState({
+    serviceJour: false,
+    habilitation: false,
+    joursRH: false
+  });
+  
+  // === ÉTAT DROPDOWN PCD ===
+  const [showPcdDropdown, setShowPcdDropdown] = useState(false);
+  const pcdButtonRef = useRef(null);
+  
+  // === ÉTATS MODALES SECONDAIRES ===
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteInput, setNoteInput] = useState('');
+  const [isNoteEditMode, setIsNoteEditMode] = useState(false);
+  const [showTexteLibreModal, setShowTexteLibreModal] = useState(false);
+  const [texteLibreInput, setTexteLibreInput] = useState('');
+  const [isTexteLibreEditMode, setIsTexteLibreEditMode] = useState(false);
 
-  // Mois et années pour navigation
   const months = [
     'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
@@ -69,22 +139,38 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const currentMonth = currentDate.getMonth();
   const currentYear = currentDate.getFullYear();
 
-  // DEBUG: Log pour vérifier l'année
+  // Liste de tous les codes catégorie
+  const ALL_CATEGORIE_CODES = [
+    ...SERVICE_JOUR_CODES.map(c => c.code),
+    ...HABILITATION_CODES.map(c => c.code),
+    ...JOURS_RH_CODES.map(c => c.code),
+    ...ABSENCES_CODES.map(c => c.code)
+  ];
+
+  const ALL_HORAIRE_CODES = SERVICE_CODES.map(c => c.code);
+
+  // Fermer dropdown PCD au clic extérieur
   useEffect(() => {
-    console.log(`📅 ModalMonPlanning: month=${currentMonth}, year=${currentYear}, initialYear prop=${initialYear}`);
-  }, [currentMonth, currentYear, initialYear]);
+    const handleClickOutside = (event) => {
+      if (pcdButtonRef.current && !pcdButtonRef.current.contains(event.target)) {
+        setShowPcdDropdown(false);
+      }
+    };
+    if (showPcdDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPcdDropdown]);
 
   // Charger les infos agent
   const loadAgentInfo = useCallback(async () => {
     if (!currentUser?.email) return;
-
     try {
       const { data, error } = await supabase
         .from('agents')
         .select('*')
         .eq('email', currentUser.email)
         .single();
-
       if (error) throw error;
       setAgentInfo(data);
     } catch (err) {
@@ -95,7 +181,6 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   // Charger le planning du mois
   const loadPlanning = useCallback(async () => {
     if (!agentInfo?.id) return;
-
     setLoading(true);
     try {
       const startDate = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
@@ -111,12 +196,10 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
 
       if (error) throw error;
 
-      // Organiser par date
       const dataByDate = {};
       (data || []).forEach(entry => {
         dataByDate[entry.date] = entry;
       });
-
       setPlanningData(dataByDate);
     } catch (err) {
       console.error('Erreur chargement planning:', err);
@@ -125,10 +208,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     }
   }, [agentInfo, currentMonth, currentYear]);
 
-  // Effets
   useEffect(() => {
     if (isOpen) {
-      // FIX v1.4: Réinitialiser avec l'année fournie ou l'année système
       const now = new Date();
       if (initialYear) {
         setCurrentDate(new Date(initialYear, now.getMonth(), 1));
@@ -141,12 +222,9 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   }, [isOpen, loadAgentInfo, initialYear]);
 
   useEffect(() => {
-    if (agentInfo) {
-      loadPlanning();
-    }
+    if (agentInfo) loadPlanning();
   }, [agentInfo, loadPlanning]);
 
-  // Navigation mois
   const prevMonth = () => {
     setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
     setSelectedDay(null);
@@ -159,92 +237,126 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     setEditMode(false);
   };
 
-  // Générer les jours du calendrier - FIX v1.4: Utilise currentYear correctement
   const generateCalendarDays = () => {
     const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
     const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
     const daysInMonth = lastDayOfMonth.getDate();
-    
-    // getDay() retourne 0=Dimanche, on veut 0=Lundi
     let startDay = firstDayOfMonth.getDay();
     startDay = startDay === 0 ? 6 : startDay - 1;
 
     const days = [];
-
-    // Jours du mois précédent
     const prevMonthLastDay = new Date(currentYear, currentMonth, 0).getDate();
     for (let i = startDay - 1; i >= 0; i--) {
       days.push({ day: prevMonthLastDay - i, currentMonth: false, date: null });
     }
-
-    // Jours du mois actuel
     for (let i = 1; i <= daysInMonth; i++) {
       const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-      days.push({
-        day: i,
-        currentMonth: true,
-        date: dateStr,
-        planning: planningData[dateStr] || null
-      });
+      days.push({ day: i, currentMonth: true, date: dateStr, planning: planningData[dateStr] || null });
     }
-
-    // Jours du mois suivant pour compléter la grille
     const remainingDays = 42 - days.length;
     for (let i = 1; i <= remainingDays; i++) {
       days.push({ day: i, currentMonth: false, date: null });
     }
-
     return days;
   };
 
-  // Cliquer sur un jour - ouvrir l'éditeur
+  // === OUVERTURE ÉDITEUR ===
   const handleDayClick = (dayInfo) => {
     if (!dayInfo.currentMonth) return;
     setSelectedDay(dayInfo);
     setEditMode(true);
     
-    // Charger les données existantes
     const existing = dayInfo.planning;
-    setTempService(existing?.service_code || '');
+    setTempStatutConge(existing?.statut_conge || '');
     setTempPoste(existing?.poste_code || '');
     setTempPostesSupplementaires(existing?.postes_supplementaires || []);
     setTempNote(existing?.commentaire || '');
-    // v2.1: Charger le statut congé existant
-    setTempStatutConge(existing?.statut_conge || '');
+    
+    // Analyser le service stocké
+    const storedService = existing?.service_code || '';
+    const storedTexteLibre = existing?.texte_libre || '';
+    
+    if (storedTexteLibre) {
+      setTempService('');
+      setTempCategorie('LIBRE');
+      setTempTexteLibre(storedTexteLibre);
+    } else if (storedService === 'LIBRE') {
+      setTempService('');
+      setTempCategorie('LIBRE');
+      setTempTexteLibre('');
+    } else if (ALL_HORAIRE_CODES.includes(storedService)) {
+      setTempService(storedService);
+      setTempCategorie('');
+      setTempTexteLibre('');
+    } else if (ALL_CATEGORIE_CODES.includes(storedService)) {
+      setTempService('');
+      setTempCategorie(storedService);
+      setTempTexteLibre('');
+    } else if (storedService.includes(' ')) {
+      const parts = storedService.split(' ');
+      const lastPart = parts[parts.length - 1];
+      const firstParts = parts.slice(0, -1).join(' ');
+      if (ALL_HORAIRE_CODES.includes(lastPart)) {
+        setTempService(lastPart);
+        setTempCategorie(firstParts);
+      } else {
+        setTempService('');
+        setTempCategorie(storedService);
+      }
+      setTempTexteLibre('');
+    } else {
+      setTempService(storedService);
+      setTempCategorie('');
+      setTempTexteLibre('');
+    }
+    
+    // Reset recherche et accordéons
+    setSearchTerm('');
+    setOpenSections({ serviceJour: false, habilitation: false, joursRH: false });
+    setShowPcdDropdown(false);
   };
 
-  // Fermer l'éditeur
   const closeEditor = () => {
     setSelectedDay(null);
     setEditMode(false);
     setTempService('');
+    setTempCategorie('');
     setTempPoste('');
     setTempPostesSupplementaires([]);
     setTempNote('');
     setTempStatutConge('');
+    setTempTexteLibre('');
+    setSearchTerm('');
   };
 
-  // Fermer le modal principal et synchroniser si nécessaire
   const handleClose = () => {
     if (hasChanges.current && onUpdate) {
-      console.log('📡 Synchronisation avec planning général...');
       onUpdate();
     }
     hasChanges.current = false;
     onClose();
   };
 
-  // v1.7: Fermer le modal couleurs ET recharger les couleurs
   const handleCloseColorModal = () => {
     setShowColorModal(false);
-    // Recharger les couleurs depuis localStorage pour synchroniser
     reloadColors();
-    console.log('🎨 Couleurs perso rechargées après fermeture du panneau');
   };
 
-  // Sauvegarder modification
+  // === CONSTRUCTION SERVICE FINAL ===
+  const buildFinalService = () => {
+    if (tempCategorie === 'LIBRE' && tempTexteLibre) return 'LIBRE';
+    if (tempCategorie && !tempService) return tempCategorie;
+    if (tempService && !tempCategorie) return tempService;
+    if (tempCategorie && tempService) return `${tempCategorie} ${tempService}`;
+    return '';
+  };
+
+  // === SAUVEGARDE ===
   const saveEdit = async () => {
     if (!selectedDay || !agentInfo) return;
+
+    const finalService = buildFinalService();
+    const hasTexteLibre = tempCategorie === 'LIBRE' && tempTexteLibre.trim() !== '';
 
     try {
       const { error } = await supabase
@@ -252,20 +364,18 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
         .upsert({
           agent_id: agentInfo.id,
           date: selectedDay.date,
-          service_code: tempService || null,
+          service_code: finalService || null,
           poste_code: tempPoste || null,
           postes_supplementaires: tempPostesSupplementaires.length > 0 ? tempPostesSupplementaires : null,
           commentaire: tempNote || null,
-          // v2.1: Sauvegarder le statut congé
           statut_conge: tempStatutConge || null,
+          texte_libre: hasTexteLibre ? tempTexteLibre.trim() : null,
           updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'agent_id,date'
-        });
+        }, { onConflict: 'agent_id,date' });
 
       if (error) throw error;
 
-      hasChanges.current = true; // Marquer qu'on a fait des modifications
+      hasChanges.current = true;
       await loadPlanning();
       closeEditor();
     } catch (err) {
@@ -274,10 +384,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     }
   };
 
-  // Supprimer entrée
   const deleteEntry = async () => {
     if (!selectedDay || !agentInfo) return;
-    
     if (!window.confirm('Effacer cette entrée ?')) return;
 
     try {
@@ -289,7 +397,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
 
       if (error) throw error;
 
-      hasChanges.current = true; // Marquer qu'on a fait des modifications
+      hasChanges.current = true;
       await loadPlanning();
       closeEditor();
     } catch (err) {
@@ -297,20 +405,39 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     }
   };
 
-  // Toggle poste supplémentaire
+  // === FONCTIONS HELPER ===
   const togglePosteSupp = (code) => {
     setTempPostesSupplementaires(prev => 
       prev.includes(code) ? prev.filter(p => p !== code) : [...prev, code]
     );
   };
 
-  // Vérifier si l'agent a accès au sélecteur de poste
+  const selectHoraire = (code) => {
+    setTempService(tempService === code ? '' : code);
+  };
+
+  const selectCategorie = (code) => {
+    if (tempCategorie === code) {
+      setTempCategorie('');
+    } else {
+      setTempCategorie(code);
+      if (code !== 'LIBRE') setTempTexteLibre('');
+    }
+  };
+
+  const selectStatutConge = (code) => {
+    setTempStatutConge(tempStatutConge === code ? '' : code);
+  };
+
+  const toggleSection = (section) => {
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
   const hasPosteSelector = () => {
     if (!agentInfo?.groupe) return false;
     return GROUPES_AVEC_POSTE.some(g => agentInfo.groupe.includes(g));
   };
 
-  // Postes disponibles pour cet agent
   const getAvailablePostes = () => {
     if (!agentInfo?.groupe) return POSTES_CODES;
     for (const [groupeKey, postes] of Object.entries(POSTES_PAR_GROUPE)) {
@@ -319,52 +446,112 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     return POSTES_CODES;
   };
 
-  /**
-   * v1.6: Utilise le hook useColors pour obtenir les couleurs personnalisées
-   */
+  const isPcdPosteSelected = PCD_POSTE_CODES.includes(tempPoste);
+
+  const selectPcdPoste = (code) => {
+    setTempPoste(tempPoste === code ? '' : code);
+    setShowPcdDropdown(false);
+  };
+
+  // === FILTRAGE RECHERCHE ===
+  const filterBySearch = (codes) => {
+    if (!searchTerm.trim()) return codes;
+    const term = searchTerm.toUpperCase().trim();
+    return codes.filter(({ code, desc }) => 
+      code.toUpperCase().includes(term) || desc.toUpperCase().includes(term)
+    );
+  };
+
+  const hasSearchResults = (codes) => {
+    if (!searchTerm.trim()) return true;
+    return filterBySearch(codes).length > 0;
+  };
+
+  // === GESTION NOTES ===
+  const openAddNoteModal = () => {
+    setNoteInput('');
+    setIsNoteEditMode(false);
+    setShowNoteModal(true);
+  };
+
+  const openEditNoteModal = () => {
+    setNoteInput(tempNote);
+    setIsNoteEditMode(true);
+    setShowNoteModal(true);
+  };
+
+  const handleValidateNote = () => {
+    setTempNote(noteInput.trim());
+    setShowNoteModal(false);
+  };
+
+  const handleDeleteNote = () => {
+    if (window.confirm('Supprimer cette note ?')) {
+      setTempNote('');
+    }
+  };
+
+  // === GESTION TEXTE LIBRE ===
+  const openAddTexteLibreModal = () => {
+    setTexteLibreInput('');
+    setIsTexteLibreEditMode(false);
+    setShowTexteLibreModal(true);
+  };
+
+  const openEditTexteLibreModal = () => {
+    setTexteLibreInput(tempTexteLibre);
+    setIsTexteLibreEditMode(true);
+    setShowTexteLibreModal(true);
+  };
+
+  const handleValidateTexteLibre = () => {
+    const texte = texteLibreInput.trim();
+    if (texte) {
+      setTempTexteLibre(texte);
+      setTempCategorie('LIBRE');
+    }
+    setShowTexteLibreModal(false);
+  };
+
+  const handleDeleteTexteLibre = () => {
+    if (window.confirm('Supprimer ce texte libre ?')) {
+      setTempTexteLibre('');
+      setTempCategorie('');
+    }
+  };
+
+  const selectTexteLibre = () => {
+    if (tempTexteLibre) {
+      openEditTexteLibreModal();
+    } else {
+      setTempCategorie('LIBRE');
+      openAddTexteLibreModal();
+    }
+  };
+
+  // === COULEURS CELLULES CALENDRIER ===
   const getCellBackgroundColor = (planning) => {
-    // v2.1: Si statut congé seul (pas de service), utiliser couleur du statut
     if (planning?.statut_conge && !planning?.service_code) {
       return STATUT_CONGE_COLORS[planning.statut_conge]?.bg || 'rgba(255, 255, 255, 0.08)';
     }
-    
     if (!planning?.service_code) return 'rgba(255, 255, 255, 0.08)';
-    
     const code = planning.service_code.toUpperCase();
     const colorConfig = getServiceColor(code);
-    
-    if (!colorConfig || colorConfig.bg === 'transparent') {
-      return 'rgba(255, 255, 255, 0.08)';
-    }
-    
+    if (!colorConfig || colorConfig.bg === 'transparent') return 'rgba(255, 255, 255, 0.08)';
     return colorConfig.bg;
   };
 
   const getCellTextColor = (planning) => {
-    // v2.1: Si statut congé seul (pas de service), utiliser couleur du statut
     if (planning?.statut_conge && !planning?.service_code) {
       return STATUT_CONGE_COLORS[planning.statut_conge]?.text || 'white';
     }
-    
     if (!planning?.service_code) return 'white';
-    
     const code = planning.service_code.toUpperCase();
     const colorConfig = getServiceColor(code);
-    
-    if (!colorConfig || colorConfig.bg === 'transparent') {
-      return 'white';
-    }
-    
+    if (!colorConfig || colorConfig.bg === 'transparent') return 'white';
     return colorConfig.text;
   };
 
-  // v2.1: Fonction pour obtenir le style du statut congé
-  const getStatutCongeStyle = (statutConge) => {
-    if (!statutConge || !STATUT_CONGE_COLORS[statutConge]) return {};
-    return STATUT_CONGE_COLORS[statutConge];
-  };
-
-  // v2.1: Rendu du contenu de la cellule avec support statut_conge
   const renderCellContent = (planning) => {
     if (!planning) return null;
     
@@ -372,71 +559,37 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     const posteCode = planning.poste_code;
     const statutConge = planning.statut_conge;
     const postesSupp = planning.postes_supplementaires;
+    const texteLibre = planning.texte_libre;
     
-    // Cas 1: Statut congé seul (pas de service ni poste)
     if (statutConge && !serviceCode && !posteCode) {
       return (
-        <span 
-          style={{
-            ...styles.serviceCode,
-            fontSize: '10px',
-            fontWeight: 'bold',
-            padding: '1px 3px',
-            borderRadius: '3px',
-            backgroundColor: STATUT_CONGE_COLORS[statutConge]?.bg,
-            color: STATUT_CONGE_COLORS[statutConge]?.text
-          }}
-        >
-          {statutConge}
-        </span>
+        <span style={{
+          fontSize: '10px', fontWeight: 'bold', padding: '1px 3px', borderRadius: '3px',
+          backgroundColor: STATUT_CONGE_COLORS[statutConge]?.bg,
+          color: STATUT_CONGE_COLORS[statutConge]?.text
+        }}>{statutConge}</span>
       );
     }
     
-    // Cas 2: Service avec éventuellement poste et/ou statut congé
     return (
       <>
-        {/* Service code */}
-        {serviceCode && (
-          <span style={{
-            ...styles.serviceCode, 
-            color: getCellTextColor(planning)
-          }}>{serviceCode}</span>
+        {texteLibre ? (
+          <span style={{ fontSize: '8px', fontWeight: 'bold', color: '#a855f7' }}>{texteLibre}</span>
+        ) : serviceCode && (
+          <span style={{ fontSize: '9px', fontWeight: 'bold', color: getCellTextColor(planning) }}>{serviceCode}</span>
         )}
         
-        {/* Ligne du bas : Poste et/ou Statut congé */}
         {(posteCode || statutConge) && (
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            gap: '2px',
-            marginTop: '1px'
-          }}>
-            {/* Poste */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px', marginTop: '1px' }}>
             {posteCode && (
-              <span style={{
-                ...styles.posteCode, 
-                color: getCellTextColor(planning), 
-                opacity: 0.75
-              }}>{posteCode}</span>
+              <span style={{ fontSize: '7px', color: getCellTextColor(planning), opacity: 0.75 }}>{posteCode}</span>
             )}
-            
-            {/* Séparateur si poste ET statut */}
             {posteCode && statutConge && (
-              <span style={{ 
-                fontSize: '6px', 
-                opacity: 0.5,
-                color: getCellTextColor(planning)
-              }}>|</span>
+              <span style={{ fontSize: '6px', opacity: 0.5, color: getCellTextColor(planning) }}>|</span>
             )}
-            
-            {/* Statut congé */}
             {statutConge && (
               <span style={{
-                fontSize: '6px',
-                fontWeight: 'bold',
-                padding: '0px 2px',
-                borderRadius: '2px',
+                fontSize: '6px', fontWeight: 'bold', padding: '0px 2px', borderRadius: '2px',
                 backgroundColor: STATUT_CONGE_COLORS[statutConge]?.bg,
                 color: STATUT_CONGE_COLORS[statutConge]?.text
               }}>{statutConge}</span>
@@ -444,12 +597,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
           </div>
         )}
         
-        {/* Postes supplémentaires */}
         {postesSupp?.length > 0 && (
-          <span style={{
-            ...styles.supplement,
-            color: colors.postesSupp?.text || '#a855f7'
-          }}>
+          <span style={{ fontSize: '6px', fontStyle: 'italic', fontWeight: 'bold', color: colors.postesSupp?.text || '#a855f7' }}>
             {postesSupp.map(p => p.replace('+', '')).join(' ')}
           </span>
         )}
@@ -457,26 +606,80 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     );
   };
 
+  // === APERÇU SERVICE ===
+  const previewService = buildFinalService();
+  const hasExistingNote = Boolean(tempNote);
+  const hasExistingTexteLibre = Boolean(tempTexteLibre && tempTexteLibre.trim() !== '');
+
+  // === RENDU BOUTONS CODE ===
+  const renderCodeButtons = (codes, onClick, isSelectedFn, cols = 4) => {
+    const filtered = filterBySearch(codes);
+    if (filtered.length === 0) {
+      return <p style={{ fontSize: '11px', color: '#999', fontStyle: 'italic', padding: '8px' }}>Aucun résultat pour "{searchTerm}"</p>;
+    }
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '6px' }}>
+        {filtered.map(({ code, desc }) => {
+          const isSelected = isSelectedFn(code);
+          const colorStyle = MODAL_COLORS[code] || { bg: '#f3f4f6', text: '#374151' };
+          return (
+            <button
+              key={code}
+              onClick={() => onClick(code)}
+              style={{
+                padding: '8px 4px', borderRadius: '6px', textAlign: 'center',
+                border: isSelected ? '2px solid #3b82f6' : '1px solid #ddd',
+                backgroundColor: colorStyle.bg, color: colorStyle.text,
+                cursor: 'pointer', transition: 'all 0.2s',
+                boxShadow: isSelected ? '0 0 0 2px rgba(59, 130, 246, 0.3)' : 'none'
+              }}
+            >
+              <div style={{ fontWeight: 'bold', fontSize: '12px' }}>{code}</div>
+              <div style={{ fontSize: '9px', marginTop: '2px' }}>{desc}</div>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // === COMPOSANT ACCORDÉON ===
+  const AccordionSection = ({ id, title, colorBg, children, isOpen, badge }) => (
+    <div style={{ marginBottom: '12px' }}>
+      <button 
+        onClick={() => toggleSection(id)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '8px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+          backgroundColor: isOpen ? '#f3f4f6' : '#fafafa', transition: 'all 0.2s'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {isOpen ? <ChevronDown size={16} color="#666" /> : <ChevronRight size={16} color="#666" />}
+          <span style={{ width: '12px', height: '12px', backgroundColor: colorBg, borderRadius: '3px' }}></span>
+          <span style={{ fontSize: '13px', fontWeight: '500', color: '#374151' }}>{title}</span>
+          {badge && <span style={{ fontSize: '11px', color: '#999' }}>({badge})</span>}
+        </div>
+      </button>
+      {isOpen && <div style={{ marginTop: '8px', paddingLeft: '8px' }}>{children}</div>}
+    </div>
+  );
+
   if (!isOpen) return null;
 
   const calendarDays = generateCalendarDays();
   const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
-  // v1.9: Utilisation de Fragment pour sortir ModalCouleurs de l'overlay
   return (
     <>
-      {/* Overlay principal de Mon Planning */}
+      {/* Overlay principal */}
       <div style={styles.overlay} onClick={handleClose}>
         <div style={styles.modal} onClick={e => e.stopPropagation()}>
-          {/* Header avec bouton palette */}
+          {/* Header */}
           <div style={styles.header}>
             <h2 style={styles.title}>📆 Mon Planning</h2>
             <div style={styles.headerActions}>
-              <button 
-                style={styles.paletteBtn} 
-                onClick={() => setShowColorModal(true)}
-                title="Personnaliser les couleurs (Mon Planning)"
-              >
+              <button style={styles.paletteBtn} onClick={() => setShowColorModal(true)} title="Personnaliser les couleurs">
                 <Palette size={18} />
               </button>
               <button style={styles.closeBtn} onClick={handleClose}>✕</button>
@@ -502,10 +705,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
           <div style={styles.calendar}>
             <div style={styles.weekHeader}>
               {weekDays.map((day, idx) => (
-                <div key={idx} style={{
-                  ...styles.weekDay,
-                  color: idx >= 5 ? '#f87171' : 'rgba(255, 255, 255, 0.6)'
-                }}>{day}</div>
+                <div key={idx} style={{ ...styles.weekDay, color: idx >= 5 ? '#f87171' : 'rgba(255, 255, 255, 0.6)' }}>{day}</div>
               ))}
             </div>
 
@@ -528,12 +728,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                       }}
                       onClick={() => handleDayClick(dayInfo)}
                     >
-                      <span style={{
-                        ...styles.dayNumber, 
-                        color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)'
-                      }}>{dayInfo.day}</span>
-                      
-                      {/* v2.1: Utiliser renderCellContent pour le contenu */}
+                      <span style={{ fontSize: '12px', fontWeight: 'bold', lineHeight: 1, color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)' }}>{dayInfo.day}</span>
                       {dayInfo.planning && renderCellContent(dayInfo.planning)}
                     </div>
                   );
@@ -542,7 +737,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
             )}
           </div>
 
-          {/* Légende compacte - v2.1: Ajout C, C?, CNA */}
+          {/* Légende */}
           <div style={styles.legend}>
             <span style={{...styles.legendItem, backgroundColor: getServiceColor('-').bg || 'rgba(255,255,255,0.1)', color: getServiceColor('-').text || 'white', border: '1px solid rgba(255,255,255,0.2)'}}>- O X</span>
             <span style={{...styles.legendItem, backgroundColor: getServiceColor('RP').bg, color: getServiceColor('RP').text}}>RP</span>
@@ -554,166 +749,345 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
           </div>
         </div>
 
-        {/* Modal d'édition (comme ModalCellEdit) - reste dans l'overlay */}
+        {/* === MODAL D'ÉDITION (ALIGNÉE AVEC ModalCellEdit) === */}
         {editMode && selectedDay && (
           <div style={styles.editOverlay} onClick={closeEditor}>
             <div style={styles.editModal} onClick={e => e.stopPropagation()}>
+              {/* Header éditeur */}
               <div style={styles.editHeader}>
                 <div>
-                  <h3 style={styles.editTitle}>
-                    {selectedDay.day} {months[currentMonth]} {currentYear}
-                  </h3>
+                  <h3 style={styles.editTitle}>{selectedDay.day} {months[currentMonth]} {currentYear}</h3>
                   <p style={styles.editSubtitle}>{agentInfo?.nom} {agentInfo?.prenom}</p>
+                  
+                  {/* Aperçu */}
+                  {(previewService || tempStatutConge) && (
+                    <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#eff6ff', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+                      <span style={{ fontSize: '11px', color: '#2563eb', fontWeight: '500' }}>Aperçu : </span>
+                      <span style={{ fontSize: '13px', fontWeight: '600', color: '#1d4ed8' }}>{previewService || '-'}</span>
+                      {tempPoste && <span style={{ fontSize: '11px', color: '#666', marginLeft: '8px' }}>/ {tempPoste}</span>}
+                      {tempStatutConge && (
+                        <span style={{
+                          marginLeft: '8px', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: '600',
+                          backgroundColor: MODAL_COLORS[tempStatutConge]?.bg,
+                          color: MODAL_COLORS[tempStatutConge]?.text
+                        }}>{tempStatutConge}</span>
+                      )}
+                      {hasExistingTexteLibre && <span style={{ fontSize: '11px', color: '#a855f7', marginLeft: '8px' }}>({tempTexteLibre})</span>}
+                    </div>
+                  )}
                 </div>
                 <button style={styles.editCloseBtn} onClick={closeEditor}>✕</button>
               </div>
 
-              {/* Section Service */}
-              <div style={styles.section}>
-                <label style={styles.sectionLabel}>Service / Horaire</label>
-                <div style={styles.serviceGrid}>
-                  {SERVICE_CODES.filter(s => s.code !== '__LIBRE__').map(({ code, desc }) => (
-                    <button
-                      key={code}
-                      onClick={() => setTempService(code)}
-                      style={{
-                        ...styles.serviceBtn,
-                        ...(tempService === code ? styles.serviceBtnSelected : {})
-                      }}
-                    >
-                      <span style={styles.serviceBtnCode}>{code}</span>
-                      <span style={styles.serviceBtnDesc}>{desc}</span>
-                    </button>
-                  ))}
-                </div>
+              {/* === BARRE DE RECHERCHE === */}
+              <div style={{ marginBottom: '16px', position: 'relative' }}>
+                <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Rechercher un code (ex: FO, MA, VL...)"
+                  style={{
+                    width: '100%', padding: '10px 12px 10px 40px', border: '1px solid #d1d5db',
+                    borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box'
+                  }}
+                />
+                {searchTerm && (
+                  <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}>
+                    <X size={16} />
+                  </button>
+                )}
               </div>
 
-              {/* v2.1: Section Statut Congé (NOUVEAU) */}
+              {/* === SECTION HORAIRES === */}
+              <div style={styles.section}>
+                <label style={styles.sectionLabel}>Horaires</label>
+                {renderCodeButtons(SERVICE_CODES, selectHoraire, (code) => tempService === code, 6)}
+              </div>
+
+              {/* === SECTION STATUT CONGÉ === */}
               <div style={styles.section}>
                 <label style={styles.sectionLabel}>
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}>
-                    <span style={{
-                      padding: '2px 6px',
-                      backgroundColor: '#fef08a',
-                      color: '#854d0e',
-                      borderRadius: '4px',
-                      fontSize: '10px',
-                      fontWeight: 'bold'
-                    }}>Congés</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ padding: '2px 6px', backgroundColor: '#fef08a', color: '#854d0e', borderRadius: '4px', fontSize: '10px', fontWeight: 'bold' }}>Congés</span>
                     Statut congé
                     <span style={{ fontWeight: 'normal', fontSize: '10px', color: '#999' }}>(combinable)</span>
                   </span>
                 </label>
-                <div style={styles.statutCongeGrid}>
-                  {STATUT_CONGE_CODES && STATUT_CONGE_CODES.filter(s => s.code !== '').map(({ code, desc }) => (
-                    <button
-                      key={code}
-                      onClick={() => setTempStatutConge(tempStatutConge === code ? '' : code)}
-                      style={{
-                        ...styles.statutCongeBtn,
-                        ...(tempStatutConge === code ? {
-                          ...styles.statutCongeBtnSelected,
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                  {STATUT_CONGE_CODES.filter(c => c.code !== '').map(({ code, desc }) => {
+                    const isSelected = tempStatutConge === code;
+                    return (
+                      <button
+                        key={code}
+                        onClick={() => selectStatutConge(code)}
+                        style={{
+                          padding: '10px 6px', borderRadius: '6px', textAlign: 'center',
+                          border: isSelected ? '2px solid #333' : '2px solid transparent',
                           backgroundColor: STATUT_CONGE_COLORS[code]?.bg,
-                          color: STATUT_CONGE_COLORS[code]?.text
-                        } : {
-                          backgroundColor: STATUT_CONGE_COLORS[code]?.bg + '80',
-                          color: STATUT_CONGE_COLORS[code]?.text
-                        })
-                      }}
-                    >
-                      <span style={{ fontWeight: 'bold', fontSize: '13px' }}>{code}</span>
-                      <span style={{ fontSize: '9px', marginTop: '2px' }}>{desc}</span>
-                    </button>
-                  ))}
+                          color: STATUT_CONGE_COLORS[code]?.text,
+                          cursor: 'pointer', transition: 'all 0.2s',
+                          boxShadow: isSelected ? '0 0 0 2px rgba(0,0,0,0.2)' : 'none'
+                        }}
+                      >
+                        <div style={{ fontWeight: 'bold', fontSize: '13px' }}>{code}</div>
+                        <div style={{ fontSize: '9px', marginTop: '2px' }}>{desc}</div>
+                      </button>
+                    );
+                  })}
                 </div>
                 {tempStatutConge && (
-                  <div style={{
-                    marginTop: '8px',
-                    padding: '6px 10px',
-                    backgroundColor: '#fffbeb',
-                    border: '1px solid #fde68a',
-                    borderRadius: '6px',
-                    fontSize: '11px',
-                    color: '#92400e'
-                  }}>
+                  <div style={{ marginTop: '8px', padding: '6px 10px', backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '11px', color: '#92400e' }}>
                     Statut sélectionné : <strong>{tempStatutConge}</strong>
                     {tempService && <span style={{ marginLeft: '4px' }}>(combiné avec {tempService})</span>}
                   </div>
                 )}
               </div>
 
-              {/* Section Poste (si applicable) */}
+              {/* === SECTION POSTE (SI APPLICABLE) + PCD === */}
               {hasPosteSelector() && (
                 <div style={styles.section}>
                   <label style={styles.sectionLabel}>Poste</label>
-                  <div style={styles.posteGrid}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
                     {getAvailablePostes().map(poste => (
                       <button
                         key={poste}
                         onClick={() => setTempPoste(tempPoste === poste ? '' : poste)}
                         style={{
-                          ...styles.posteBtn,
-                          ...(tempPoste === poste ? styles.posteBtnSelected : {})
+                          padding: '8px', borderRadius: '6px', fontWeight: '600', fontSize: '11px',
+                          border: tempPoste === poste ? '2px solid #3b82f6' : '1px solid #ddd',
+                          backgroundColor: tempPoste === poste ? '#dbeafe' : '#f5f5f5',
+                          color: '#333', cursor: 'pointer'
                         }}
                       >
                         {poste}
                       </button>
                     ))}
+                    
+                    {/* Bouton PCD avec dropdown */}
+                    <div style={{ position: 'relative' }} ref={pcdButtonRef}>
+                      <button
+                        onClick={() => setShowPcdDropdown(!showPcdDropdown)}
+                        style={{
+                          width: '100%', padding: '8px', borderRadius: '6px', fontSize: '11px',
+                          border: isPcdPosteSelected ? '2px solid #3b82f6' : '1px solid #06b6d4',
+                          backgroundColor: isPcdPosteSelected ? '#a5f3fc' : '#ecfeff',
+                          color: '#0e7490', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
+                        }}
+                      >
+                        <span style={{ fontWeight: '600' }}>{isPcdPosteSelected ? tempPoste : 'PCD'}</span>
+                        <ChevronDown size={12} style={{ transform: showPcdDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                      </button>
+                      
+                      {showPcdDropdown && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, marginTop: '4px',
+                          width: '100%', backgroundColor: 'white', border: '1px solid #06b6d4',
+                          borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 10, overflow: 'hidden'
+                        }}>
+                          {PCD_POSTE_CODES.map(code => (
+                            <button
+                              key={code}
+                              onClick={() => selectPcdPoste(code)}
+                              style={{
+                                width: '100%', padding: '8px 12px', fontSize: '11px', textAlign: 'left',
+                                border: 'none', cursor: 'pointer',
+                                backgroundColor: tempPoste === code ? '#a5f3fc' : 'white',
+                                color: '#0e7490', fontWeight: tempPoste === code ? '600' : '400'
+                              }}
+                            >
+                              {code}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
+                  
+                  {isPcdPosteSelected && (
+                    <div style={{ marginTop: '8px', padding: '6px 10px', backgroundColor: '#ecfeff', border: '1px solid #a5f3fc', borderRadius: '6px', fontSize: '11px', color: '#0e7490' }}>
+                      Poste PCD : <strong>{tempPoste}</strong>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Section Postes supplémentaires */}
+              {/* === SECTION ABSENCES (MA, F) === */}
               <div style={styles.section}>
                 <label style={styles.sectionLabel}>
-                  Postes supplémentaires <span style={styles.labelHint}>(multi)</span>
+                  Absences <span style={{ fontWeight: 'normal', fontSize: '10px', color: '#999' }}>(combinable avec horaire)</span>
                 </label>
-                <div style={styles.suppGrid}>
-                  {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => (
-                    <button
-                      key={code}
-                      onClick={() => togglePosteSupp(code)}
-                      style={{
-                        ...styles.suppBtn,
-                        ...(tempPostesSupplementaires.includes(code) ? styles.suppBtnSelected : {})
-                      }}
-                    >
-                      <span style={styles.suppCode}>{code}</span>
-                      {tempPostesSupplementaires.includes(code) && <span style={styles.checkMark}>✓</span>}
-                    </button>
-                  ))}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+                  {ABSENCES_CODES.map(({ code, desc }) => {
+                    const isSelected = tempCategorie === code;
+                    const colorStyle = MODAL_COLORS[code] || { bg: '#f3f4f6', text: '#374151' };
+                    return (
+                      <button
+                        key={code}
+                        onClick={() => selectCategorie(code)}
+                        style={{
+                          padding: '12px', borderRadius: '6px', textAlign: 'center',
+                          border: isSelected ? '2px solid #3b82f6' : '1px solid #ddd',
+                          backgroundColor: colorStyle.bg, color: colorStyle.text,
+                          cursor: 'pointer', boxShadow: isSelected ? '0 0 0 2px rgba(59, 130, 246, 0.3)' : 'none'
+                        }}
+                      >
+                        <div style={{ fontWeight: '600', fontSize: '14px' }}>{code}</div>
+                        <div style={{ fontSize: '11px', marginTop: '2px' }}>{desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* === BOUTON TEXTE LIBRE === */}
+              <div style={styles.section}>
+                <button
+                  onClick={selectTexteLibre}
+                  style={{
+                    width: '100%', padding: '12px', borderRadius: '6px', textAlign: 'center',
+                    border: tempCategorie === 'LIBRE' ? '2px solid #a855f7' : '2px dashed #d8b4fe',
+                    backgroundColor: tempCategorie === 'LIBRE' ? '#f3e8ff' : '#faf5ff',
+                    color: '#7c3aed', cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <Type size={16} />
+                    TEXTE LIBRE
+                  </div>
+                  {hasExistingTexteLibre && (
+                    <div style={{ fontSize: '11px', marginTop: '4px', color: '#a855f7' }}>Actuel : {tempTexteLibre}</div>
+                  )}
+                </button>
+              </div>
+
+              {/* === SECTIONS ACCORDÉON === */}
+              
+              {/* Service de jour */}
+              {hasSearchResults(SERVICE_JOUR_CODES) && (
+                <AccordionSection 
+                  id="serviceJour" 
+                  title="Service de jour" 
+                  colorBg="#dbeafe"
+                  isOpen={openSections.serviceJour || searchTerm.trim() !== ''}
+                  badge="VL, D, EIA..."
+                >
+                  {renderCodeButtons(SERVICE_JOUR_CODES, selectCategorie, (code) => tempCategorie === code, 4)}
+                </AccordionSection>
+              )}
+
+              {/* Habilitation/Formation */}
+              {hasSearchResults(HABILITATION_CODES) && (
+                <AccordionSection 
+                  id="habilitation" 
+                  title="Habilitation / Formation" 
+                  colorBg="#fed7aa"
+                  isOpen={openSections.habilitation || searchTerm.trim() !== ''}
+                  badge="HAB, FO..."
+                >
+                  {renderCodeButtons(HABILITATION_CODES, selectCategorie, (code) => tempCategorie === code, 4)}
+                </AccordionSection>
+              )}
+
+              {/* Jours RH */}
+              {hasSearchResults(JOURS_RH_CODES) && (
+                <AccordionSection 
+                  id="joursRH" 
+                  title="Jours RH" 
+                  colorBg="#fef9c3"
+                  isOpen={openSections.joursRH || searchTerm.trim() !== ''}
+                  badge="VT, D2I, RU..."
+                >
+                  {renderCodeButtons(JOURS_RH_CODES, selectCategorie, (code) => tempCategorie === code, 5)}
+                </AccordionSection>
+              )}
+
+              {/* === SECTION POSTES SUPPLÉMENTAIRES === */}
+              <div style={styles.section}>
+                <label style={styles.sectionLabel}>
+                  Postes supplémentaires <span style={{ fontWeight: 'normal', fontSize: '10px', color: '#999' }}>(multi-sélection)</span>
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                  {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => {
+                    const isSelected = tempPostesSupplementaires.includes(code);
+                    return (
+                      <button
+                        key={code}
+                        onClick={() => togglePosteSupp(code)}
+                        style={{
+                          padding: '8px', borderRadius: '6px', textAlign: 'center', position: 'relative',
+                          border: isSelected ? '2px solid #22c55e' : '1px solid #ddd',
+                          backgroundColor: isSelected ? '#dcfce7' : '#f5f5f5',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {isSelected && (
+                          <Check size={12} style={{ position: 'absolute', top: '2px', right: '4px', color: '#22c55e' }} />
+                        )}
+                        <div style={{ fontWeight: '600', fontSize: '10px', fontStyle: 'italic', color: '#333' }}>{code}</div>
+                      </button>
+                    );
+                  })}
                 </div>
                 {tempPostesSupplementaires.length > 0 && (
-                  <div style={styles.selectedSupp}>
+                  <div style={{ marginTop: '8px', padding: '6px 10px', backgroundColor: '#f5f5f5', borderRadius: '6px', fontSize: '11px', color: '#666' }}>
                     Sélectionnés : <em>{tempPostesSupplementaires.join(', ')}</em>
                   </div>
                 )}
               </div>
 
-              {/* Section Note */}
+              {/* === SECTION NOTES === */}
               <div style={styles.section}>
-                <label style={styles.sectionLabel}>Note</label>
-                <textarea
-                  value={tempNote}
-                  onChange={e => setTempNote(e.target.value)}
-                  placeholder="Ajouter une note..."
-                  style={styles.noteInput}
-                />
+                <label style={styles.sectionLabel}>Notes</label>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <button
+                    onClick={hasExistingNote ? openEditNoteModal : openAddNoteModal}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px',
+                      borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
+                      backgroundColor: hasExistingNote ? '#fef3c7' : '#fde68a',
+                      border: hasExistingNote ? '1px solid #fcd34d' : '1px solid #f59e0b',
+                      color: '#92400e'
+                    }}
+                  >
+                    {hasExistingNote ? <Edit3 size={14} /> : <StickyNote size={14} />}
+                    <span>{hasExistingNote ? 'Modifier note' : '+ Ajouter note'}</span>
+                  </button>
+                  
+                  {hasExistingNote && (
+                    <button
+                      onClick={handleDeleteNote}
+                      style={{
+                        display: 'flex', alignItems: 'center', padding: '8px 12px',
+                        borderRadius: '6px', cursor: 'pointer',
+                        backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626'
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+                
+                {hasExistingNote && (
+                  <div style={{ padding: '10px', backgroundColor: '#fef3c7', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                      <StickyNote size={14} style={{ color: '#f59e0b', flexShrink: 0, marginTop: '2px' }} />
+                      <p style={{ margin: 0, fontSize: '12px', color: '#92400e', whiteSpace: 'pre-wrap' }}>{tempNote}</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Boutons d'action */}
+              {/* === BOUTONS D'ACTION === */}
               <div style={styles.editActions}>
                 <button style={styles.deleteBtn} onClick={deleteEntry}>Effacer</button>
                 <div style={styles.rightActions}>
                   <button style={styles.cancelBtn} onClick={closeEditor}>Annuler</button>
                   <button 
-                    style={{...styles.saveBtn, opacity: (!tempService && !tempStatutConge) ? 0.5 : 1}}
+                    style={{...styles.saveBtn, opacity: (!tempService && !tempCategorie && !tempPoste && !tempStatutConge) ? 0.5 : 1}}
                     onClick={saveEdit}
-                    disabled={!tempService && !tempStatutConge}
+                    disabled={!tempService && !tempCategorie && !tempPoste && !tempStatutConge}
                   >
                     Sauvegarder
                   </button>
@@ -724,7 +1098,62 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
         )}
       </div>
 
-      {/* v2.0: Modal Couleurs avec email pour synchronisation cloud */}
+      {/* === SOUS-MODAL NOTE === */}
+      {showNoteModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001 }} onClick={() => setShowNoteModal(false)}>
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '20px', width: '100%', maxWidth: '400px', margin: '16px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h4 style={{ margin: 0, fontSize: '16px', color: '#333', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {isNoteEditMode ? <><Edit3 size={18} color="#f59e0b" />Modifier la note</> : <><StickyNote size={18} color="#f59e0b" />Ajouter une note</>}
+              </h4>
+              <button onClick={() => setShowNoteModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#666' }}><X size={20} /></button>
+            </div>
+            <textarea
+              value={noteInput}
+              onChange={(e) => setNoteInput(e.target.value)}
+              placeholder="Saisissez votre commentaire..."
+              style={{ width: '100%', height: '100px', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box' }}
+              autoFocus
+            />
+            <p style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>{noteInput.length} caractères</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button onClick={() => setShowNoteModal(false)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', backgroundColor: 'white', color: '#666', cursor: 'pointer' }}>Annuler</button>
+              <button onClick={handleValidateNote} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: '#f59e0b', color: 'white', cursor: 'pointer', fontWeight: '500' }}>Valider</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === SOUS-MODAL TEXTE LIBRE === */}
+      {showTexteLibreModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001 }} onClick={() => setShowTexteLibreModal(false)}>
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '20px', width: '100%', maxWidth: '400px', margin: '16px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h4 style={{ margin: 0, fontSize: '16px', color: '#333', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {isTexteLibreEditMode ? <><Edit3 size={18} color="#a855f7" />Modifier le texte</> : <><Type size={18} color="#a855f7" />Texte libre</>}
+              </h4>
+              <button onClick={() => setShowTexteLibreModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#666' }}><X size={20} /></button>
+            </div>
+            <p style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>Ce texte sera affiché dans la cellule du planning</p>
+            <input
+              type="text"
+              value={texteLibreInput}
+              onChange={(e) => setTexteLibreInput(e.target.value)}
+              placeholder="Ex: RDV médecin, Réunion..."
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', boxSizing: 'border-box' }}
+              autoFocus
+              maxLength={20}
+            />
+            <p style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>{texteLibreInput.length}/20 caractères</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button onClick={() => setShowTexteLibreModal(false)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', backgroundColor: 'white', color: '#666', cursor: 'pointer' }}>Annuler</button>
+              <button onClick={handleValidateTexteLibre} disabled={!texteLibreInput.trim()} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: '#a855f7', color: 'white', cursor: 'pointer', fontWeight: '500', opacity: texteLibreInput.trim() ? 1 : 0.5 }}>Valider</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Couleurs */}
       <ModalCouleurs 
         isOpen={showColorModal} 
         onClose={handleCloseColorModal}
@@ -736,58 +1165,33 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
 };
 
 // ============================================
-// STYLES - v2.1: Ajout styles statut congé
+// STYLES
 // ============================================
 const styles = {
   overlay: {
-    position: 'fixed',
-    top: 0, left: 0, right: 0, bottom: 0,
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 9999,
-    padding: '8px'
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    zIndex: 9999, padding: '8px'
   },
   modal: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: '12px',
-    width: '100%',
-    maxWidth: '420px',
-    maxHeight: '95vh',
-    overflow: 'auto',
+    backgroundColor: '#1a1a2e', borderRadius: '12px',
+    width: '100%', maxWidth: '420px', maxHeight: '95vh', overflow: 'auto',
     border: '1px solid rgba(0, 240, 255, 0.3)',
     boxShadow: '0 0 30px rgba(0, 240, 255, 0.15)'
   },
   header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '12px 16px',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    padding: '12px 16px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
   },
-  headerActions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px'
-  },
+  headerActions: { display: 'flex', alignItems: 'center', gap: '8px' },
   title: { margin: 0, color: '#00f0ff', fontSize: '16px' },
   paletteBtn: {
-    background: 'rgba(0, 240, 255, 0.15)',
-    border: '1px solid rgba(0, 240, 255, 0.3)',
-    borderRadius: '6px',
-    padding: '6px',
-    cursor: 'pointer',
-    color: '#00f0ff',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.2s'
+    background: 'rgba(0, 240, 255, 0.15)', border: '1px solid rgba(0, 240, 255, 0.3)',
+    borderRadius: '6px', padding: '6px', cursor: 'pointer', color: '#00f0ff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center'
   },
-  closeBtn: {
-    background: 'none', border: 'none', color: 'white',
-    fontSize: '20px', cursor: 'pointer', padding: '4px 8px'
-  },
+  closeBtn: { background: 'none', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer', padding: '4px 8px' },
   agentInfo: {
     display: 'flex', justifyContent: 'center', alignItems: 'center',
     gap: '10px', padding: '10px', backgroundColor: 'rgba(0, 102, 179, 0.2)'
@@ -797,10 +1201,7 @@ const styles = {
     color: '#00f0ff', backgroundColor: 'rgba(0, 240, 255, 0.2)',
     padding: '3px 10px', borderRadius: '10px', fontSize: '11px'
   },
-  monthNav: {
-    display: 'flex', justifyContent: 'center', alignItems: 'center',
-    gap: '12px', padding: '10px'
-  },
+  monthNav: { display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', padding: '10px' },
   navBtn: {
     background: 'rgba(0, 240, 255, 0.2)', border: '1px solid rgba(0, 240, 255, 0.4)',
     color: 'white', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '14px'
@@ -812,97 +1213,36 @@ const styles = {
   loading: { textAlign: 'center', color: 'white', padding: '30px' },
   daysGrid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' },
   dayCell: {
-    aspectRatio: '1', 
-    borderRadius: '6px', 
-    display: 'flex', 
-    flexDirection: 'column',
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    cursor: 'pointer',
-    border: '1px solid transparent', 
-    transition: 'all 0.15s ease', 
-    minHeight: '42px',
-    padding: '2px'
+    aspectRatio: '1', borderRadius: '6px', display: 'flex', flexDirection: 'column',
+    justifyContent: 'center', alignItems: 'center', cursor: 'pointer',
+    border: '1px solid transparent', transition: 'all 0.15s ease', minHeight: '42px', padding: '2px'
   },
   currentMonthDay: { backgroundColor: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.08)' },
   otherMonthDay: { opacity: 0.25, cursor: 'default' },
   selectedDay: { border: '2px solid #00f0ff', boxShadow: '0 0 8px rgba(0, 240, 255, 0.4)' },
   weekendDay: { borderColor: 'rgba(248, 113, 113, 0.2)' },
-  dayNumber: { fontSize: '12px', fontWeight: 'bold', lineHeight: 1 },
-  serviceCode: { fontSize: '9px', fontWeight: 'bold', marginTop: '1px', lineHeight: 1 },
-  posteCode: { fontSize: '7px', lineHeight: 1 },
-  supplement: { fontSize: '6px', fontStyle: 'italic', fontWeight: 'bold', lineHeight: 1 },
   legend: { 
-    display: 'flex', 
-    justifyContent: 'center', 
-    gap: '4px', 
-    padding: '8px', 
-    flexWrap: 'wrap',
+    display: 'flex', justifyContent: 'center', gap: '4px', padding: '8px', flexWrap: 'wrap',
     borderTop: '1px solid rgba(255,255,255,0.1)'
   },
   legendItem: { padding: '3px 6px', borderRadius: '6px', fontSize: '9px', fontWeight: 'bold' },
   
-  // Styles pour la modal d'édition
+  // Styles modal d'édition
   editOverlay: {
     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex',
-    justifyContent: 'center', alignItems: 'center', zIndex: 10000,
-    padding: '10px'
+    justifyContent: 'center', alignItems: 'center', zIndex: 10000, padding: '10px'
   },
   editModal: {
     backgroundColor: 'white', borderRadius: '12px', padding: '16px',
-    width: '100%', maxWidth: '400px', maxHeight: '85vh', overflow: 'auto'
+    width: '100%', maxWidth: '480px', maxHeight: '90vh', overflow: 'auto'
   },
   editHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' },
   editTitle: { margin: 0, fontSize: '16px', color: '#333' },
   editSubtitle: { margin: '4px 0 0', fontSize: '12px', color: '#666' },
-  editCloseBtn: {
-    background: 'none', border: 'none', fontSize: '18px',
-    color: '#999', cursor: 'pointer', padding: '0 4px'
-  },
+  editCloseBtn: { background: 'none', border: 'none', fontSize: '18px', color: '#999', cursor: 'pointer', padding: '0 4px' },
   section: { marginBottom: '16px' },
   sectionLabel: { display: 'block', fontSize: '12px', fontWeight: '600', color: '#333', marginBottom: '8px' },
-  labelHint: { fontWeight: 'normal', fontSize: '10px', color: '#999' },
-  serviceGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' },
-  serviceBtn: {
-    padding: '8px 4px', borderRadius: '6px', border: '1px solid #ddd',
-    backgroundColor: '#f5f5f5', cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s'
-  },
-  serviceBtnSelected: { backgroundColor: '#e3f2fd', borderColor: '#2196F3', boxShadow: '0 0 0 2px rgba(33, 150, 243, 0.3)' },
-  serviceBtnCode: { display: 'block', fontWeight: 'bold', fontSize: '13px', color: '#333' },
-  serviceBtnDesc: { display: 'block', fontSize: '8px', color: '#666', marginTop: '2px' },
-  
-  // v2.1: Styles pour statut congé
-  statutCongeGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' },
-  statutCongeBtn: {
-    padding: '10px 6px', borderRadius: '6px', border: '2px solid transparent',
-    cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s',
-    display: 'flex', flexDirection: 'column', alignItems: 'center'
-  },
-  statutCongeBtnSelected: { 
-    borderColor: '#333', 
-    boxShadow: '0 0 0 2px rgba(0, 0, 0, 0.2)' 
-  },
-  
-  posteGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' },
-  posteBtn: {
-    padding: '8px', borderRadius: '6px', border: '1px solid #ddd',
-    backgroundColor: '#f5f5f5', cursor: 'pointer', fontWeight: '600', fontSize: '11px', color: '#333'
-  },
-  posteBtnSelected: { backgroundColor: '#e3f2fd', borderColor: '#2196F3' },
-  suppGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' },
-  suppBtn: {
-    padding: '8px', borderRadius: '6px', border: '1px solid #ddd',
-    backgroundColor: '#f5f5f5', cursor: 'pointer', position: 'relative', textAlign: 'center'
-  },
-  suppBtnSelected: { backgroundColor: '#e8f5e9', borderColor: '#4CAF50' },
-  suppCode: { fontWeight: '600', fontSize: '10px', fontStyle: 'italic', color: '#333' },
-  checkMark: { position: 'absolute', top: '2px', right: '4px', color: '#4CAF50', fontSize: '10px' },
-  selectedSupp: { marginTop: '8px', padding: '6px', backgroundColor: '#f5f5f5', borderRadius: '6px', fontSize: '11px', color: '#666' },
-  noteInput: {
-    width: '100%', minHeight: '60px', padding: '8px', borderRadius: '6px',
-    border: '1px solid #ddd', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box'
-  },
   editActions: { display: 'flex', justifyContent: 'space-between', paddingTop: '12px', borderTop: '1px solid #eee' },
   deleteBtn: {
     padding: '8px 14px', backgroundColor: '#f44336', color: 'white',
