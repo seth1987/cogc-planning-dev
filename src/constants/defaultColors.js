@@ -1,6 +1,6 @@
 /**
  * Couleurs par défaut pour les services et éléments du planning
- * VERSION 3.5 - Ajout catégorie C,CP (Congés) avec C, C?, CNA
+ * VERSION 3.6 - Catégorie C,CP,F (Congés/Férié) avec C, C?, CNA, F
  */
 
 // Horaires de base pour les combinaisons
@@ -102,30 +102,30 @@ export const COLOR_CATEGORIES = {
     }
   },
   
-  // Absences : OUVERT par défaut - MA et F uniquement
+  // Absences : OUVERT par défaut - MA uniquement
   absences: {
     id: 'absences',
     label: 'Absences',
-    description: 'Maladie, Férié',
+    description: 'Maladie',
     defaultOpen: true,
     defaultColor: { bg: '#fecaca', text: '#991b1b' },
     items: {
-      'MA': { label: 'Maladie', defaultColor: { bg: '#fecaca', text: '#991b1b' } },
-      'F': { label: 'Férié', defaultColor: { bg: '#e9d5ff', text: '#7c3aed' } }
+      'MA': { label: 'Maladie', defaultColor: { bg: '#fecaca', text: '#991b1b' } }
     }
   },
   
-  // C,CP - Congés : OUVERT par défaut - C, C?, CNA
+  // C,CP,F - Congés/Férié : OUVERT par défaut - C, C?, CNA, F
   conges: {
     id: 'conges',
-    label: 'C,CP - Congés',
-    description: 'Congés accordés, en attente, refusés',
+    label: 'C,CP,F - Congés/Férié',
+    description: 'Congés accordés, en attente, refusés, jours fériés',
     defaultOpen: true,
     defaultColor: { bg: '#fde047', text: '#713f12' },
     items: {
       'C': { label: 'Congés accordés', defaultColor: { bg: '#fde047', text: '#713f12' } },
       'C?': { label: 'Congé en attente', defaultColor: { bg: '#fef9c3', text: '#854d0e' } },
-      'CNA': { label: 'Congé Non Accordé', defaultColor: { bg: '#fca5a5', text: '#991b1b' } }
+      'CNA': { label: 'Congé Non Accordé', defaultColor: { bg: '#fca5a5', text: '#991b1b' } },
+      'F': { label: 'Férié', defaultColor: { bg: '#e9d5ff', text: '#7c3aed' } }
     }
   },
   
