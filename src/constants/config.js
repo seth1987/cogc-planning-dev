@@ -43,7 +43,7 @@ export const CODE_COLORS = {
   'RP': 'bg-green-100 text-green-700',
   'RU': 'bg-green-100 text-green-700',
   
-  // === CONGES : JAUNE/OR ===
+  // === C,CP - CONGES : JAUNE/OR ===
   'C': 'bg-yellow-400 text-yellow-900 font-semibold',
   'C?': 'bg-yellow-200 text-yellow-800 font-semibold',    // Congé en attente
   'CNA': 'bg-red-300 text-red-900 font-semibold',         // Congé Non Accordé
@@ -190,8 +190,7 @@ export const JOURS_RH_CODES = [
   { code: 'DD', desc: 'DD' }
 ];
 
-// Absences - combinables avec horaire OU utilisables seuls
-// MA et F séparés, puis sous-groupe C,CP pour les congés
+// Absences - MA et F uniquement
 export const ABSENCES_CODES = [
   { code: 'MA', desc: 'Maladie' },
   { code: 'F', desc: 'Férié' }
