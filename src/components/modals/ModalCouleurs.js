@@ -3,7 +3,17 @@ import { X, Download, Upload, RotateCcw, Palette, Save } from 'lucide-react';
 import { SERVICE_LABELS } from '../../constants/defaultColors';
 import useColors from '../../hooks/useColors';
 
-const ModalCouleurs = ({ isOpen, onClose }) => {
+/**
+ * ModalCouleurs - Panneau de personnalisation des couleurs
+ * 
+ * v1.1 - Support du prop context pour couleurs séparées (general/perso)
+ * 
+ * @param {boolean} isOpen - État d'ouverture du modal
+ * @param {function} onClose - Callback de fermeture
+ * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
+ */
+const ModalCouleurs = ({ isOpen, onClose, context = 'general' }) => {
+  // Utilise le hook avec le contexte passé en prop
   const {
     colors,
     updateServiceColor,
@@ -12,7 +22,7 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
     resetColors,
     exportColors,
     importColors,
-  } = useColors();
+  } = useColors(context);
   
   const fileInputRef = useRef(null);
 
@@ -23,7 +33,7 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
     if (!file) return;
     try {
       await importColors(file);
-      alert('Configuration importee avec succes !');
+      alert('Configuration importée avec succès !');
     } catch (error) {
       alert('Erreur: ' + error.message);
     }
@@ -31,7 +41,7 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
   };
 
   const handleReset = () => {
-    if (window.confirm('Reinitialiser toutes les couleurs aux valeurs par defaut ?')) {
+    if (window.confirm('Réinitialiser toutes les couleurs aux valeurs par défaut ?')) {
       resetColors();
     }
   };
@@ -47,6 +57,11 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
 
   const serviceKeys = Object.keys(SERVICE_LABELS);
 
+  // Titre selon le contexte
+  const modalTitle = context === 'perso' 
+    ? 'Couleurs - Mon Planning' 
+    : 'Couleurs - Planning général';
+
   return (
     <div 
       style={{
@@ -59,7 +74,7 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 9999,
+        zIndex: 10001,
         padding: '20px',
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -68,8 +83,12 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
         style={{
           backgroundColor: '#1a1a2e',
           borderRadius: '12px',
-          border: '1px solid rgba(0, 240, 255, 0.3)',
-          boxShadow: '0 0 40px rgba(0, 240, 255, 0.2)',
+          border: context === 'perso' 
+            ? '1px solid rgba(168, 85, 247, 0.4)' 
+            : '1px solid rgba(0, 240, 255, 0.3)',
+          boxShadow: context === 'perso'
+            ? '0 0 40px rgba(168, 85, 247, 0.2)'
+            : '0 0 40px rgba(0, 240, 255, 0.2)',
           maxWidth: '600px',
           width: '100%',
           maxHeight: '90vh',
@@ -81,16 +100,18 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
         <div
           style={{
             padding: '16px 20px',
-            borderBottom: '1px solid rgba(0, 240, 255, 0.2)',
+            borderBottom: context === 'perso'
+              ? '1px solid rgba(168, 85, 247, 0.3)'
+              : '1px solid rgba(0, 240, 255, 0.2)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Palette size={24} color="#00f0ff" />
+            <Palette size={24} color={context === 'perso' ? '#a855f7' : '#00f0ff'} />
             <h2 style={{ margin: 0, color: '#ffffff', fontSize: '18px' }}>
-              Personnaliser les couleurs
+              {modalTitle}
             </h2>
           </div>
           <button
@@ -102,7 +123,13 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
         </div>
 
         <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
-          <h3 style={{ color: '#00f0ff', marginTop: 0, marginBottom: '12px', fontSize: '14px', textTransform: 'uppercase' }}>
+          <h3 style={{ 
+            color: context === 'perso' ? '#a855f7' : '#00f0ff', 
+            marginTop: 0, 
+            marginBottom: '12px', 
+            fontSize: '14px', 
+            textTransform: 'uppercase' 
+          }}>
             Services
           </h3>
           
@@ -112,11 +139,15 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
                 display: 'grid',
                 gridTemplateColumns: '80px 1fr 80px 80px',
                 padding: '10px 12px',
-                backgroundColor: 'rgba(0, 240, 255, 0.1)',
-                borderBottom: '1px solid rgba(0, 240, 255, 0.2)',
+                backgroundColor: context === 'perso' 
+                  ? 'rgba(168, 85, 247, 0.1)' 
+                  : 'rgba(0, 240, 255, 0.1)',
+                borderBottom: context === 'perso'
+                  ? '1px solid rgba(168, 85, 247, 0.2)'
+                  : '1px solid rgba(0, 240, 255, 0.2)',
                 fontSize: '12px',
                 fontWeight: 'bold',
-                color: '#00f0ff',
+                color: context === 'perso' ? '#a855f7' : '#00f0ff',
               }}
             >
               <span>Code</span>
@@ -158,13 +189,18 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
             ))}
           </div>
 
-          <h3 style={{ color: '#00f0ff', marginBottom: '12px', fontSize: '14px', textTransform: 'uppercase' }}>
-            Autres elements
+          <h3 style={{ 
+            color: context === 'perso' ? '#a855f7' : '#00f0ff', 
+            marginBottom: '12px', 
+            fontSize: '14px', 
+            textTransform: 'uppercase' 
+          }}>
+            Autres éléments
           </h3>
 
           <div style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)', borderRadius: '8px', overflow: 'hidden', marginBottom: '20px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', padding: '10px 12px', alignItems: 'center', borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
-              <span style={{ color: '#cccccc', fontSize: '13px' }}>Postes supplementaires (+ACR, +RO...)</span>
+              <span style={{ color: '#cccccc', fontSize: '13px' }}>Postes supplémentaires (+ACR, +RO...)</span>
               <span style={{ textAlign: 'center', color: '#666', fontSize: '11px' }}>-</span>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <input
@@ -197,16 +233,56 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(0, 240, 255, 0.2)' }}>
+          <div style={{ 
+            display: 'flex', 
+            gap: '10px', 
+            flexWrap: 'wrap', 
+            justifyContent: 'center', 
+            marginTop: '20px', 
+            paddingTop: '20px', 
+            borderTop: context === 'perso'
+              ? '1px solid rgba(168, 85, 247, 0.2)'
+              : '1px solid rgba(0, 240, 255, 0.2)' 
+          }}>
             <button
               onClick={exportColors}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', backgroundColor: 'rgba(0, 240, 255, 0.1)', border: '1px solid rgba(0, 240, 255, 0.3)', borderRadius: '6px', color: '#00f0ff', cursor: 'pointer', fontSize: '13px' }}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '6px', 
+                padding: '10px 16px', 
+                backgroundColor: context === 'perso' 
+                  ? 'rgba(168, 85, 247, 0.1)' 
+                  : 'rgba(0, 240, 255, 0.1)', 
+                border: context === 'perso'
+                  ? '1px solid rgba(168, 85, 247, 0.3)'
+                  : '1px solid rgba(0, 240, 255, 0.3)', 
+                borderRadius: '6px', 
+                color: context === 'perso' ? '#a855f7' : '#00f0ff', 
+                cursor: 'pointer', 
+                fontSize: '13px' 
+              }}
             >
               <Download size={16} /> Exporter
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', backgroundColor: 'rgba(0, 240, 255, 0.1)', border: '1px solid rgba(0, 240, 255, 0.3)', borderRadius: '6px', color: '#00f0ff', cursor: 'pointer', fontSize: '13px' }}
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '6px', 
+                padding: '10px 16px', 
+                backgroundColor: context === 'perso' 
+                  ? 'rgba(168, 85, 247, 0.1)' 
+                  : 'rgba(0, 240, 255, 0.1)', 
+                border: context === 'perso'
+                  ? '1px solid rgba(168, 85, 247, 0.3)'
+                  : '1px solid rgba(0, 240, 255, 0.3)', 
+                borderRadius: '6px', 
+                color: context === 'perso' ? '#a855f7' : '#00f0ff', 
+                cursor: 'pointer', 
+                fontSize: '13px' 
+              }}
             >
               <Upload size={16} /> Importer
             </button>
@@ -215,15 +291,34 @@ const ModalCouleurs = ({ isOpen, onClose }) => {
               onClick={handleReset}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', backgroundColor: 'rgba(255, 100, 100, 0.1)', border: '1px solid rgba(255, 100, 100, 0.3)', borderRadius: '6px', color: '#ff6464', cursor: 'pointer', fontSize: '13px' }}
             >
-              <RotateCcw size={16} /> Reinitialiser
+              <RotateCcw size={16} /> Réinitialiser
             </button>
           </div>
         </div>
 
-        <div style={{ padding: '16px 20px', borderTop: '1px solid rgba(0, 240, 255, 0.2)', display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ 
+          padding: '16px 20px', 
+          borderTop: context === 'perso'
+            ? '1px solid rgba(168, 85, 247, 0.2)'
+            : '1px solid rgba(0, 240, 255, 0.2)', 
+          display: 'flex', 
+          justifyContent: 'flex-end' 
+        }}>
           <button
             onClick={onClose}
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 24px', backgroundColor: '#00f0ff', border: 'none', borderRadius: '6px', color: '#1a1a2e', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              padding: '10px 24px', 
+              backgroundColor: context === 'perso' ? '#a855f7' : '#00f0ff', 
+              border: 'none', 
+              borderRadius: '6px', 
+              color: '#1a1a2e', 
+              cursor: 'pointer', 
+              fontSize: '14px', 
+              fontWeight: 'bold' 
+            }}
           >
             <Save size={16} /> Fermer
           </button>
