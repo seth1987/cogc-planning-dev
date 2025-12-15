@@ -8,10 +8,11 @@ import { supabase } from '../../lib/supabaseClient';
  * - Compteurs par type de vacation : - (Matin), O (Soir), X (Nuit), RP, MA
  * - Compteurs congés définitifs : C (accordé), CNA (refusé)
  * - Compteurs des positions supplémentaires (+CCU, +RO, +RC, etc.)
+ * - Postes Figés & Rapatriés (global COGC)
  * - Détails mensuels repliables en fin de modal
  * - Benchmarking Réserve (pour agents RESERVE REGULATEUR PN/DR uniquement)
  * 
- * v1.5.1 - Section Benchmarking Réserve repliable
+ * v1.6 - Ajout section Postes Figés & Rapatriés (données globales COGC)
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -27,11 +28,16 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   // États pour les sections repliables (fermées par défaut)
   const [showDetailMois, setShowDetailMois] = useState(false);
   const [showDetailSupplements, setShowDetailSupplements] = useState(false);
-  const [showBenchmark, setShowBenchmark] = useState(false); // v1.5.1: Benchmarking repliable
+  const [showBenchmark, setShowBenchmark] = useState(false);
+  const [showDetailFiges, setShowDetailFiges] = useState(false); // v1.6
   
   // v1.5: État pour les stats de benchmarking réserve
   const [benchmarkStats, setBenchmarkStats] = useState(null);
   const [loadingBenchmark, setLoadingBenchmark] = useState(false);
+  
+  // v1.6: État pour les postes figés/rapatriés
+  const [figesStats, setFigesStats] = useState(null);
+  const [loadingFiges, setLoadingFiges] = useState(false);
 
   const months = [
     'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
@@ -47,6 +53,14 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   // v1.5: Postes par site
   const POSTES_PARIS_NORD = ['CRC', 'RO', 'RC', 'ACR', 'SOUF'];
   const POSTES_DENFERT = ['RE', 'CAC', 'CCU'];
+  
+  // v1.6: Labels créneaux
+  const CRENEAU_LABELS = {
+    'nuitAvant': 'Nuit (avant)',
+    'matin': 'Matin',
+    'soir': 'Soir',
+    'nuitApres': 'Nuit (après)'
+  };
 
   // Couleurs pour les statuts congé définitifs
   const congeColors = {
@@ -109,7 +123,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
         matin: 0, soiree: 0, nuit: 0,
         rp: 0, ma: 0,
         total: 0,
-        parisNord: 0, denfert: 0 // v1.5: compteurs par site
+        parisNord: 0, denfert: 0
       };
       const supplements = {};
       
@@ -153,7 +167,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
           conges[statutConge].byMonth[month]++;
         }
 
-        // v1.5: Compter les utilisations par site
+        // Compter les utilisations par site
         if (POSTES_PARIS_NORD.includes(poste)) {
           annual.parisNord++;
         } else if (POSTES_DENFERT.includes(poste)) {
@@ -304,22 +318,99 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     }
   }, [agentInfo, selectedYear, isReserveAgent]);
 
+  // v1.6: Charger les stats de postes figés/rapatriés (global COGC)
+  const loadFigesStats = useCallback(async () => {
+    setLoadingFiges(true);
+    try {
+      const startDate = `${selectedYear}-01-01`;
+      const endDate = `${selectedYear}-12-31`;
+
+      const { data, error } = await supabase
+        .from('postes_figes')
+        .select('*')
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      if (error) throw error;
+
+      // Initialiser les compteurs
+      const result = {
+        totalFiges: 0,
+        totalRapatries: 0,
+        byPoste: {},
+        byCreneau: {},
+        byMonth: {}
+      };
+
+      // Initialiser par mois
+      for (let i = 0; i < 12; i++) {
+        result.byMonth[i] = { figes: 0, rapatries: 0 };
+      }
+
+      // Analyser les données
+      (data || []).forEach(entry => {
+        const status = entry.status;
+        const poste = entry.poste || 'Inconnu';
+        const creneau = entry.creneau || 'Inconnu';
+        const month = new Date(entry.date).getMonth();
+
+        // Compteurs globaux
+        if (status === 'fige') {
+          result.totalFiges++;
+          result.byMonth[month].figes++;
+        } else if (status === 'rapatrie') {
+          result.totalRapatries++;
+          result.byMonth[month].rapatries++;
+        }
+
+        // Par poste
+        if (!result.byPoste[poste]) {
+          result.byPoste[poste] = { figes: 0, rapatries: 0 };
+        }
+        if (status === 'fige') {
+          result.byPoste[poste].figes++;
+        } else if (status === 'rapatrie') {
+          result.byPoste[poste].rapatries++;
+        }
+
+        // Par créneau
+        if (!result.byCreneau[creneau]) {
+          result.byCreneau[creneau] = { figes: 0, rapatries: 0 };
+        }
+        if (status === 'fige') {
+          result.byCreneau[creneau].figes++;
+        } else if (status === 'rapatrie') {
+          result.byCreneau[creneau].rapatries++;
+        }
+      });
+
+      setFigesStats(result);
+    } catch (err) {
+      console.error('Erreur chargement postes figés:', err);
+    } finally {
+      setLoadingFiges(false);
+    }
+  }, [selectedYear]);
+
   // Effets
   useEffect(() => {
     if (isOpen) {
       loadAgentInfo();
       setShowDetailMois(false);
       setShowDetailSupplements(false);
-      setShowBenchmark(false); // v1.5.1: Reset état
+      setShowBenchmark(false);
+      setShowDetailFiges(false);
       setBenchmarkStats(null);
+      setFigesStats(null);
     }
   }, [isOpen, loadAgentInfo]);
 
   useEffect(() => {
     if (agentInfo) {
       loadStats();
+      loadFigesStats(); // v1.6: Charger pour tous les agents
     }
-  }, [agentInfo, loadStats]);
+  }, [agentInfo, loadStats, loadFigesStats]);
 
   // v1.5: Charger benchmark quand agent de réserve détecté
   useEffect(() => {
@@ -372,6 +463,9 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const totalSupplements = getTotalSupplements();
   const activeSupplements = getActiveSupplements();
   const totalConges = getTotalConges();
+  
+  // v1.6: Total postes figés/rapatriés
+  const totalFigesRapatries = figesStats ? (figesStats.totalFiges + figesStats.totalRapatries) : 0;
 
   // v1.5: Données pour le tableau de benchmarking
   const benchmarkRows = benchmarkStats ? [
@@ -590,7 +684,180 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               )}
             </div>
 
+            {/* v1.6: Postes Figés & Rapatriés (global COGC) */}
+            <div style={styles.section}>
+              <h3 style={styles.sectionTitle}>🔒 Postes Figés & Rapatriés {selectedYear}</h3>
+              <p style={styles.globalInfo}>Données globales COGC (tous agents)</p>
+              
+              {loadingFiges ? (
+                <div style={styles.loadingSmall}>Chargement...</div>
+              ) : figesStats ? (
+                <>
+                  <div style={styles.figesGrid}>
+                    {/* Figés */}
+                    <div style={{
+                      ...styles.statCardFige,
+                      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                      borderColor: '#ef4444'
+                    }}>
+                      <div style={{...styles.statIconFige, backgroundColor: '#ef4444'}}>
+                        {figesStats.totalFiges}
+                      </div>
+                      <div style={{...styles.statLabel, color: '#ef4444'}}>Figés</div>
+                      <div style={styles.statMarker}>Poste non tenu</div>
+                    </div>
+                    
+                    {/* Rapatriés */}
+                    <div style={{
+                      ...styles.statCardFige,
+                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                      borderColor: '#3b82f6'
+                    }}>
+                      <div style={{...styles.statIconFige, backgroundColor: '#3b82f6'}}>
+                        {figesStats.totalRapatries}
+                      </div>
+                      <div style={{...styles.statLabel, color: '#3b82f6'}}>Rapatriés</div>
+                      <div style={styles.statMarker}>Denfert → Paris Nord</div>
+                    </div>
+                  </div>
+                  
+                  {totalFigesRapatries > 0 && (
+                    <div style={{...styles.totalBox, backgroundColor: 'rgba(239, 68, 68, 0.1)'}}>
+                      <strong>Total :</strong> {totalFigesRapatries}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p style={styles.noData}>Aucune donnée disponible</p>
+              )}
+            </div>
+
             {/* === SECTIONS REPLIABLES === */}
+
+            {/* v1.6: Détail Postes Figés & Rapatriés - REPLIABLE */}
+            {figesStats && totalFigesRapatries > 0 && (
+              <div style={styles.section}>
+                <h3 
+                  style={styles.sectionTitleClickable}
+                  onClick={() => setShowDetailFiges(!showDetailFiges)}
+                >
+                  <span style={styles.toggleIcon}>{showDetailFiges ? '▼' : '▶'}</span>
+                  📆 Détail Postes Figés & Rapatriés
+                </h3>
+                
+                {showDetailFiges && (
+                  <>
+                    {/* Par poste */}
+                    <h4 style={styles.subSectionTitle}>Par poste</h4>
+                    <div style={styles.tableContainer}>
+                      <table style={styles.table}>
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>Poste</th>
+                            <th style={{...styles.th, color: '#ef4444'}}>Figés</th>
+                            <th style={{...styles.th, color: '#3b82f6'}}>Rapatriés</th>
+                            <th style={styles.th}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(figesStats.byPoste)
+                            .sort((a, b) => (b[1].figes + b[1].rapatries) - (a[1].figes + a[1].rapatries))
+                            .map(([poste, data]) => (
+                              <tr key={poste} style={styles.tr}>
+                                <td style={{...styles.td, fontWeight: 'bold'}}>{poste}</td>
+                                <td style={{...styles.td, color: '#ef4444', fontWeight: data.figes > 0 ? 'bold' : 'normal'}}>
+                                  {data.figes}
+                                </td>
+                                <td style={{...styles.td, color: '#3b82f6', fontWeight: data.rapatries > 0 ? 'bold' : 'normal'}}>
+                                  {data.rapatries}
+                                </td>
+                                <td style={{...styles.td, fontWeight: 'bold'}}>
+                                  {data.figes + data.rapatries}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Par créneau */}
+                    <h4 style={{...styles.subSectionTitle, marginTop: '20px'}}>Par créneau</h4>
+                    <div style={styles.tableContainer}>
+                      <table style={styles.table}>
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>Créneau</th>
+                            <th style={{...styles.th, color: '#ef4444'}}>Figés</th>
+                            <th style={{...styles.th, color: '#3b82f6'}}>Rapatriés</th>
+                            <th style={styles.th}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(figesStats.byCreneau).map(([creneau, data]) => (
+                            <tr key={creneau} style={styles.tr}>
+                              <td style={{...styles.td, fontWeight: 'bold'}}>
+                                {CRENEAU_LABELS[creneau] || creneau}
+                              </td>
+                              <td style={{...styles.td, color: '#ef4444', fontWeight: data.figes > 0 ? 'bold' : 'normal'}}>
+                                {data.figes}
+                              </td>
+                              <td style={{...styles.td, color: '#3b82f6', fontWeight: data.rapatries > 0 ? 'bold' : 'normal'}}>
+                                {data.rapatries}
+                              </td>
+                              <td style={{...styles.td, fontWeight: 'bold'}}>
+                                {data.figes + data.rapatries}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Par mois */}
+                    <h4 style={{...styles.subSectionTitle, marginTop: '20px'}}>Par mois</h4>
+                    <div style={styles.tableContainer}>
+                      <table style={styles.table}>
+                        <thead>
+                          <tr>
+                            <th style={styles.th}>Mois</th>
+                            <th style={{...styles.th, color: '#ef4444'}}>Figés</th>
+                            <th style={{...styles.th, color: '#3b82f6'}}>Rapatriés</th>
+                            <th style={styles.th}>Total</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {months.map((month, idx) => {
+                            const monthData = figesStats.byMonth[idx] || { figes: 0, rapatries: 0 };
+                            const monthTotal = monthData.figes + monthData.rapatries;
+                            return (
+                              <tr key={idx} style={styles.tr}>
+                                <td style={styles.td}>{month}</td>
+                                <td style={{...styles.td, color: '#ef4444', fontWeight: monthData.figes > 0 ? 'bold' : 'normal'}}>
+                                  {monthData.figes}
+                                </td>
+                                <td style={{...styles.td, color: '#3b82f6', fontWeight: monthData.rapatries > 0 ? 'bold' : 'normal'}}>
+                                  {monthData.rapatries}
+                                </td>
+                                <td style={{...styles.td, fontWeight: monthTotal > 0 ? 'bold' : 'normal'}}>
+                                  {monthTotal}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {/* Ligne totaux */}
+                          <tr style={{...styles.tr, backgroundColor: 'rgba(239, 68, 68, 0.1)'}}>
+                            <td style={{...styles.td, fontWeight: 'bold'}}>TOTAL</td>
+                            <td style={{...styles.td, color: '#ef4444', fontWeight: 'bold'}}>{figesStats.totalFiges}</td>
+                            <td style={{...styles.td, color: '#3b82f6', fontWeight: 'bold'}}>{figesStats.totalRapatries}</td>
+                            <td style={{...styles.td, fontWeight: 'bold'}}>{totalFigesRapatries}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* v1.5.1: Section Benchmarking Réserve - REPLIABLE (uniquement pour agents PN/DR) */}
             {isReserveAgent && (
@@ -926,12 +1193,23 @@ const styles = {
     width: '16px',
     display: 'inline-block'
   },
+  subSectionTitle: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: '14px',
+    marginBottom: '10px',
+    fontWeight: 'bold'
+  },
   vacationsGrid: { 
     display: 'grid', 
     gridTemplateColumns: 'repeat(5, 1fr)', 
     gap: '12px' 
   },
   congesGrid: { 
+    display: 'grid', 
+    gridTemplateColumns: 'repeat(2, 1fr)', 
+    gap: '15px' 
+  },
+  figesGrid: { 
     display: 'grid', 
     gridTemplateColumns: 'repeat(2, 1fr)', 
     gap: '15px' 
@@ -948,6 +1226,12 @@ const styles = {
     textAlign: 'center',
     border: '2px solid'
   },
+  statCardFige: {
+    borderRadius: '12px',
+    padding: '20px 15px', 
+    textAlign: 'center',
+    border: '2px solid'
+  },
   statIcon: {
     width: '50px', height: '50px', borderRadius: '50%',
     display: 'flex', justifyContent: 'center', alignItems: 'center',
@@ -958,9 +1242,21 @@ const styles = {
     display: 'flex', justifyContent: 'center', alignItems: 'center',
     margin: '0 auto 10px', fontSize: '22px', fontWeight: 'bold'
   },
+  statIconFige: {
+    width: '60px', height: '60px', borderRadius: '50%',
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    margin: '0 auto 10px', fontSize: '22px', fontWeight: 'bold', color: 'white'
+  },
   statLabel: { color: 'rgba(255, 255, 255, 0.9)', fontSize: '12px', marginBottom: '2px' },
   statMarker: { color: 'rgba(255, 255, 255, 0.5)', fontSize: '10px' },
   statMarkerConge: { fontSize: '10px', fontWeight: '500' },
+  globalInfo: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: '12px',
+    marginBottom: '15px',
+    textAlign: 'center',
+    fontStyle: 'italic'
+  },
   totalBox: {
     textAlign: 'center', marginTop: '15px', padding: '12px',
     backgroundColor: 'rgba(0, 240, 255, 0.1)', borderRadius: '8px', color: 'white', fontSize: '15px'
