@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle, Loader2, Briefcase } from 'lucide-react';
 import supabaseService from '../../services/supabaseService';
 
 /**
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
- * Répartis par créneaux horaires (Nuit, Matin, Soirée) et par poste
+ * Répartis par créneaux horaires (Nuit, Matin, Soirée, Jour) et par poste
  * 
- * @version 1.5.3 - Fix: Dropdown menu z-index and overflow issues
+ * @version 1.6.0 - Ajout catégorie "Jour" + badges statut congé (C, C?, CNA)
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -25,6 +25,7 @@ const ModalPrevisionnelJour = ({
     nuitAvant: {},
     matin: {},
     soir: {},
+    jour: {},
     nuitApres: {}
   });
   
@@ -34,6 +35,9 @@ const ModalPrevisionnelJour = ({
   
   // Menu déroulant ouvert
   const [openDropdown, setOpenDropdown] = useState(null);
+
+  // Codes de service de jour (depuis config.js)
+  const SERVICE_JOUR_CODES = useMemo(() => ['VL', 'D', 'DISPO', 'EIA', 'DPX', 'PSE', 'INAC', 'VM'], []);
 
   // Configuration des créneaux
   const CRENEAUX = useMemo(() => ({
@@ -63,6 +67,15 @@ const ModalPrevisionnelJour = ({
       icon: Sunset,
       postes: ['CRC', 'ACR', 'RC', 'RO', 'SOUFF', 'CCU', 'RE', 'CAC'],
       color: 'orange'
+    },
+    jour: {
+      id: 'jour',
+      label: 'Jour',
+      symbole: 'VL/D/...',
+      colonneJour: 'J',
+      icon: Briefcase,
+      postes: ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC'],
+      color: 'blue'
     },
     nuitApres: {
       id: 'nuitApres',
@@ -96,7 +109,10 @@ const ModalPrevisionnelJour = ({
     setLoadingPostes(true);
     try {
       const data = await supabaseService.getPostesFiges(dateISO);
-      setPostesStatus(data);
+      setPostesStatus(prev => ({
+        ...prev,
+        ...data
+      }));
       console.log(`✅ Postes figés chargés pour ${dateISO}:`, data);
     } catch (err) {
       console.error('Erreur chargement postes figés:', err);
@@ -105,6 +121,7 @@ const ModalPrevisionnelJour = ({
         nuitAvant: {},
         matin: {},
         soir: {},
+        jour: {},
         nuitApres: {}
       });
     } finally {
@@ -237,16 +254,28 @@ const ModalPrevisionnelJour = ({
     return false;
   }, []);
 
+  /**
+   * Vérifie si un code est un code de service de jour
+   */
+  const isServiceJourCode = useCallback((code) => {
+    if (!code) return false;
+    const upperCode = code.toUpperCase().trim();
+    // Vérifier le code exact ou le premier mot si c'est une combinaison
+    const firstPart = upperCode.split(' ')[0];
+    return SERVICE_JOUR_CODES.includes(upperCode) || SERVICE_JOUR_CODES.includes(firstPart);
+  }, [SERVICE_JOUR_CODES]);
+
   // Calculer les équipes pour chaque créneau
   const equipesParCreneau = useMemo(() => {
     if (!selectedDate || !agents.length || !selectedDay) {
-      return { nuitAvant: {}, matin: {}, soir: {}, nuitApres: {} };
+      return { nuitAvant: {}, matin: {}, soir: {}, jour: {}, nuitApres: {} };
     }
 
     const result = {
       nuitAvant: {},
       matin: {},
       soir: {},
+      jour: {},
       nuitApres: {}
     };
 
@@ -276,6 +305,10 @@ const ModalPrevisionnelJour = ({
       const postesSupplementairesJ = typeof serviceJ === 'object' 
         ? (serviceJ?.postesSupplementaires || [])
         : [];
+      // Statut congé (C, C?, CNA)
+      const statutCongeJ = typeof serviceJ === 'object' 
+        ? (serviceJ?.statut_conge || serviceJ?.statutConge || '')
+        : '';
 
       // Récupérer le service du jour J+1 (pour nuit J→J+1)
       const serviceJ1 = nextDay ? agentPlanning[nextDay] : null;
@@ -285,6 +318,9 @@ const ModalPrevisionnelJour = ({
       const postesSupplementairesJ1 = typeof serviceJ1 === 'object'
         ? (serviceJ1?.postesSupplementaires || [])
         : [];
+      const statutCongeJ1 = typeof serviceJ1 === 'object'
+        ? (serviceJ1?.statut_conge || serviceJ1?.statutConge || '')
+        : '';
 
       // Déterminer le poste effectif (poste affecté ou groupe par défaut)
       const posteEffectif = posteCodeJ || posteAgent;
@@ -295,7 +331,8 @@ const ModalPrevisionnelJour = ({
         serviceCode: serviceCodeJ,
         posteCode: posteCodeJ,
         posteCodeRaw: posteCodeJRaw,
-        postesSupplementaires: postesSupplementairesJ
+        postesSupplementaires: postesSupplementairesJ,
+        statutConge: statutCongeJ
       };
 
       // Nuit J-1 → J : X dans colonne J
@@ -337,6 +374,19 @@ const ModalPrevisionnelJour = ({
         });
       }
 
+      // Jour : codes SERVICE_JOUR (VL, D, DISPO, EIA, DPX, PSE, INAC, VM)
+      if (isServiceJourCode(serviceCodeJ)) {
+        if (CRENEAUX.jour.postes.includes(posteEffectif)) {
+          result.jour[posteEffectif].push(agentInfo);
+        }
+        postesSupplementairesJ.forEach(posteSupp => {
+          const posteNorm = normalizePosteCode(posteSupp);
+          if (CRENEAUX.jour.postes.includes(posteNorm) && result.jour[posteNorm]) {
+            result.jour[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
+          }
+        });
+      }
+
       // Nuit J → J+1 : X dans colonne J+1
       if (serviceCodeJ1 === 'X') {
         const posteEffectifJ1 = posteCodeJ1 || posteAgent;
@@ -346,7 +396,8 @@ const ModalPrevisionnelJour = ({
           serviceCode: serviceCodeJ1,
           posteCode: posteCodeJ1,
           posteCodeRaw: posteCodeJ1Raw,
-          postesSupplementaires: postesSupplementairesJ1
+          postesSupplementaires: postesSupplementairesJ1,
+          statutConge: statutCongeJ1
         };
         if (CRENEAUX.nuitApres.postes.includes(posteEffectifJ1)) {
           result.nuitApres[posteEffectifJ1].push(agentInfoJ1);
@@ -361,7 +412,7 @@ const ModalPrevisionnelJour = ({
     });
 
     return result;
-  }, [selectedDate, selectedDay, nextDay, agents, planningData, CRENEAUX, getGroupeSimple, normalizePosteCode]);
+  }, [selectedDate, selectedDay, nextDay, agents, planningData, CRENEAUX, getGroupeSimple, normalizePosteCode, isServiceJourCode]);
 
   // Gestion du clic sur un bouton de poste
   const handlePosteClick = useCallback((creneauId, poste) => {
@@ -497,10 +548,41 @@ const ModalPrevisionnelJour = ({
       statusBadge = <span className="ml-2 text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded font-medium">[RAPATRIÉ PN]</span>;
     }
 
+    // Badge statut congé (C, C?, CNA)
+    let congeBadge = null;
+    if (agent.statutConge) {
+      const conge = agent.statutConge;
+      if (conge === 'C') {
+        congeBadge = (
+          <span className="ml-1.5 text-xs px-1.5 py-0.5 bg-yellow-400 text-yellow-900 rounded font-semibold">
+            C
+          </span>
+        );
+      } else if (conge === 'C?') {
+        congeBadge = (
+          <span className="ml-1.5 text-xs px-1.5 py-0.5 bg-yellow-200 text-yellow-800 rounded font-semibold flex items-center gap-0.5">
+            ⚠️ C?
+          </span>
+        );
+      } else if (conge === 'CNA') {
+        congeBadge = (
+          <span className="ml-1.5 text-xs px-1.5 py-0.5 bg-red-300 text-red-900 rounded font-semibold">
+            CNA
+          </span>
+        );
+      }
+    }
+
     // Ne PAS afficher le badge si c'est juste une normalisation (SOUF → SOUFF)
     let additionalInfo = null;
     if (agent.posteCodeRaw && !isNormalizationOf(agent.posteCodeRaw, poste)) {
       additionalInfo = <span className="ml-1 text-xs text-blue-500">({agent.posteCodeRaw})</span>;
+    }
+
+    // Afficher le code service pour le créneau "jour"
+    let serviceCodeInfo = null;
+    if (creneauId === 'jour' && agent.serviceCode) {
+      serviceCodeInfo = <span className="ml-1 text-xs text-blue-600 font-medium">[{agent.serviceCode}]</span>;
     }
 
     // Afficher les postes supplémentaires en italique violet
@@ -524,12 +606,14 @@ const ModalPrevisionnelJour = ({
       : agent.id;
 
     return (
-      <div key={uniqueKey} className="flex items-center text-sm py-0.5">
+      <div key={uniqueKey} className="flex items-center text-sm py-0.5 flex-wrap">
         <span className={`font-medium ${posteStatus === 'fige' ? 'text-red-700' : posteStatus === 'rapatrie' ? 'text-orange-700' : 'text-gray-800'}`}>
           {agent.nom} {agent.prenom}
         </span>
+        {serviceCodeInfo}
         {additionalInfo}
         {postesSupp}
+        {congeBadge}
         {statusBadge}
       </div>
     );
@@ -543,10 +627,19 @@ const ModalPrevisionnelJour = ({
     const colorClasses = {
       indigo: { bg: 'bg-indigo-50', border: 'border-indigo-200', icon: 'text-indigo-600', header: 'bg-indigo-100' },
       yellow: { bg: 'bg-yellow-50', border: 'border-yellow-200', icon: 'text-yellow-600', header: 'bg-yellow-100' },
-      orange: { bg: 'bg-orange-50', border: 'border-orange-200', icon: 'text-orange-600', header: 'bg-orange-100' }
+      orange: { bg: 'bg-orange-50', border: 'border-orange-200', icon: 'text-orange-600', header: 'bg-orange-100' },
+      blue: { bg: 'bg-blue-50', border: 'border-blue-200', icon: 'text-blue-600', header: 'bg-blue-100' }
     };
 
     const colors = colorClasses[color] || colorClasses.indigo;
+
+    // Compter le nombre d'agents dans ce créneau
+    const totalAgents = Object.values(equipes).reduce((sum, arr) => sum + arr.length, 0);
+
+    // Ne pas afficher le créneau s'il n'y a aucun agent (sauf pour les créneaux principaux)
+    if (id === 'jour' && totalAgents === 0) {
+      return null;
+    }
 
     return (
       <div className={`rounded-lg border ${colors.border} ${colors.bg}`} style={{ overflow: 'visible' }}>
@@ -556,9 +649,14 @@ const ModalPrevisionnelJour = ({
             <span className="font-semibold text-gray-800">
               {periodLabel || label}
             </span>
+            {id === 'jour' && (
+              <span className="text-xs text-gray-500 ml-2">
+                (VL, D, DISPO, EIA, DPX, PSE, INAC, VM)
+              </span>
+            )}
           </div>
           <div className="text-xs text-gray-500">
-            Symbole: {creneauConfig.symbole}
+            {id === 'jour' ? 'Service de jour' : `Symbole: ${creneauConfig.symbole}`}
           </div>
         </div>
 
@@ -654,7 +752,7 @@ const ModalPrevisionnelJour = ({
         </div>
 
         {/* Stats */}
-        <div className="bg-gray-50 px-6 py-3 border-b flex gap-6 text-sm">
+        <div className="bg-gray-50 px-6 py-3 border-b flex flex-wrap gap-4 text-sm">
           <div className="flex items-center gap-2">
             <Moon className="w-4 h-4 text-indigo-500" />
             <span className="text-gray-600">Nuit (avant):</span>
@@ -670,6 +768,13 @@ const ModalPrevisionnelJour = ({
             <span className="text-gray-600">Soir:</span>
             <span className="font-bold text-orange-700">{statsCreneaux.soir || 0}</span>
           </div>
+          {statsCreneaux.jour > 0 && (
+            <div className="flex items-center gap-2">
+              <Briefcase className="w-4 h-4 text-blue-500" />
+              <span className="text-gray-600">Jour:</span>
+              <span className="font-bold text-blue-700">{statsCreneaux.jour}</span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Moon className="w-4 h-4 text-indigo-500" />
             <span className="text-gray-600">Nuit (après):</span>
@@ -695,22 +800,32 @@ const ModalPrevisionnelJour = ({
               {renderCreneau(CRENEAUX.nuitAvant, nuitAvantLabel)}
               {renderCreneau(CRENEAUX.matin, '☀️ Matin')}
               {renderCreneau(CRENEAUX.soir, '🌆 Soirée')}
+              {renderCreneau(CRENEAUX.jour, '💼 Jour')}
               {renderCreneau(CRENEAUX.nuitApres, nuitApresLabel)}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="bg-gray-50 px-6 py-3 border-t flex justify-between items-center rounded-b-xl">
-          <div className="text-xs text-gray-500">
-            <span className="inline-flex items-center gap-1 mr-4">
+        <div className="bg-gray-50 px-6 py-3 border-t flex flex-wrap justify-between items-center gap-2 rounded-b-xl">
+          <div className="text-xs text-gray-500 flex flex-wrap gap-3">
+            <span className="inline-flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-red-500"></span> FIGÉ
             </span>
-            <span className="inline-flex items-center gap-1 mr-4">
+            <span className="inline-flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-orange-500"></span> RAPATRIÉ PN
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="italic text-purple-600">(+SOUF)</span> Poste supplémentaire
+              <span className="italic text-purple-600">(+SOUF)</span> Poste supp.
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="px-1 py-0.5 bg-yellow-400 text-yellow-900 rounded text-xs font-semibold">C</span> Congé
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="px-1 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-semibold">C?</span> Congé en attente
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="px-1 py-0.5 bg-red-300 text-red-900 rounded text-xs font-semibold">CNA</span> Congé refusé
             </span>
           </div>
           <button
