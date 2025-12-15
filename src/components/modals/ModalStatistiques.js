@@ -9,8 +9,9 @@ import { supabase } from '../../lib/supabaseClient';
  * - Compteurs congés définitifs : C (accordé), CNA (refusé)
  * - Compteurs des positions supplémentaires (+CCU, +RO, +RC, etc.)
  * - Détails mensuels repliables en fin de modal
+ * - Benchmarking Réserve (pour agents RESERVE REGULATEUR PN/DR uniquement)
  * 
- * v1.4 - Sections détails repliables à la fin, RP/MA dans vacations, simplification
+ * v1.5 - Ajout section Benchmarking Réserve avec comparaison groupe/total
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -26,6 +27,10 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   // États pour les sections repliables (fermées par défaut)
   const [showDetailMois, setShowDetailMois] = useState(false);
   const [showDetailSupplements, setShowDetailSupplements] = useState(false);
+  
+  // v1.5: État pour les stats de benchmarking réserve
+  const [benchmarkStats, setBenchmarkStats] = useState(null);
+  const [loadingBenchmark, setLoadingBenchmark] = useState(false);
 
   const months = [
     'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
@@ -34,6 +39,13 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
 
   // Liste des postes supplémentaires possibles
   const supplementTypes = ['+ACR', '+RO', '+RC', '+CCU', '+RE', '+OV'];
+
+  // v1.5: Groupes de réserve concernés par le benchmarking
+  const RESERVE_GROUPS = ['RESERVE REGULATEUR PN', 'RESERVE REGULATEUR DR'];
+  
+  // v1.5: Postes par site
+  const POSTES_PARIS_NORD = ['CRC', 'RO', 'RC', 'ACR', 'SOUF'];
+  const POSTES_DENFERT = ['RE', 'CAC', 'CCU'];
 
   // Couleurs pour les statuts congé définitifs
   const congeColors = {
@@ -50,6 +62,9 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     '+RE': '#8BC34A',
     '+OV': '#795548'
   };
+
+  // v1.5: Vérifier si l'agent est dans un groupe de réserve concerné
+  const isReserveAgent = agentInfo && RESERVE_GROUPS.includes(agentInfo.groupe);
 
   // Charger les infos agent
   const loadAgentInfo = useCallback(async () => {
@@ -69,7 +84,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     }
   }, [currentUser]);
 
-  // Calculer les statistiques
+  // Calculer les statistiques de l'agent
   const loadStats = useCallback(async () => {
     if (!agentInfo?.id) return;
 
@@ -92,7 +107,8 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
       const annual = {
         matin: 0, soiree: 0, nuit: 0,
         rp: 0, ma: 0,
-        total: 0
+        total: 0,
+        parisNord: 0, denfert: 0 // v1.5: compteurs par site
       };
       const supplements = {};
       
@@ -128,11 +144,19 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
         const month = new Date(entry.date).getMonth();
         const code = (entry.service_code || '').toUpperCase().trim();
         const statutConge = (entry.statut_conge || '').toUpperCase().trim();
+        const poste = (entry.poste_code || '').toUpperCase().trim();
 
         // Compter les statuts congé DÉFINITIFS uniquement (C et CNA)
         if (statutConge === 'C' || statutConge === 'CNA') {
           conges[statutConge].count++;
           conges[statutConge].byMonth[month]++;
+        }
+
+        // v1.5: Compter les utilisations par site
+        if (POSTES_PARIS_NORD.includes(poste)) {
+          annual.parisNord++;
+        } else if (POSTES_DENFERT.includes(poste)) {
+          annual.denfert++;
         }
 
         // === COMPTAGE DES VACATIONS ===
@@ -197,12 +221,95 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     }
   }, [agentInfo, selectedYear]);
 
+  // v1.5: Charger les stats de benchmarking pour tous les agents de réserve
+  const loadBenchmarkStats = useCallback(async () => {
+    if (!agentInfo?.id || !isReserveAgent) return;
+
+    setLoadingBenchmark(true);
+    try {
+      const startDate = `${selectedYear}-01-01`;
+      const endDate = `${selectedYear}-12-31`;
+
+      // Récupérer tous les agents des groupes de réserve
+      const { data: reserveAgents, error: agentsError } = await supabase
+        .from('agents')
+        .select('id, groupe')
+        .in('groupe', RESERVE_GROUPS);
+
+      if (agentsError) throw agentsError;
+
+      const agentIds = reserveAgents.map(a => a.id);
+      const myGroupAgentIds = reserveAgents
+        .filter(a => a.groupe === agentInfo.groupe)
+        .map(a => a.id);
+
+      // Récupérer toutes les entrées de planning pour ces agents
+      const { data: allPlanningData, error: planningError } = await supabase
+        .from('planning')
+        .select('agent_id, service_code, poste_code')
+        .in('agent_id', agentIds)
+        .gte('date', startDate)
+        .lte('date', endDate);
+
+      if (planningError) throw planningError;
+
+      // Calculer les stats par groupe et total
+      const initStats = () => ({
+        matin: 0, soiree: 0, nuit: 0,
+        parisNord: 0, denfert: 0
+      });
+
+      const myGroupStats = initStats();
+      const totalReserveStats = initStats();
+
+      (allPlanningData || []).forEach(entry => {
+        const code = (entry.service_code || '').toUpperCase().trim();
+        const poste = (entry.poste_code || '').toUpperCase().trim();
+        const isMyGroup = myGroupAgentIds.includes(entry.agent_id);
+
+        // Comptage vacations
+        let vacationType = null;
+        if (code === '-') vacationType = 'matin';
+        else if (code === 'O') vacationType = 'soiree';
+        else if (code === 'X') vacationType = 'nuit';
+
+        if (vacationType) {
+          totalReserveStats[vacationType]++;
+          if (isMyGroup) myGroupStats[vacationType]++;
+        }
+
+        // Comptage par site
+        if (POSTES_PARIS_NORD.includes(poste)) {
+          totalReserveStats.parisNord++;
+          if (isMyGroup) myGroupStats.parisNord++;
+        } else if (POSTES_DENFERT.includes(poste)) {
+          totalReserveStats.denfert++;
+          if (isMyGroup) myGroupStats.denfert++;
+        }
+      });
+
+      setBenchmarkStats({
+        myGroup: myGroupStats,
+        totalReserve: totalReserveStats,
+        myGroupName: agentInfo.groupe,
+        myGroupCount: myGroupAgentIds.length,
+        totalReserveCount: agentIds.length
+      });
+
+    } catch (err) {
+      console.error('Erreur chargement benchmark:', err);
+    } finally {
+      setLoadingBenchmark(false);
+    }
+  }, [agentInfo, selectedYear, isReserveAgent]);
+
   // Effets
   useEffect(() => {
     if (isOpen) {
       loadAgentInfo();
       setShowDetailMois(false);
       setShowDetailSupplements(false);
+      setBenchmarkStats(null);
     }
   }, [isOpen, loadAgentInfo]);
 
@@ -212,10 +319,23 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     }
   }, [agentInfo, loadStats]);
 
+  // v1.5: Charger benchmark quand agent de réserve détecté
+  useEffect(() => {
+    if (agentInfo && isReserveAgent) {
+      loadBenchmarkStats();
+    }
+  }, [agentInfo, isReserveAgent, loadBenchmarkStats]);
+
   // Calculer le pourcentage
   const getPercentage = (value, total) => {
     if (!total || total === 0) return '0%';
     return `${Math.round((value / total) * 100)}%`;
+  };
+
+  // v1.5: Calculer le pourcentage numérique
+  const getPercentageNum = (value, total) => {
+    if (!total || total === 0) return 0;
+    return Math.round((value / total) * 100);
   };
 
   // Calculer le total mensuel des postes supplémentaires
@@ -250,6 +370,47 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const totalSupplements = getTotalSupplements();
   const activeSupplements = getActiveSupplements();
   const totalConges = getTotalConges();
+
+  // v1.5: Données pour le tableau de benchmarking
+  const benchmarkRows = benchmarkStats ? [
+    { 
+      label: 'Matinées (-)', 
+      me: stats.annual.matin, 
+      group: benchmarkStats.myGroup.matin, 
+      total: benchmarkStats.totalReserve.matin,
+      color: '#FFC107'
+    },
+    { 
+      label: 'Soirées (O)', 
+      me: stats.annual.soiree, 
+      group: benchmarkStats.myGroup.soiree, 
+      total: benchmarkStats.totalReserve.soiree,
+      color: '#FF5722'
+    },
+    { 
+      label: 'Nuits (X)', 
+      me: stats.annual.nuit, 
+      group: benchmarkStats.myGroup.nuit, 
+      total: benchmarkStats.totalReserve.nuit,
+      color: '#3F51B5'
+    },
+    { 
+      label: 'Paris Nord', 
+      me: stats.annual.parisNord, 
+      group: benchmarkStats.myGroup.parisNord, 
+      total: benchmarkStats.totalReserve.parisNord,
+      color: '#0066b3',
+      subtitle: 'CRC, RO, RC, ACR, SOUF'
+    },
+    { 
+      label: 'Denfert', 
+      me: stats.annual.denfert, 
+      group: benchmarkStats.myGroup.denfert, 
+      total: benchmarkStats.totalReserve.denfert,
+      color: '#c91932',
+      subtitle: 'RE, CAC, CCU'
+    }
+  ] : [];
 
   return (
     <div style={styles.overlay} onClick={onClose}>
@@ -427,6 +588,99 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
               )}
             </div>
 
+            {/* v1.5: Section Benchmarking Réserve (uniquement pour agents PN/DR) */}
+            {isReserveAgent && (
+              <div style={styles.section}>
+                <h3 style={styles.sectionTitle}>📊 Benchmarking Réserve {selectedYear}</h3>
+                
+                {loadingBenchmark ? (
+                  <div style={styles.loadingSmall}>Chargement comparaison...</div>
+                ) : benchmarkStats ? (
+                  <>
+                    <p style={styles.benchmarkInfo}>
+                      Comparaison de vos vacations avec votre groupe ({benchmarkStats.myGroupCount} agents) 
+                      et la réserve totale ({benchmarkStats.totalReserveCount} agents PN + DR)
+                    </p>
+                    
+                    <div style={styles.tableContainer}>
+                      <table style={styles.benchmarkTable}>
+                        <thead>
+                          <tr>
+                            <th style={styles.benchmarkTh}></th>
+                            <th style={styles.benchmarkTh}>Moi</th>
+                            <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(0, 102, 179, 0.3)'}}>
+                              {agentInfo.groupe.replace('RESERVE REGULATEUR ', '')}
+                            </th>
+                            <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(0, 102, 179, 0.3)'}}>
+                              % groupe
+                            </th>
+                            <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(201, 25, 50, 0.3)'}}>
+                              Réserve totale
+                            </th>
+                            <th style={{...styles.benchmarkTh, backgroundColor: 'rgba(201, 25, 50, 0.3)'}}>
+                              % réserve
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {benchmarkRows.map((row, idx) => {
+                            const pctGroup = getPercentageNum(row.me, row.group);
+                            const pctTotal = getPercentageNum(row.me, row.total);
+                            
+                            return (
+                              <tr key={idx} style={styles.benchmarkTr}>
+                                <td style={styles.benchmarkTdLabel}>
+                                  <span style={{color: row.color, fontWeight: 'bold'}}>{row.label}</span>
+                                  {row.subtitle && (
+                                    <div style={styles.benchmarkSubtitle}>{row.subtitle}</div>
+                                  )}
+                                </td>
+                                <td style={{...styles.benchmarkTd, fontWeight: 'bold', color: row.color}}>
+                                  {row.me}
+                                </td>
+                                <td style={styles.benchmarkTd}>{row.group}</td>
+                                <td style={styles.benchmarkTd}>
+                                  <div style={styles.percentBar}>
+                                    <div 
+                                      style={{
+                                        ...styles.percentBarFill, 
+                                        width: `${Math.min(pctGroup, 100)}%`,
+                                        backgroundColor: row.color
+                                      }} 
+                                    />
+                                  </div>
+                                  <span style={{color: pctGroup > 20 ? '#4CAF50' : 'white'}}>
+                                    {pctGroup}%
+                                  </span>
+                                </td>
+                                <td style={styles.benchmarkTd}>{row.total}</td>
+                                <td style={styles.benchmarkTd}>
+                                  <div style={styles.percentBar}>
+                                    <div 
+                                      style={{
+                                        ...styles.percentBarFill, 
+                                        width: `${Math.min(pctTotal, 100)}%`,
+                                        backgroundColor: row.color
+                                      }} 
+                                    />
+                                  </div>
+                                  <span style={{color: pctTotal > 10 ? '#4CAF50' : 'white'}}>
+                                    {pctTotal}%
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : (
+                  <p style={styles.noData}>Données non disponibles</p>
+                )}
+              </div>
+            )}
+
             {/* === SECTIONS REPLIABLES À LA FIN === */}
 
             {/* Détail par Mois - REPLIABLE */}
@@ -593,7 +847,7 @@ const styles = {
     backgroundColor: '#1a1a2e',
     borderRadius: '16px',
     width: '100%',
-    maxWidth: '800px',
+    maxWidth: '900px',
     maxHeight: '90vh',
     overflow: 'auto',
     border: '1px solid rgba(0, 240, 255, 0.3)',
@@ -634,6 +888,7 @@ const styles = {
   },
   yearTitle: { color: 'white', fontSize: '24px', fontWeight: 'bold' },
   loading: { textAlign: 'center', color: 'white', padding: '40px' },
+  loadingSmall: { textAlign: 'center', color: 'rgba(255,255,255,0.6)', padding: '20px', fontSize: '14px' },
   content: { padding: '20px' },
   section: { marginBottom: '30px' },
   sectionTitle: {
@@ -733,7 +988,61 @@ const styles = {
     color: 'rgba(255, 255, 255, 0.6)',
     fontSize: '11px'
   },
-  noData: { color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', fontStyle: 'italic' }
+  noData: { color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', fontStyle: 'italic' },
+  // v1.5: Styles pour le benchmarking
+  benchmarkInfo: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: '13px',
+    marginBottom: '15px',
+    textAlign: 'center'
+  },
+  benchmarkTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '12px'
+  },
+  benchmarkTh: {
+    padding: '12px 8px',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    color: 'white',
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: '11px',
+    borderBottom: '2px solid rgba(0, 240, 255, 0.3)'
+  },
+  benchmarkTr: {
+    borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
+  },
+  benchmarkTd: {
+    padding: '12px 8px',
+    color: 'white',
+    textAlign: 'center',
+    fontSize: '13px'
+  },
+  benchmarkTdLabel: {
+    padding: '12px 8px',
+    color: 'white',
+    textAlign: 'left',
+    fontSize: '13px'
+  },
+  benchmarkSubtitle: {
+    fontSize: '10px',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: '2px'
+  },
+  percentBar: {
+    width: '60px',
+    height: '6px',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: '3px',
+    margin: '0 auto 4px',
+    overflow: 'hidden'
+  },
+  percentBarFill: {
+    height: '100%',
+    borderRadius: '3px',
+    transition: 'width 0.3s ease'
+  }
 };
 
 export default ModalStatistiques;
