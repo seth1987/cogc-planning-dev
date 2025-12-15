@@ -1,6 +1,6 @@
 /**
  * Couleurs par défaut pour les services et éléments du planning
- * VERSION 3.4 - Séparation Horaires/Repos + Disclaimers roulement/réserve
+ * VERSION 3.5 - Ajout catégorie C,CP (Congés) avec C, C?, CNA
  */
 
 // Horaires de base pour les combinaisons
@@ -102,16 +102,30 @@ export const COLOR_CATEGORIES = {
     }
   },
   
-  // Absences : OUVERT par défaut
+  // Absences : OUVERT par défaut - MA et F uniquement
   absences: {
     id: 'absences',
     label: 'Absences',
-    description: 'Maladie, Congés',
+    description: 'Maladie, Férié',
     defaultOpen: true,
     defaultColor: { bg: '#fecaca', text: '#991b1b' },
     items: {
-      'MA': { label: 'Maladie' },
-      'C': { label: 'Congés', defaultColor: { bg: '#fde047', text: '#713f12' } }
+      'MA': { label: 'Maladie', defaultColor: { bg: '#fecaca', text: '#991b1b' } },
+      'F': { label: 'Férié', defaultColor: { bg: '#e9d5ff', text: '#7c3aed' } }
+    }
+  },
+  
+  // C,CP - Congés : OUVERT par défaut - C, C?, CNA
+  conges: {
+    id: 'conges',
+    label: 'C,CP - Congés',
+    description: 'Congés accordés, en attente, refusés',
+    defaultOpen: true,
+    defaultColor: { bg: '#fde047', text: '#713f12' },
+    items: {
+      'C': { label: 'Congés accordés', defaultColor: { bg: '#fde047', text: '#713f12' } },
+      'C?': { label: 'Congé en attente', defaultColor: { bg: '#fef9c3', text: '#854d0e' } },
+      'CNA': { label: 'Congé Non Accordé', defaultColor: { bg: '#fca5a5', text: '#991b1b' } }
     }
   },
   
@@ -197,14 +211,13 @@ export const COLOR_CATEGORIES = {
   joursRH: {
     id: 'joursRH',
     label: 'Jours RH',
-    description: 'VT, D2I, RU, F, RA, RN, TY...',
+    description: 'VT, D2I, RU, RA, RN, TY...',
     defaultOpen: false,
     defaultColor: { bg: '#fef9c3', text: '#854d0e' },
     items: {
       'VT': { label: 'Temps partiel' },
       'D2I': { label: 'D2I' },
       'RU': { label: 'RU' },
-      'F': { label: 'F' },
       'RA': { label: 'RA' },
       'RN': { label: 'RN' },
       'TY': { label: 'TY' },
