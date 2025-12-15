@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search, Calendar, AlertCircle } from 'lucide-react';
+import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search, Calendar, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
 import { 
   SERVICE_CODES, 
   POSTES_CODES, 
@@ -54,15 +54,22 @@ const MODAL_COLORS = {
   'DD': 'bg-yellow-100 text-yellow-800',
 };
 
+// Codes de repos séparés des horaires
+const REPOS_CODES = [
+  { code: 'RP', desc: 'Repos' },
+  { code: 'NU', desc: 'Non utilisé' }
+];
+
+// Horaires sans RP et NU
+const HORAIRES_CODES = SERVICE_CODES.filter(s => !['RP', 'NU'].includes(s.code));
+
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 3.0.0 - Restructuration complète avec catégories
- *   - Horaire: -, O, X, I, RP, NU
- *   - Service de jour: VL, D, EIA, DPX, PSE, INAC, VM
- *   - Habilitation/Formation: HAB, FO RO, FO RC, FO CAC, FO CRC, FO ACR, FO CCU
- *   - Jours RH: VT, D2I, RU, F, RA, RN, TY, AY, AH, DD
- *   - Absences: MA, C (combinables ou seuls)
+ * @version 4.0.0 - Accordéons + Barre de recherche
+ *   - Toujours ouvert: Horaires (Roulement), Postes (Réserves), Absences, Texte libre
+ *   - Fermé par défaut: Repos/NU, Service de jour, Habilitation, Jours RH
+ *   - Barre de recherche pour filtrer tous les codes
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -106,6 +113,15 @@ const ModalCellEdit = ({
   const [croisementSearch, setCroisementSearch] = useState('');
   const [croisementLoading, setCroisementLoading] = useState(false);
 
+  // === NOUVEAUX ÉTATS POUR ACCORDÉONS ET RECHERCHE ===
+  const [searchTerm, setSearchTerm] = useState('');
+  const [openSections, setOpenSections] = useState({
+    repos: false,
+    serviceJour: false,
+    habilitation: false,
+    joursRH: false
+  });
+
   // Liste de tous les codes de catégorie pour détection
   const ALL_CATEGORIE_CODES = [
     ...SERVICE_JOUR_CODES.map(c => c.code),
@@ -114,8 +130,8 @@ const ModalCellEdit = ({
     ...ABSENCES_CODES.map(c => c.code)
   ];
 
-  // Liste des codes horaire
-  const HORAIRE_CODES = SERVICE_CODES.map(c => c.code);
+  // Liste des codes horaire (incluant RP et NU)
+  const ALL_HORAIRE_CODES = SERVICE_CODES.map(c => c.code);
 
   // Initialiser les états avec les données existantes
   useEffect(() => {
@@ -126,7 +142,7 @@ const ModalCellEdit = ({
       const hasExplicitTexteLibre = cellData.texteLibre && cellData.texteLibre.trim() !== '';
       const isNonStandardService = cellData.service && 
         cellData.service !== 'LIBRE' && 
-        !HORAIRE_CODES.includes(cellData.service) &&
+        !ALL_HORAIRE_CODES.includes(cellData.service) &&
         !ALL_CATEGORIE_CODES.includes(cellData.service);
 
       if (hasExplicitTexteLibre) {
@@ -146,7 +162,7 @@ const ModalCellEdit = ({
         const storedService = cellData.service || '';
         
         // Vérifier si c'est un horaire simple
-        if (HORAIRE_CODES.includes(storedService)) {
+        if (ALL_HORAIRE_CODES.includes(storedService)) {
           setTempService(storedService);
           setTempCategorie('');
         }
@@ -161,7 +177,7 @@ const ModalCellEdit = ({
           const lastPart = parts[parts.length - 1];
           const firstParts = parts.slice(0, -1).join(' ');
           
-          if (HORAIRE_CODES.includes(lastPart)) {
+          if (ALL_HORAIRE_CODES.includes(lastPart)) {
             setTempService(lastPart);
             setTempCategorie(firstParts);
           } else {
@@ -187,10 +203,11 @@ const ModalCellEdit = ({
       setTempTexteLibre('');
       setTempPostesSupplementaires([]);
     }
-    // Reset édition multiple
+    // Reset édition multiple et recherche
     setApplyToMultipleDays(false);
     setEndDate('');
     setDateRangeWarning('');
+    setSearchTerm('');
   }, [cellData, selectedCell]);
 
   // useEffect pour validation automatique de la plage de dates
@@ -312,6 +329,29 @@ const ModalCellEdit = ({
         setTempTexteLibre('');
       }
     }
+  };
+
+  // Toggle section accordéon
+  const toggleSection = (section) => {
+    setOpenSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  // === FILTRAGE PAR RECHERCHE ===
+  const filterBySearch = (codes) => {
+    if (!searchTerm.trim()) return codes;
+    const term = searchTerm.toUpperCase().trim();
+    return codes.filter(({ code, desc }) => 
+      code.toUpperCase().includes(term) || desc.toUpperCase().includes(term)
+    );
+  };
+
+  // Vérifier si une catégorie a des résultats de recherche
+  const hasSearchResults = (codes) => {
+    if (!searchTerm.trim()) return true;
+    return filterBySearch(codes).length > 0;
   };
 
   // === GESTION NOTES ===
@@ -596,6 +636,52 @@ const ModalCellEdit = ({
   // Aperçu du service final
   const previewService = buildFinalService();
 
+  // === COMPOSANT ACCORDÉON ===
+  const AccordionSection = ({ id, title, colorClass, children, isOpen, onToggle, badge }) => (
+    <div className="mb-3">
+      <button 
+        onClick={() => onToggle(id)}
+        className={`w-full flex items-center justify-between p-2 rounded-lg transition-colors ${
+          isOpen ? 'bg-gray-100' : 'bg-gray-50 hover:bg-gray-100'
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          {isOpen ? <ChevronDown className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+          <span className={`w-3 h-3 ${colorClass} rounded`}></span>
+          <span className="text-sm font-medium text-gray-700">{title}</span>
+          {badge && <span className="text-xs text-gray-400 ml-1">({badge})</span>}
+        </div>
+      </button>
+      {isOpen && (
+        <div className="mt-2 pl-2">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+
+  // === RENDU DES BOUTONS DE CODE ===
+  const renderCodeButtons = (codes, onClick, isSelectedFn, cols = 4) => {
+    const filteredCodes = filterBySearch(codes);
+    if (filteredCodes.length === 0) {
+      return <p className="text-xs text-gray-400 italic py-2">Aucun résultat pour "{searchTerm}"</p>;
+    }
+    return (
+      <div className={`grid grid-cols-${cols} gap-2`}>
+        {filteredCodes.map(({ code, desc }) => (
+          <button
+            key={code}
+            onClick={() => onClick(code)}
+            className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, isSelectedFn(code))}`}
+          >
+            <div className="font-semibold">{code}</div>
+            <div className="text-[10px] mt-0.5">{desc}</div>
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <>
       {/* Modal principale */}
@@ -643,27 +729,57 @@ const ModalCellEdit = ({
             </button>
           </div>
           
-          {/* Section Horaire */}
+          {/* === BARRE DE RECHERCHE === */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Horaire</label>
-            <div className="grid grid-cols-6 gap-2">
-              {SERVICE_CODES.map(({ code, desc }) => (
-                <button
-                  key={code}
-                  onClick={() => selectHoraire(code)}
-                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempService === code)}`}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Rechercher un code (ex: FO, MA, VL...)"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+              {searchTerm && (
+                <button 
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
-                  <div className="font-semibold">{code}</div>
-                  <div className="text-[10px] mt-0.5 leading-tight">{desc}</div>
+                  <X className="w-4 h-4" />
                 </button>
-              ))}
+              )}
             </div>
           </div>
 
-          {/* Section Poste (Réserve) */}
+          {/* === SECTION HORAIRES (TOUJOURS OUVERT) === */}
+          {hasSearchResults(HORAIRES_CODES) && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Horaires (Roulement)
+                <span className="text-xs text-gray-400 ml-2 font-normal">Agents en roulement</span>
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {filterBySearch(HORAIRES_CODES).map(({ code, desc }) => (
+                  <button
+                    key={code}
+                    onClick={() => selectHoraire(code)}
+                    className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempService === code)}`}
+                  >
+                    <div className="font-semibold">{code}</div>
+                    <div className="text-[10px] mt-0.5 leading-tight">{desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* === SECTION POSTE RÉSERVE (TOUJOURS OUVERT SI APPLICABLE) === */}
           {hasPosteSelector && (
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">{getPosteLabel()}</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {getPosteLabel()}
+                <span className="text-xs text-gray-400 ml-2 font-normal">Agents de réserve</span>
+              </label>
               <div className="grid grid-cols-4 gap-2">
                 {availablePostes.map(poste => (
                   <button
@@ -682,86 +798,28 @@ const ModalCellEdit = ({
             </div>
           )}
 
-          {/* Section Service de jour (bleu clair) */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-blue-700 mb-2 flex items-center gap-2">
-              <span className="w-3 h-3 bg-blue-200 rounded"></span>
-              Service de jour
-            </label>
-            <div className="grid grid-cols-4 gap-2">
-              {SERVICE_JOUR_CODES.map(({ code, desc }) => (
-                <button
-                  key={code}
-                  onClick={() => selectCategorie(code)}
-                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempCategorie === code)}`}
-                >
-                  <div className="font-semibold">{code}</div>
-                  <div className="text-[10px] mt-0.5">{desc}</div>
-                </button>
-              ))}
+          {/* === SECTION ABSENCES (TOUJOURS OUVERT) === */}
+          {hasSearchResults(ABSENCES_CODES) && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Absences <span className="text-xs text-gray-500">(combinable avec horaire ou seul)</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {filterBySearch(ABSENCES_CODES).map(({ code, desc }) => (
+                  <button
+                    key={code}
+                    onClick={() => selectCategorie(code)}
+                    className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempCategorie === code)}`}
+                  >
+                    <div className="font-semibold">{code}</div>
+                    <div className="text-xs mt-0.5">{desc}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Section Habilitation/Formation (orange) */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-orange-700 mb-2 flex items-center gap-2">
-              <span className="w-3 h-3 bg-orange-200 rounded"></span>
-              Habilitation/Formation
-            </label>
-            <div className="grid grid-cols-4 gap-2">
-              {HABILITATION_CODES.map(({ code, desc }) => (
-                <button
-                  key={code}
-                  onClick={() => selectCategorie(code)}
-                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempCategorie === code)}`}
-                >
-                  <div className="font-semibold">{code}</div>
-                  <div className="text-[10px] mt-0.5">{desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Section Jours RH (jaune clair) */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-yellow-700 mb-2 flex items-center gap-2">
-              <span className="w-3 h-3 bg-yellow-200 rounded"></span>
-              Jours RH
-            </label>
-            <div className="grid grid-cols-5 gap-2">
-              {JOURS_RH_CODES.map(({ code, desc }) => (
-                <button
-                  key={code}
-                  onClick={() => selectCategorie(code)}
-                  className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempCategorie === code)}`}
-                >
-                  <div className="font-semibold">{code}</div>
-                  <div className="text-[10px] mt-0.5">{desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Section MA / C (combinables) */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Absences <span className="text-xs text-gray-500">(combinable avec horaire ou seul)</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {ABSENCES_CODES.map(({ code, desc }) => (
-                <button
-                  key={code}
-                  onClick={() => selectCategorie(code)}
-                  className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempCategorie === code)}`}
-                >
-                  <div className="font-semibold">{code}</div>
-                  <div className="text-xs mt-0.5">{desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Bouton Texte Libre */}
+          {/* === BOUTON TEXTE LIBRE (TOUJOURS VISIBLE) === */}
           <div className="mb-4">
             <button
               onClick={selectTexteLibre}
@@ -780,6 +838,64 @@ const ModalCellEdit = ({
               )}
             </button>
           </div>
+
+          {/* === SECTIONS ACCORDÉON (FERMÉES PAR DÉFAUT) === */}
+          
+          {/* Repos / NU */}
+          {hasSearchResults(REPOS_CODES) && (
+            <AccordionSection 
+              id="repos" 
+              title="Repos / Non utilisé" 
+              colorClass="bg-green-200"
+              isOpen={openSections.repos || searchTerm.trim() !== ''}
+              onToggle={toggleSection}
+              badge="RP, NU"
+            >
+              {renderCodeButtons(REPOS_CODES, selectHoraire, (code) => tempService === code, 2)}
+            </AccordionSection>
+          )}
+
+          {/* Service de jour */}
+          {hasSearchResults(SERVICE_JOUR_CODES) && (
+            <AccordionSection 
+              id="serviceJour" 
+              title="Service de jour" 
+              colorClass="bg-blue-200"
+              isOpen={openSections.serviceJour || searchTerm.trim() !== ''}
+              onToggle={toggleSection}
+              badge="VL, D, EIA..."
+            >
+              {renderCodeButtons(SERVICE_JOUR_CODES, selectCategorie, (code) => tempCategorie === code, 4)}
+            </AccordionSection>
+          )}
+
+          {/* Habilitation/Formation */}
+          {hasSearchResults(HABILITATION_CODES) && (
+            <AccordionSection 
+              id="habilitation" 
+              title="Habilitation / Formation" 
+              colorClass="bg-orange-200"
+              isOpen={openSections.habilitation || searchTerm.trim() !== ''}
+              onToggle={toggleSection}
+              badge="HAB, FO..."
+            >
+              {renderCodeButtons(HABILITATION_CODES, selectCategorie, (code) => tempCategorie === code, 4)}
+            </AccordionSection>
+          )}
+
+          {/* Jours RH */}
+          {hasSearchResults(JOURS_RH_CODES) && (
+            <AccordionSection 
+              id="joursRH" 
+              title="Jours RH" 
+              colorClass="bg-yellow-200"
+              isOpen={openSections.joursRH || searchTerm.trim() !== ''}
+              onToggle={toggleSection}
+              badge="VT, D2I, RU..."
+            >
+              {renderCodeButtons(JOURS_RH_CODES, selectCategorie, (code) => tempCategorie === code, 5)}
+            </AccordionSection>
+          )}
 
           {/* Section Postes supplémentaires */}
           <div className="mb-4">
