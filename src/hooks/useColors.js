@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { DEFAULT_COLORS, COLORS_STORAGE_KEY } from '../constants/defaultColors';
 
 /**
@@ -7,17 +7,45 @@ import { DEFAULT_COLORS, COLORS_STORAGE_KEY } from '../constants/defaultColors';
  * 
  * v1.1 - Ajout reloadColors() pour synchroniser entre composants
  * v1.2 - Support de contextes séparés (general / perso)
+ * v1.3 - Fix: stabilisation storageKey + logs debug
  * 
  * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
  */
 export const useColors = (context = 'general') => {
-  const [colors, setColors] = useState(DEFAULT_COLORS);
-  const [isLoaded, setIsLoaded] = useState(false);
+  // Mémoriser la clé de stockage pour éviter les re-renders
+  const storageKey = useMemo(() => {
+    const key = context === 'perso' 
+      ? `${COLORS_STORAGE_KEY}-perso` 
+      : COLORS_STORAGE_KEY;
+    console.log(`🎨 useColors init - context: ${context}, storageKey: ${key}`);
+    return key;
+  }, [context]);
 
-  // Clé de stockage selon le contexte
-  const storageKey = context === 'perso' 
-    ? `${COLORS_STORAGE_KEY}-perso` 
-    : COLORS_STORAGE_KEY;
+  // Fonction de chargement initiale (appelée une seule fois)
+  const getInitialColors = () => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      console.log(`🎨 getInitialColors - storageKey: ${storageKey}, found:`, stored ? 'OUI' : 'NON');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const merged = {
+          services: { ...DEFAULT_COLORS.services, ...parsed?.services },
+          postesSupp: { ...DEFAULT_COLORS.postesSupp, ...parsed?.postesSupp },
+          texteLibre: { ...DEFAULT_COLORS.texteLibre, ...parsed?.texteLibre },
+        };
+        console.log(`🎨 Couleurs chargées depuis localStorage (${context}):`, Object.keys(parsed.services || {}).length, 'services');
+        return merged;
+      }
+    } catch (error) {
+      console.error(`🎨 Erreur chargement couleurs (${context}):`, error);
+    }
+    console.log(`🎨 Utilisation couleurs par défaut (${context})`);
+    return DEFAULT_COLORS;
+  };
+
+  // État initialisé directement avec les couleurs du localStorage
+  const [colors, setColors] = useState(getInitialColors);
+  const [isLoaded, setIsLoaded] = useState(true);
 
   // Fusionner les couleurs stockées avec les défauts
   const mergeWithDefaults = useCallback((stored) => {
@@ -28,41 +56,32 @@ export const useColors = (context = 'general') => {
     };
   }, []);
 
-  // Charger les couleurs depuis localStorage
-  const loadColorsFromStorage = useCallback(() => {
+  // Recharger les couleurs depuis localStorage (pour synchronisation entre composants)
+  const reloadColors = useCallback(() => {
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        return mergeWithDefaults(parsed);
+        const merged = mergeWithDefaults(parsed);
+        setColors(merged);
+        console.log(`🎨 reloadColors (${context}) - rechargé depuis localStorage`);
+        return merged;
       }
     } catch (error) {
-      console.error(`Erreur chargement couleurs (${context}):`, error);
+      console.error(`🎨 Erreur reload couleurs (${context}):`, error);
     }
     return DEFAULT_COLORS;
-  }, [mergeWithDefaults, storageKey, context]);
-
-  // Charger les couleurs depuis localStorage au montage
-  useEffect(() => {
-    setColors(loadColorsFromStorage());
-    setIsLoaded(true);
-  }, [loadColorsFromStorage]);
-
-  // Recharger les couleurs depuis localStorage (pour synchronisation entre composants)
-  const reloadColors = useCallback(() => {
-    const loaded = loadColorsFromStorage();
-    setColors(loaded);
-    return loaded;
-  }, [loadColorsFromStorage]);
+  }, [storageKey, context, mergeWithDefaults]);
 
   // Sauvegarder les couleurs
   const saveColors = useCallback((newColors) => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(newColors));
       setColors(newColors);
+      console.log(`🎨 saveColors (${context}) - sauvegardé dans localStorage`);
       return true;
     } catch (error) {
-      console.error(`Erreur sauvegarde couleurs (${context}):`, error);
+      console.error(`🎨 Erreur sauvegarde couleurs (${context}):`, error);
       return false;
     }
   }, [storageKey, context]);
@@ -81,9 +100,10 @@ export const useColors = (context = 'general') => {
         }
       };
       localStorage.setItem(storageKey, JSON.stringify(updated));
+      console.log(`🎨 updateServiceColor (${context}) - ${serviceCode}.${colorType} = ${value}`);
       return updated;
     });
-  }, [storageKey]);
+  }, [storageKey, context]);
 
   // Mettre à jour la couleur des postes supplémentaires
   const updatePostesSupp = useCallback((value) => {
@@ -93,9 +113,10 @@ export const useColors = (context = 'general') => {
         postesSupp: { text: value }
       };
       localStorage.setItem(storageKey, JSON.stringify(updated));
+      console.log(`🎨 updatePostesSupp (${context}) - ${value}`);
       return updated;
     });
-  }, [storageKey]);
+  }, [storageKey, context]);
 
   // Mettre à jour les couleurs du texte libre
   const updateTexteLibre = useCallback((colorType, value) => {
@@ -108,15 +129,17 @@ export const useColors = (context = 'general') => {
         }
       };
       localStorage.setItem(storageKey, JSON.stringify(updated));
+      console.log(`🎨 updateTexteLibre (${context}) - ${colorType} = ${value}`);
       return updated;
     });
-  }, [storageKey]);
+  }, [storageKey, context]);
 
   // Réinitialiser aux valeurs par défaut
   const resetColors = useCallback(() => {
     localStorage.removeItem(storageKey);
     setColors(DEFAULT_COLORS);
-  }, [storageKey]);
+    console.log(`🎨 resetColors (${context}) - couleurs réinitialisées`);
+  }, [storageKey, context]);
 
   // Exporter la configuration
   const exportColors = useCallback(() => {
@@ -173,7 +196,7 @@ export const useColors = (context = 'general') => {
     importColors,
     getServiceColor,
     reloadColors,
-    context, // v1.2: expose le contexte pour debug
+    context,
   };
 };
 
