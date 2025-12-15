@@ -1,6 +1,6 @@
 /**
  * Couleurs par défaut pour les services et éléments du planning
- * VERSION 3.2 - Ajout catégorie Poste (Réserve)
+ * VERSION 3.3 - Poste (Réserve) avec sous-catégories et horaires
  */
 
 // Horaires de base pour les combinaisons
@@ -8,6 +8,12 @@ export const HORAIRES_BASE = [
   { code: '-', label: 'Matin' },
   { code: 'O', label: 'Soir' },
   { code: 'X', label: 'Nuit' },
+];
+
+// Horaires sans nuit (pour RO, SOUF, CAC)
+export const HORAIRES_JOUR = [
+  { code: '-', label: 'Matin' },
+  { code: 'O', label: 'Soir' },
 ];
 
 // ========================
@@ -32,23 +38,57 @@ export const COLOR_CATEGORIES = {
     }
   },
   
-  // Poste (Réserve) : OUVERT par défaut
+  // Poste (Réserve) : OUVERT par défaut, avec sous-catégories
   posteReserve: {
     id: 'posteReserve',
     label: 'Poste (Réserve)',
-    description: 'CRC, ACR, RC, RO, CCU, RE, CAC, SOUF',
+    description: 'CRC, ACR, RC, RO, CCU, RE, CAC, SOUF avec horaires',
     defaultOpen: true,
-    defaultColor: { bg: '#e0e7ff', text: '#3730a3' }, // Indigo clair
-    items: {
-      'CRC': { label: 'CRC - Coordinateur Régional' },
-      'ACR': { label: 'ACR - Agent Circulation' },
-      'RC': { label: 'RC - Régulateur Centre' },
-      'RO': { label: 'RO - Régulateur Ouest' },
-      'CCU': { label: 'CCU - Centre Commandement Unifié' },
-      'RE': { label: 'RE - Régulateur Est' },
-      'CAC': { label: 'CAC - Denfert' },
-      'SOUF': { label: 'SOUF - Soufflerie' }
-    }
+    defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
+    hasSubCategories: true,
+    subCategories: {
+      'CRC': {
+        label: 'CRC - Coordinateur Régional',
+        defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
+        horaires: 'all', // -, O, X
+      },
+      'ACR': {
+        label: 'ACR - Agent Circulation',
+        defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
+        horaires: 'all',
+      },
+      'RC': {
+        label: 'RC - Régulateur Centre',
+        defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
+        horaires: 'all',
+      },
+      'RO': {
+        label: 'RO - Régulateur Ouest',
+        defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
+        horaires: 'jour', // - et O seulement
+      },
+      'CCU': {
+        label: 'CCU - Centre Commandement Unifié',
+        defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
+        horaires: 'all',
+      },
+      'RE': {
+        label: 'RE - Régulateur Est',
+        defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
+        horaires: 'all',
+      },
+      'CAC': {
+        label: 'CAC - Denfert',
+        defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
+        horaires: 'jour',
+      },
+      'SOUF': {
+        label: 'SOUF - Soufflerie',
+        defaultColor: { bg: '#e0e7ff', text: '#3730a3' },
+        horaires: 'jour',
+      }
+    },
+    items: {} // Sera rempli dynamiquement
   },
   
   // Absences : OUVERT par défaut
@@ -96,38 +136,47 @@ export const COLOR_CATEGORIES = {
       'HAB': {
         label: 'Habilitation',
         defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        horaires: 'all',
       },
       'FO': {
         label: 'Formation (générique)',
         defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        horaires: 'all',
       },
       'FO RO': {
         label: 'FO RO',
         defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        horaires: 'all',
       },
       'FO RC': {
         label: 'FO RC',
         defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        horaires: 'all',
       },
       'FO CAC': {
         label: 'FO CAC',
         defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        horaires: 'all',
       },
       'FO CRC': {
         label: 'FO CRC',
         defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        horaires: 'all',
       },
       'FO ACR': {
         label: 'FO ACR',
         defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        horaires: 'all',
       },
       'FO CCU': {
         label: 'FO CCU',
         defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        horaires: 'all',
       },
       'FO RE': {
         label: 'FO RE',
         defaultColor: { bg: '#fed7aa', text: '#9a3412' },
+        horaires: 'all',
       }
     },
     items: {} // Sera rempli dynamiquement
@@ -155,12 +204,19 @@ export const COLOR_CATEGORIES = {
   }
 };
 
-// Générer les items pour habilitationFormation (sous-catégorie + horaires)
-const generateHabilitationItems = () => {
+// ========================
+// GÉNÉRATION DES ITEMS DYNAMIQUES
+// ========================
+
+/**
+ * Génère les items pour une catégorie avec sous-catégories
+ */
+const generateSubCategoryItems = (categoryKey) => {
   const items = {};
-  const subCats = COLOR_CATEGORIES.habilitationFormation.subCategories;
+  const category = COLOR_CATEGORIES[categoryKey];
+  if (!category?.subCategories) return items;
   
-  Object.entries(subCats).forEach(([subCatCode, subCat]) => {
+  Object.entries(category.subCategories).forEach(([subCatCode, subCat]) => {
     // Item de base (sans horaire)
     items[subCatCode] = {
       label: subCat.label,
@@ -168,8 +224,11 @@ const generateHabilitationItems = () => {
       isSubCategory: true,
     };
     
+    // Déterminer les horaires à utiliser
+    const horaires = subCat.horaires === 'jour' ? HORAIRES_JOUR : HORAIRES_BASE;
+    
     // Combinaisons avec horaires
-    HORAIRES_BASE.forEach(horaire => {
+    horaires.forEach(horaire => {
       const combinedCode = `${subCatCode} ${horaire.code}`;
       items[combinedCode] = {
         label: `${subCat.label} ${horaire.label}`,
@@ -183,8 +242,9 @@ const generateHabilitationItems = () => {
   return items;
 };
 
-// Appliquer les items générés
-COLOR_CATEGORIES.habilitationFormation.items = generateHabilitationItems();
+// Appliquer les items générés pour les catégories avec sous-catégories
+COLOR_CATEGORIES.posteReserve.items = generateSubCategoryItems('posteReserve');
+COLOR_CATEGORIES.habilitationFormation.items = generateSubCategoryItems('habilitationFormation');
 
 // ========================
 // STRUCTURE DES COULEURS PAR DÉFAUT
@@ -261,18 +321,33 @@ export const findCategoryForCode = (code) => {
 export const findParentSubCategory = (code) => {
   if (!code) return null;
   
-  const habItems = COLOR_CATEGORIES.habilitationFormation.items;
-  const item = habItems[code];
-  
-  if (item?.parentSubCategory) {
-    return item.parentSubCategory;
-  }
-  
-  if (item?.isSubCategory) {
-    return code;
+  // Chercher dans toutes les catégories avec sous-catégories
+  for (const category of Object.values(COLOR_CATEGORIES)) {
+    if (category.hasSubCategories && category.items) {
+      const item = category.items[code];
+      if (item?.parentSubCategory) {
+        return item.parentSubCategory;
+      }
+      if (item?.isSubCategory) {
+        return code;
+      }
+    }
   }
   
   return null;
+};
+
+/**
+ * Récupère les horaires disponibles pour une sous-catégorie
+ */
+export const getHorairesForSubCategory = (subCatCode) => {
+  for (const category of Object.values(COLOR_CATEGORIES)) {
+    if (category.hasSubCategories && category.subCategories?.[subCatCode]) {
+      const subCat = category.subCategories[subCatCode];
+      return subCat.horaires === 'jour' ? HORAIRES_JOUR : HORAIRES_BASE;
+    }
+  }
+  return HORAIRES_BASE;
 };
 
 /**
@@ -281,7 +356,8 @@ export const findParentSubCategory = (code) => {
 export const isSubCategoryUniform = (subCatCode, customColors) => {
   if (!customColors?.services) return true;
   
-  const horaireCodes = HORAIRES_BASE.map(h => `${subCatCode} ${h.code}`);
+  const horaires = getHorairesForSubCategory(subCatCode);
+  const horaireCodes = horaires.map(h => `${subCatCode} ${h.code}`);
   const colors = horaireCodes.map(code => {
     const c = customColors.services[code];
     return c ? `${c.bg}|${c.text}` : null;
