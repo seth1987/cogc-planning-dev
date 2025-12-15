@@ -61,9 +61,8 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 4.2.0 - Ajout F (Férié) + sous-groupe C,CP (Congés)
- *   - F (Férié) ajouté dans Absences
- *   - Sous-groupe C,CP avec C, C?, C̶ (congé, attente, refusé)
+ * @version 4.2.1 - Fix affichage date "Du" dans édition multiple
+ *   - Conversion nom du mois en numéro pour affichage JJ/MM/AAAA
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -232,6 +231,20 @@ const ModalCellEdit = ({
   const getDaysInMonth = (month, year) => {
     const monthIndex = MONTHS.indexOf(month);
     return new Date(year, monthIndex + 1, 0).getDate();
+  };
+
+  // Fonction pour obtenir le numéro du mois (1-12) à partir du nom
+  const getMonthNumber = (monthName) => {
+    const monthIndex = MONTHS.indexOf(monthName);
+    return monthIndex >= 0 ? monthIndex + 1 : 1;
+  };
+
+  // Formater la date de début en JJ/MM/AAAA
+  const formatStartDate = () => {
+    if (!selectedCell) return '';
+    const day = String(selectedCell.day).padStart(2, '0');
+    const month = String(getMonthNumber(currentMonth)).padStart(2, '0');
+    return `${day}/${month}/${currentYear}`;
   };
 
   const handleQuickDateRange = (days) => {
@@ -596,7 +609,7 @@ const ModalCellEdit = ({
       
       if (daysCount > 7) {
         const confirm = window.confirm(
-          `⚠️ Vous allez modifier ${daysCount} jours (du ${startDay} au ${endDay} ${currentMonth}).\n\nConfirmer ?`
+          `⚠️ Vous allez modifier ${daysCount} jours (du ${startDay} au ${endDay} ${currentMonth}).\\n\\nConfirmer ?`
         );
         if (!confirm) return;
       }
@@ -1012,7 +1025,7 @@ const ModalCellEdit = ({
                   <span style={{ color: '#6b7280', fontSize: '13px', minWidth: '45px' }}>Du :</span>
                   <input
                     type="text"
-                    value={`${selectedCell.day.toString().padStart(2, '0')}/${currentMonth}/${currentYear}`}
+                    value={formatStartDate()}
                     disabled
                     style={{
                       padding: '8px 12px',
