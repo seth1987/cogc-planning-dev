@@ -6,10 +6,18 @@ import { DEFAULT_COLORS, COLORS_STORAGE_KEY } from '../constants/defaultColors';
  * Stockage dans localStorage avec fallback sur les valeurs par défaut
  * 
  * v1.1 - Ajout reloadColors() pour synchroniser entre composants
+ * v1.2 - Support de contextes séparés (general / perso)
+ * 
+ * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
  */
-export const useColors = () => {
+export const useColors = (context = 'general') => {
   const [colors, setColors] = useState(DEFAULT_COLORS);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Clé de stockage selon le contexte
+  const storageKey = context === 'perso' 
+    ? `${COLORS_STORAGE_KEY}-perso` 
+    : COLORS_STORAGE_KEY;
 
   // Fusionner les couleurs stockées avec les défauts
   const mergeWithDefaults = useCallback((stored) => {
@@ -23,16 +31,16 @@ export const useColors = () => {
   // Charger les couleurs depuis localStorage
   const loadColorsFromStorage = useCallback(() => {
     try {
-      const stored = localStorage.getItem(COLORS_STORAGE_KEY);
+      const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
         return mergeWithDefaults(parsed);
       }
     } catch (error) {
-      console.error('Erreur chargement couleurs:', error);
+      console.error(`Erreur chargement couleurs (${context}):`, error);
     }
     return DEFAULT_COLORS;
-  }, [mergeWithDefaults]);
+  }, [mergeWithDefaults, storageKey, context]);
 
   // Charger les couleurs depuis localStorage au montage
   useEffect(() => {
@@ -50,14 +58,14 @@ export const useColors = () => {
   // Sauvegarder les couleurs
   const saveColors = useCallback((newColors) => {
     try {
-      localStorage.setItem(COLORS_STORAGE_KEY, JSON.stringify(newColors));
+      localStorage.setItem(storageKey, JSON.stringify(newColors));
       setColors(newColors);
       return true;
     } catch (error) {
-      console.error('Erreur sauvegarde couleurs:', error);
+      console.error(`Erreur sauvegarde couleurs (${context}):`, error);
       return false;
     }
-  }, []);
+  }, [storageKey, context]);
 
   // Mettre à jour une couleur de service
   const updateServiceColor = useCallback((serviceCode, colorType, value) => {
@@ -72,10 +80,10 @@ export const useColors = () => {
           }
         }
       };
-      localStorage.setItem(COLORS_STORAGE_KEY, JSON.stringify(updated));
+      localStorage.setItem(storageKey, JSON.stringify(updated));
       return updated;
     });
-  }, []);
+  }, [storageKey]);
 
   // Mettre à jour la couleur des postes supplémentaires
   const updatePostesSupp = useCallback((value) => {
@@ -84,10 +92,10 @@ export const useColors = () => {
         ...prev,
         postesSupp: { text: value }
       };
-      localStorage.setItem(COLORS_STORAGE_KEY, JSON.stringify(updated));
+      localStorage.setItem(storageKey, JSON.stringify(updated));
       return updated;
     });
-  }, []);
+  }, [storageKey]);
 
   // Mettre à jour les couleurs du texte libre
   const updateTexteLibre = useCallback((colorType, value) => {
@@ -99,16 +107,16 @@ export const useColors = () => {
           [colorType]: value
         }
       };
-      localStorage.setItem(COLORS_STORAGE_KEY, JSON.stringify(updated));
+      localStorage.setItem(storageKey, JSON.stringify(updated));
       return updated;
     });
-  }, []);
+  }, [storageKey]);
 
   // Réinitialiser aux valeurs par défaut
   const resetColors = useCallback(() => {
-    localStorage.removeItem(COLORS_STORAGE_KEY);
+    localStorage.removeItem(storageKey);
     setColors(DEFAULT_COLORS);
-  }, []);
+  }, [storageKey]);
 
   // Exporter la configuration
   const exportColors = useCallback(() => {
@@ -117,12 +125,12 @@ export const useColors = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'cogc-couleurs.json';
+    link.download = context === 'perso' ? 'cogc-couleurs-perso.json' : 'cogc-couleurs.json';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [colors]);
+  }, [colors, context]);
 
   // Importer une configuration
   const importColors = useCallback((file) => {
@@ -164,7 +172,8 @@ export const useColors = () => {
     exportColors,
     importColors,
     getServiceColor,
-    reloadColors, // v1.1: Nouvelle fonction pour synchronisation
+    reloadColors,
+    context, // v1.2: expose le contexte pour debug
   };
 };
 
