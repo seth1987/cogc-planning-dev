@@ -1,14 +1,16 @@
-import React, { useRef } from 'react';
-import { X, Download, Upload, RotateCcw, Palette, Save, Cloud, CloudOff, Loader } from 'lucide-react';
-import { SERVICE_LABELS } from '../../constants/defaultColors';
+import React, { useRef, useState } from 'react';
+import { X, Download, Upload, RotateCcw, Palette, Save, Cloud, CloudOff, Loader, ChevronDown, ChevronUp } from 'lucide-react';
+import { COLOR_CATEGORIES, SERVICE_LABELS } from '../../constants/defaultColors';
 import useColors from '../../hooks/useColors';
 
 /**
  * ModalCouleurs - Panneau de personnalisation des couleurs
  * 
- * v1.1 - Support du prop context pour couleurs séparées (general/perso)
- * v1.2 - Ajout logs debug pour tracer les changements
- * v1.3 - NEW: Case à cocher pour synchronisation multi-appareils
+ * VERSION 2.0 - Catégories avec accordéons dépliables
+ * 
+ * - Couleur de groupe modifiable (appliquée à tous les éléments)
+ * - Éléments individuels modifiables dans chaque groupe
+ * - Logique fallback: élément → groupe → défaut
  * 
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {function} onClose - Callback de fermeture
@@ -16,23 +18,34 @@ import useColors from '../../hooks/useColors';
  * @param {string} userEmail - Email de l'utilisateur pour la synchronisation
  */
 const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null }) => {
-  // Utilise le hook avec le contexte et l'email utilisateur
   const {
     colors,
     updateServiceColor,
+    updateGroupColor,
     updatePostesSupp,
     updateTexteLibre,
     resetColors,
     exportColors,
     importColors,
+    getGroupColor,
     syncEnabled,
     isSyncing,
     toggleSync,
   } = useColors(context, userEmail);
   
   const fileInputRef = useRef(null);
+  
+  // État des accordéons (groupes dépliés/repliés)
+  const [expandedGroups, setExpandedGroups] = useState({});
 
   if (!isOpen) return null;
+
+  const toggleGroup = (groupKey) => {
+    setExpandedGroups(prev => ({
+      ...prev,
+      [groupKey]: !prev[groupKey]
+    }));
+  };
 
   const handleImport = async (e) => {
     const file = e.target.files?.[0];
@@ -60,7 +73,6 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
     
     const newState = !syncEnabled;
     if (newState) {
-      // Activer
       const confirm = window.confirm(
         '☁️ Activer la synchronisation ?\n\n' +
         'Vos couleurs personnalisées seront sauvegardées dans le cloud et synchronisées sur tous vos appareils.'
@@ -69,7 +81,6 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
         await toggleSync(true);
       }
     } else {
-      // Désactiver
       const confirm = window.confirm(
         '📱 Désactiver la synchronisation ?\n\n' +
         'Vos couleurs resteront uniquement sur cet appareil.\nLes données cloud seront supprimées.'
@@ -78,10 +89,6 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
         await toggleSync(false);
       }
     }
-  };
-
-  const handleColorChange = (code, colorType, value) => {
-    updateServiceColor(code, colorType, value);
   };
 
   const colorPickerStyle = {
@@ -93,14 +100,10 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
     padding: '2px',
   };
 
-  const serviceKeys = Object.keys(SERVICE_LABELS);
-
-  // Titre selon le contexte
+  // Titre et accent selon le contexte
   const modalTitle = context === 'perso' 
     ? 'Couleurs - Mon Planning' 
     : 'Couleurs - Planning général';
-
-  // Couleur accent selon contexte
   const accentColor = context === 'perso' ? '#a855f7' : '#00f0ff';
 
   return (
@@ -130,7 +133,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
           boxShadow: context === 'perso'
             ? '0 0 40px rgba(168, 85, 247, 0.2)'
             : '0 0 40px rgba(0, 240, 255, 0.2)',
-          maxWidth: '600px',
+          maxWidth: '700px',
           width: '100%',
           maxHeight: '90vh',
           overflow: 'hidden',
@@ -138,6 +141,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
           flexDirection: 'column',
         }}
       >
+        {/* Header */}
         <div
           style={{
             padding: '16px 20px',
@@ -154,7 +158,6 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
             <h2 style={{ margin: 0, color: '#ffffff', fontSize: '18px' }}>
               {modalTitle}
             </h2>
-            {/* Indicateur de sync en cours */}
             {isSyncing && (
               <Loader 
                 size={16} 
@@ -171,6 +174,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
           </button>
         </div>
 
+        {/* Content */}
         <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
           
           {/* ========== SECTION SYNCHRONISATION ========== */}
@@ -211,7 +215,6 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
               </div>
             </div>
             
-            {/* Toggle switch */}
             <button
               onClick={handleSyncToggle}
               disabled={isSyncing || !userEmail}
@@ -242,7 +245,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
             </button>
           </div>
 
-          {/* ========== SECTION SERVICES ========== */}
+          {/* ========== CATÉGORIES AVEC ACCORDÉONS ========== */}
           <h3 style={{ 
             color: accentColor, 
             marginTop: 0, 
@@ -250,68 +253,166 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
             fontSize: '14px', 
             textTransform: 'uppercase' 
           }}>
-            Services
+            Catégories de services
           </h3>
           
-          <div style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)', borderRadius: '8px', overflow: 'hidden', marginBottom: '20px' }}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '80px 1fr 80px 80px',
-                padding: '10px 12px',
-                backgroundColor: context === 'perso' 
-                  ? 'rgba(168, 85, 247, 0.1)' 
-                  : 'rgba(0, 240, 255, 0.1)',
-                borderBottom: context === 'perso'
-                  ? '1px solid rgba(168, 85, 247, 0.2)'
-                  : '1px solid rgba(0, 240, 255, 0.2)',
-                fontSize: '12px',
-                fontWeight: 'bold',
-                color: accentColor,
-              }}
-            >
-              <span>Code</span>
-              <span>Description</span>
-              <span style={{ textAlign: 'center' }}>Fond</span>
-              <span style={{ textAlign: 'center' }}>Texte</span>
-            </div>
+          <p style={{ color: '#888', fontSize: '12px', marginBottom: '16px' }}>
+            💡 Modifiez la couleur du groupe pour l'appliquer à tous les éléments, ou dépliez pour personnaliser individuellement.
+          </p>
 
-            {serviceKeys.map((code, index) => (
-              <div
-                key={code}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '80px 1fr 80px 80px',
-                  padding: '8px 12px',
-                  alignItems: 'center',
-                  borderBottom: index < serviceKeys.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+          {Object.entries(COLOR_CATEGORIES).map(([groupKey, category]) => {
+            const isExpanded = expandedGroups[groupKey];
+            const groupColor = getGroupColor(groupKey);
+            
+            return (
+              <div 
+                key={groupKey}
+                style={{ 
+                  backgroundColor: 'rgba(0, 0, 0, 0.3)', 
+                  borderRadius: '8px', 
+                  overflow: 'hidden', 
+                  marginBottom: '12px',
+                  border: '1px solid rgba(255, 255, 255, 0.1)'
                 }}
               >
-                <span style={{ color: '#ffffff', fontFamily: 'monospace', fontWeight: 'bold' }}>{code}</span>
-                <span style={{ color: '#cccccc', fontSize: '13px' }}>{SERVICE_LABELS[code]}</span>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <input
-                    type="color"
-                    value={colors.services[code]?.bg === 'transparent' ? '#1a1a2e' : colors.services[code]?.bg || '#1a1a2e'}
-                    onChange={(e) => handleColorChange(code, 'bg', e.target.value)}
-                    style={colorPickerStyle}
-                  />
+                {/* Header du groupe (cliquable) */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 80px 80px 40px',
+                    padding: '12px',
+                    alignItems: 'center',
+                    backgroundColor: context === 'perso' 
+                      ? 'rgba(168, 85, 247, 0.1)' 
+                      : 'rgba(0, 240, 255, 0.1)',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => toggleGroup(groupKey)}
+                >
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '14px' }}>
+                      {category.label}
+                    </div>
+                    <div style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>
+                      {category.description}
+                    </div>
+                  </div>
+                  
+                  {/* Color picker pour le groupe */}
+                  <div 
+                    style={{ display: 'flex', justifyContent: 'center' }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="color"
+                      value={groupColor.bg || '#1a1a2e'}
+                      onChange={(e) => updateGroupColor(groupKey, 'bg', e.target.value)}
+                      style={colorPickerStyle}
+                      title="Couleur de fond du groupe"
+                    />
+                  </div>
+                  <div 
+                    style={{ display: 'flex', justifyContent: 'center' }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="color"
+                      value={groupColor.text || '#000000'}
+                      onChange={(e) => updateGroupColor(groupKey, 'text', e.target.value)}
+                      style={colorPickerStyle}
+                      title="Couleur du texte du groupe"
+                    />
+                  </div>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    {isExpanded ? (
+                      <ChevronUp size={20} color="#888" />
+                    ) : (
+                      <ChevronDown size={20} color="#888" />
+                    )}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <input
-                    type="color"
-                    value={colors.services[code]?.text || '#ffffff'}
-                    onChange={(e) => handleColorChange(code, 'text', e.target.value)}
-                    style={colorPickerStyle}
-                  />
-                </div>
+
+                {/* Éléments individuels (dépliable) */}
+                {isExpanded && (
+                  <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+                    {/* Header des colonnes */}
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '80px 1fr 80px 80px',
+                        padding: '8px 12px',
+                        backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                        fontSize: '11px',
+                        color: '#666',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      <span>Code</span>
+                      <span>Description</span>
+                      <span style={{ textAlign: 'center' }}>Fond</span>
+                      <span style={{ textAlign: 'center' }}>Texte</span>
+                    </div>
+                    
+                    {Object.entries(category.items).map(([code, item], index, arr) => {
+                      const serviceColor = colors.services?.[code] || {};
+                      // Utiliser la couleur du groupe si pas de couleur spécifique
+                      const bgValue = serviceColor.bg || groupColor.bg || '#1a1a2e';
+                      const textValue = serviceColor.text || groupColor.text || '#000000';
+                      
+                      return (
+                        <div
+                          key={code}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '80px 1fr 80px 80px',
+                            padding: '8px 12px',
+                            alignItems: 'center',
+                            borderBottom: index < arr.length - 1 ? '1px solid rgba(255, 255, 255, 0.05)' : 'none',
+                          }}
+                        >
+                          <span style={{ 
+                            color: '#ffffff', 
+                            fontFamily: 'monospace', 
+                            fontWeight: 'bold',
+                            fontSize: '12px'
+                          }}>
+                            {code}
+                          </span>
+                          <span style={{ color: '#aaa', fontSize: '12px' }}>
+                            {item.label}
+                          </span>
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <input
+                              type="color"
+                              value={bgValue}
+                              onChange={(e) => updateServiceColor(code, 'bg', e.target.value)}
+                              style={{ ...colorPickerStyle, width: '35px', height: '25px' }}
+                              title={`Fond pour ${code}`}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <input
+                              type="color"
+                              value={textValue}
+                              onChange={(e) => updateServiceColor(code, 'text', e.target.value)}
+                              style={{ ...colorPickerStyle, width: '35px', height: '25px' }}
+                              title={`Texte pour ${code}`}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })}
 
           {/* ========== SECTION AUTRES ÉLÉMENTS ========== */}
           <h3 style={{ 
             color: accentColor, 
+            marginTop: '24px',
             marginBottom: '12px', 
             fontSize: '14px', 
             textTransform: 'uppercase' 
@@ -418,6 +519,7 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
           </div>
         </div>
 
+        {/* Footer */}
         <div style={{ 
           padding: '16px 20px', 
           borderTop: context === 'perso'
@@ -447,7 +549,6 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
         </div>
       </div>
       
-      {/* CSS pour l'animation du loader */}
       <style>{`
         @keyframes spin {
           from { transform: rotate(0deg); }
