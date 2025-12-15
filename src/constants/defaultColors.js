@@ -1,6 +1,6 @@
 /**
  * Couleurs par défaut pour les services et éléments du planning
- * VERSION 3.7 - Ajout catégorie PCD (CCC BO, CBVD)
+ * VERSION 3.6 - Catégorie C,CP,F (Congés/Férié) avec C, C?, CNA, F
  */
 
 // Horaires de base pour les combinaisons
@@ -87,19 +87,6 @@ export const COLOR_CATEGORIES = {
       }
     },
     items: {}
-  },
-  
-  // PCD : OUVERT par défaut - CCC BO, CBVD
-  pcd: {
-    id: 'pcd',
-    label: 'PCD',
-    description: 'CCC BO, CBVD',
-    defaultOpen: true,
-    defaultColor: { bg: '#c7d2fe', text: '#4338ca' },
-    items: {
-      'CCC BO': { label: 'CCC BO', defaultColor: { bg: '#c7d2fe', text: '#4338ca' } },
-      'CBVD': { label: 'CBVD', defaultColor: { bg: '#a5b4fc', text: '#3730a3' } }
-    }
   },
   
   // Repos / Non utilisé : OUVERT par défaut
