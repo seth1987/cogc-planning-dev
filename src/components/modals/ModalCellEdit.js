@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search } from 'lucide-react';
-import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, POSTES_PAR_GROUPE, GROUPES_AVEC_POSTE } from '../../constants/config';
+import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search, Calendar, AlertCircle } from 'lucide-react';
+import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, POSTES_PAR_GROUPE, GROUPES_AVEC_POSTE, MONTHS } from '../../constants/config';
 
 // Couleurs UNIQUEMENT pour la modal d'édition 
 const MODAL_COLORS = {
@@ -20,7 +20,7 @@ const MODAL_COLORS = {
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.3.0 - Fix croisement avec recherche flexible des noms
+ * @version 2.4.1 - Fix useEffect placement (ESLint)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -51,6 +51,11 @@ const ModalCellEdit = ({
   const [showTexteLibreModal, setShowTexteLibreModal] = useState(false);
   const [texteLibreInput, setTexteLibreInput] = useState('');
   const [isTexteLibreEditMode, setIsTexteLibreEditMode] = useState(false);
+
+  // === NOUVEAUX ÉTATS POUR ÉDITION MULTIPLE ===
+  const [applyToMultipleDays, setApplyToMultipleDays] = useState(false);
+  const [endDate, setEndDate] = useState('');
+  const [dateRangeWarning, setDateRangeWarning] = useState('');
 
   // === ÉTATS CROISEMENT ===
   const [showCroisementModal, setShowCroisementModal] = useState(false);
@@ -90,9 +95,78 @@ const ModalCellEdit = ({
       setTempTexteLibre('');
       setTempPostesSupplementaires([]);
     }
+    // Reset édition multiple
+    setApplyToMultipleDays(false);
+    setEndDate('');
+    setDateRangeWarning('');
   }, [cellData, selectedCell]);
 
+  // useEffect pour validation automatique de la plage de dates
+  useEffect(() => {
+    if (applyToMultipleDays && endDate && selectedCell) {
+      const [, , day] = endDate.split('-').map(Number);
+      const currentDay = selectedCell.day;
+      const daysCount = day - currentDay + 1;
+      
+      if (day < currentDay) {
+        setDateRangeWarning('❌ La date de fin doit être >= à la date de début');
+      } else if (daysCount > 31) {
+        setDateRangeWarning('⚠️ Maximum 31 jours');
+      } else if (daysCount > 7) {
+        setDateRangeWarning(`⚠️ ${daysCount} jours seront modifiés`);
+      } else {
+        setDateRangeWarning(`✅ ${daysCount} jour${daysCount > 1 ? 's' : ''} sera${daysCount > 1 ? 'nt' : ''} modifié${daysCount > 1 ? 's' : ''}`);
+      }
+    } else {
+      setDateRangeWarning('');
+    }
+  }, [endDate, applyToMultipleDays, selectedCell]);
+
   if (!selectedCell) return null;
+
+// === FONCTIONS HELPER POUR ÉDITION MULTIPLE ===
+  
+  // Calculer le nombre de jours dans le mois actuel
+  const getDaysInMonth = (month, year) => {
+    const monthIndex = MONTHS.indexOf(month);
+    return new Date(year, monthIndex + 1, 0).getDate();
+  };
+
+  // Fonction pour les boutons rapides
+  const handleQuickDateRange = (days) => {
+    const currentDay = selectedCell.day;
+    const daysInMonth = getDaysInMonth(currentMonth, currentYear);
+    
+    let targetDay;
+    if (days === 'end') {
+      targetDay = daysInMonth;
+    } else {
+      targetDay = Math.min(currentDay + days - 1, daysInMonth);
+    }
+    
+    const monthIndex = MONTHS.indexOf(currentMonth);
+    const month = String(monthIndex + 1).padStart(2, '0');
+    const dayStr = String(targetDay).padStart(2, '0');
+    const dateStr = `${currentYear}-${month}-${dayStr}`;
+    
+    setEndDate(dateStr);
+    validateDateRange(currentDay, targetDay);
+  };
+
+  // Validation de la plage de dates
+  const validateDateRange = (startDay, endDay) => {
+    const daysCount = endDay - startDay + 1;
+    
+    if (endDay < startDay) {
+      setDateRangeWarning('❌ La date de fin doit être >= à la date de début');
+    } else if (daysCount > 31) {
+      setDateRangeWarning('⚠️ Maximum 31 jours');
+    } else if (daysCount > 7) {
+      setDateRangeWarning(`⚠️ ${daysCount} jours seront modifiés`);
+    } else {
+      setDateRangeWarning(`✅ ${daysCount} jour${daysCount > 1 ? 's' : ''} sera${daysCount > 1 ? 'nt' : ''} modifié${daysCount > 1 ? 's' : ''}`);
+    }
+  };
 
   // Trouver le groupe de l'agent sélectionné
   const findAgentGroup = () => {
@@ -462,7 +536,7 @@ const ModalCellEdit = ({
     return null;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     let planningData;
     
     const finalService = tempService === 'LIBRE' && tempTexteLibre 
@@ -481,7 +555,42 @@ const ModalCellEdit = ({
       planningData = finalService;
     }
     
-    onUpdateCell(selectedCell.agent, selectedCell.day, planningData);
+    // === GESTION ÉDITION MULTIPLE ===
+    if (applyToMultipleDays && endDate) {
+      const [, , endDay] = endDate.split('-').map(Number);
+      const startDay = selectedCell.day;
+      
+      // Validation finale
+      if (endDay < startDay) {
+        alert('❌ La date de fin doit être >= à la date de début');
+        return;
+      }
+      
+      const daysCount = endDay - startDay + 1;
+      
+      // Confirmation si beaucoup de jours
+      if (daysCount > 7) {
+        const confirm = window.confirm(
+          `⚠️ Vous allez modifier ${daysCount} jours (du ${startDay} au ${endDay} ${currentMonth}).\n\nConfirmer ?`
+        );
+        if (!confirm) return;
+      }
+      
+      // Appliquer à tous les jours de la plage
+      try {
+        for (let day = startDay; day <= endDay; day++) {
+          await onUpdateCell(selectedCell.agent, day, planningData);
+        }
+        alert(`✅ ${daysCount} jour${daysCount > 1 ? 's' : ''} modifié${daysCount > 1 ? 's' : ''} avec succès !`);
+      } catch (error) {
+        alert('❌ Erreur lors de la modification : ' + error.message);
+        return;
+      }
+    } else {
+      // Mode simple : un seul jour
+      await onUpdateCell(selectedCell.agent, selectedCell.day, planningData);
+    }
+    
     onClose();
   };
 
@@ -713,6 +822,178 @@ const ModalCellEdit = ({
             )}
           </div>
 
+{/* === SECTION ÉDITION MULTIPLE === */}
+        <div style={{
+          background: 'linear-gradient(to right, rgba(0, 240, 255, 0.05), rgba(0, 102, 179, 0.05))',
+          border: '1px solid rgba(0, 240, 255, 0.3)',
+          borderRadius: '8px',
+          padding: '12px',
+          marginTop: '16px'
+        }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            color: '#e0e0e0',
+            marginBottom: '8px'
+          }}>
+            <input
+              type="checkbox"
+              checked={applyToMultipleDays}
+              onChange={(e) => setApplyToMultipleDays(e.target.checked)}
+              style={{
+                width: '18px',
+                height: '18px',
+                cursor: 'pointer',
+                accentColor: '#00f0ff'
+              }}
+            />
+            <Calendar size={16} style={{ color: '#00f0ff' }} />
+            <span>Appliquer à plusieurs jours</span>
+          </label>
+
+          {applyToMultipleDays && (
+            <div style={{ marginTop: '12px', paddingLeft: '4px' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '12px'
+              }}>
+                <span style={{ color: '#b0b0b0', fontSize: '13px', minWidth: '45px' }}>
+                  Du :
+                </span>
+                <input
+                  type="text"
+                  value={`${selectedCell.day.toString().padStart(2, '0')}/${currentMonth}/${currentYear}`}
+                  disabled
+                  style={{
+                    padding: '8px 12px',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(0, 240, 255, 0.2)',
+                    borderRadius: '6px',
+                    color: '#888',
+                    fontSize: '13px',
+                    width: '140px'
+                  }}
+                />
+              </div>
+
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '12px'
+              }}>
+                <span style={{ color: '#b0b0b0', fontSize: '13px', minWidth: '45px' }}>
+                  Au :
+                </span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  min={(() => {
+                    const monthIndex = MONTHS.indexOf(currentMonth);
+                    const month = String(monthIndex + 1).padStart(2, '0');
+                    const day = String(selectedCell.day).padStart(2, '0');
+                    return `${currentYear}-${month}-${day}`;
+                  })()}
+                  max={(() => {
+                    const monthIndex = MONTHS.indexOf(currentMonth);
+                    const month = String(monthIndex + 1).padStart(2, '0');
+                    const daysInMonth = getDaysInMonth(currentMonth, currentYear);
+                    return `${currentYear}-${month}-${String(daysInMonth).padStart(2, '0')}`;
+                  })()}
+                  style={{
+                    padding: '8px 12px',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    border: '1px solid rgba(0, 240, 255, 0.4)',
+                    borderRadius: '6px',
+                    color: '#e0e0e0',
+                    fontSize: '13px',
+                    flex: 1,
+                    cursor: 'pointer'
+                  }}
+                />
+              </div>
+
+              {/* Boutons rapides */}
+              <div style={{
+                display: 'flex',
+                gap: '6px',
+                marginBottom: '12px',
+                flexWrap: 'wrap'
+              }}>
+                {[
+                  { label: '3j', value: 3 },
+                  { label: '5j', value: 5 },
+                  { label: '7j', value: 7 },
+                  { label: 'Fin mois', value: 'end' }
+                ].map(btn => (
+                  <button
+                    key={btn.label}
+                    onClick={() => handleQuickDateRange(btn.value)}
+                    style={{
+                      padding: '6px 12px',
+                      background: 'rgba(0, 240, 255, 0.1)',
+                      border: '1px solid rgba(0, 240, 255, 0.3)',
+                      borderRadius: '6px',
+                      color: '#00f0ff',
+                      fontSize: '12px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      fontWeight: '500'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = 'rgba(0, 240, 255, 0.2)';
+                      e.target.style.borderColor = 'rgba(0, 240, 255, 0.5)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = 'rgba(0, 240, 255, 0.1)';
+                      e.target.style.borderColor = 'rgba(0, 240, 255, 0.3)';
+                    }}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Warning/Info message */}
+              {dateRangeWarning && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  background: dateRangeWarning.startsWith('❌') 
+                    ? 'rgba(255, 0, 0, 0.1)'
+                    : dateRangeWarning.startsWith('⚠️')
+                    ? 'rgba(255, 165, 0, 0.1)'
+                    : 'rgba(0, 255, 0, 0.1)',
+                  border: `1px solid ${
+                    dateRangeWarning.startsWith('❌')
+                      ? 'rgba(255, 0, 0, 0.3)'
+                      : dateRangeWarning.startsWith('⚠️')
+                      ? 'rgba(255, 165, 0, 0.3)'
+                      : 'rgba(0, 255, 0, 0.3)'
+                  }`,
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  color: dateRangeWarning.startsWith('❌')
+                    ? '#ff6b6b'
+                    : dateRangeWarning.startsWith('⚠️')
+                    ? '#ffa500'
+                    : '#4ade80'
+                }}>
+                  <AlertCircle size={14} />
+                  <span>{dateRangeWarning}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
           {/* Boutons d'action */}
           <div className="flex justify-between pt-4 border-t">
             <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700">
