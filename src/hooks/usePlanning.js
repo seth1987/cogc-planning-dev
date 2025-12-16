@@ -291,11 +291,25 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       }
       
       // Mise à jour optimiste du state local
+      // ✅ FIX v1.7.0: Normaliser le format pour affichage immédiat (statut_conge → statutConge)
+      let normalizedValue = value;
+      if (typeof value === 'object' && value !== null) {
+        normalizedValue = {
+          service: value.service,
+          ...(value.poste && { poste: value.poste }),
+          ...(value.note && { note: value.note }),
+          ...(value.postesSupplementaires && { postesSupplementaires: value.postesSupplementaires }),
+          ...(value.texteLibre && { texteLibre: value.texteLibre }),
+          // Normaliser statut_conge → statutConge pour l'affichage
+          ...((value.statut_conge || value.statutConge) && { statutConge: value.statut_conge || value.statutConge })
+        };
+      }
+      
       setPlanning(prev => ({
         ...prev,
         [agentName]: {
           ...prev[agentName],
-          [day]: value
+          [day]: normalizedValue
         }
       }));
       
