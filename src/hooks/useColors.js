@@ -1,44 +1,45 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { DEFAULT_COLORS, COLORS_STORAGE_KEY } from '../constants/defaultColors';
+import { 
+  DEFAULT_COLORS, 
+  COLORS_STORAGE_KEY, 
+  COLOR_CATEGORIES,
+  findCategoryForCode,
+  findParentSubCategory,
+  isSubCategoryUniform,
+  getHorairesForSubCategory,
+  resolveColorForCode 
+} from '../constants/defaultColors';
 import { supabase } from '../lib/supabaseClient';
 
 /**
  * Hook pour gérer les couleurs personnalisées du planning
- * Stockage dans localStorage avec option de synchronisation Supabase
- * 
- * v1.1 - Ajout reloadColors() pour synchroniser entre composants
- * v1.2 - Support de contextes séparés (general / perso)
- * v1.3 - Fix: stabilisation storageKey + logs debug
- * v1.4 - NEW: Synchronisation multi-appareils via Supabase (optionnel)
- * v1.5 - FIX: Race condition dans toggleSync (forceSave param)
+ * VERSION 4.1 - Fix: getServiceColor respecte le mode Groupe/Individuel
  * 
  * @param {string} context - 'general' (défaut) ou 'perso' pour Mon Planning
  * @param {string} userEmail - Email de l'utilisateur pour la sync (optionnel)
  */
 export const useColors = (context = 'general', userEmail = null) => {
-  // Mémoriser la clé de stockage pour éviter les re-renders
   const storageKey = useMemo(() => {
-    const key = context === 'perso' 
+    return context === 'perso' 
       ? `${COLORS_STORAGE_KEY}-perso` 
       : COLORS_STORAGE_KEY;
-    return key;
   }, [context]);
 
-  // Clé pour le flag de sync dans localStorage
   const syncFlagKey = useMemo(() => `${storageKey}-sync`, [storageKey]);
 
-  // Fonction de chargement initiale (appelée une seule fois)
   const getInitialColors = () => {
     try {
       const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
-        const merged = {
+        return {
           services: { ...DEFAULT_COLORS.services, ...parsed?.services },
+          groups: { ...DEFAULT_COLORS.groups, ...parsed?.groups },
+          categoryModes: { ...parsed?.categoryModes }, // v4.0: modes des catégories
+          subCategoryModes: { ...DEFAULT_COLORS.subCategoryModes, ...parsed?.subCategoryModes },
           postesSupp: { ...DEFAULT_COLORS.postesSupp, ...parsed?.postesSupp },
           texteLibre: { ...DEFAULT_COLORS.texteLibre, ...parsed?.texteLibre },
         };
-        return merged;
       }
     } catch (error) {
       console.error(`🎨 Erreur chargement couleurs (${context}):`, error);
@@ -46,7 +47,6 @@ export const useColors = (context = 'general', userEmail = null) => {
     return DEFAULT_COLORS;
   };
 
-  // Charger l'état sync depuis localStorage
   const getInitialSyncState = () => {
     try {
       const stored = localStorage.getItem(syncFlagKey);
@@ -56,24 +56,24 @@ export const useColors = (context = 'general', userEmail = null) => {
     }
   };
 
-  // État initialisé directement avec les couleurs du localStorage
   const [colors, setColors] = useState(getInitialColors);
   const [isLoaded, setIsLoaded] = useState(true);
   const [syncEnabled, setSyncEnabled] = useState(getInitialSyncState);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Fusionner les couleurs stockées avec les défauts
   const mergeWithDefaults = useCallback((stored) => {
     return {
       services: { ...DEFAULT_COLORS.services, ...stored?.services },
+      groups: { ...DEFAULT_COLORS.groups, ...stored?.groups },
+      categoryModes: { ...stored?.categoryModes },
+      subCategoryModes: { ...DEFAULT_COLORS.subCategoryModes, ...stored?.subCategoryModes },
       postesSupp: { ...DEFAULT_COLORS.postesSupp, ...stored?.postesSupp },
       texteLibre: { ...DEFAULT_COLORS.texteLibre, ...stored?.texteLibre },
     };
   }, []);
 
-  // ========== SUPABASE SYNC FUNCTIONS ==========
+  // ========== SUPABASE SYNC ==========
 
-  // Charger les couleurs depuis Supabase
   const loadFromSupabase = useCallback(async () => {
     if (!userEmail) return null;
     
@@ -86,13 +86,9 @@ export const useColors = (context = 'general', userEmail = null) => {
         .single();
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          // Pas de données trouvées, c'est normal pour un nouvel utilisateur
-          return null;
-        }
+        if (error.code === 'PGRST116') return null;
         throw error;
       }
-
       return data;
     } catch (error) {
       console.error(`🎨 Erreur chargement Supabase (${context}):`, error);
@@ -100,23 +96,12 @@ export const useColors = (context = 'general', userEmail = null) => {
     }
   }, [userEmail, context]);
 
-  // Sauvegarder les couleurs dans Supabase
-  // forceSave: true pour bypasser la vérification syncEnabled (utilisé par toggleSync)
   const saveToSupabase = useCallback(async (newColors, forceSave = false) => {
-    if (!userEmail) {
-      console.log(`🎨 saveToSupabase: pas d'email, abandon`);
-      return false;
-    }
-    
-    if (!forceSave && !syncEnabled) {
-      console.log(`🎨 saveToSupabase: sync désactivée, abandon`);
-      return false;
-    }
+    if (!userEmail) return false;
+    if (!forceSave && !syncEnabled) return false;
     
     try {
       setIsSyncing(true);
-      console.log(`☁️ Tentative sauvegarde Supabase (${context})...`, { userEmail, forceSave });
-      
       const { error } = await supabase
         .from('user_color_preferences')
         .upsert({
@@ -125,16 +110,10 @@ export const useColors = (context = 'general', userEmail = null) => {
           colors: newColors,
           sync_enabled: true,
           updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_email,context'
-        });
+        }, { onConflict: 'user_email,context' });
 
-      if (error) {
-        console.error(`🎨 Erreur Supabase upsert:`, error);
-        throw error;
-      }
-      
-      console.log(`☁️ Couleurs synchronisées vers Supabase (${context})`);
+      if (error) throw error;
+      console.log(`☁️ Couleurs synchronisées (${context})`, Object.keys(newColors.categoryModes || {}).length);
       return true;
     } catch (error) {
       console.error(`🎨 Erreur sauvegarde Supabase (${context}):`, error);
@@ -144,72 +123,47 @@ export const useColors = (context = 'general', userEmail = null) => {
     }
   }, [userEmail, context, syncEnabled]);
 
-  // Supprimer les données de Supabase (quand on désactive la sync)
   const deleteFromSupabase = useCallback(async () => {
     if (!userEmail) return;
-    
     try {
       await supabase
         .from('user_color_preferences')
         .delete()
         .eq('user_email', userEmail)
         .eq('context', context);
-      
-      console.log(`🗑️ Données Supabase supprimées (${context})`);
     } catch (error) {
       console.error(`🎨 Erreur suppression Supabase (${context}):`, error);
     }
   }, [userEmail, context]);
 
-  // ========== SYNC TOGGLE ==========
-
-  // Activer/désactiver la synchronisation
   const toggleSync = useCallback(async (enabled) => {
-    console.log(`☁️ toggleSync appelé: enabled=${enabled}, userEmail=${userEmail}`);
-    
     setSyncEnabled(enabled);
     localStorage.setItem(syncFlagKey, enabled ? 'true' : 'false');
     
     if (enabled && userEmail) {
-      // Activer : sauvegarder les couleurs actuelles vers Supabase
-      // IMPORTANT: forceSave=true car syncEnabled n'est pas encore à jour (React async)
-      const success = await saveToSupabase(colors, true);
-      console.log(`☁️ Synchronisation activée (${context}), sauvegarde: ${success ? 'OK' : 'ÉCHEC'}`);
+      await saveToSupabase(colors, true);
     } else if (!enabled) {
-      // Désactiver : supprimer les données Supabase (garder local)
       await deleteFromSupabase();
-      console.log(`📱 Synchronisation désactivée - données locales uniquement (${context})`);
     }
-  }, [syncFlagKey, userEmail, saveToSupabase, deleteFromSupabase, colors, context]);
-
-  // ========== EFFECT: Charger depuis Supabase au montage ==========
+  }, [syncFlagKey, userEmail, saveToSupabase, deleteFromSupabase, colors]);
 
   useEffect(() => {
     const initFromSupabase = async () => {
       if (!userEmail) return;
-      
-      console.log(`☁️ Vérification données Supabase pour ${userEmail} (${context})...`);
       const data = await loadFromSupabase();
-      
-      if (data && data.sync_enabled && data.colors) {
-        // Supabase a des données sync activées -> les utiliser
+      if (data?.sync_enabled && data?.colors) {
         const merged = mergeWithDefaults(data.colors);
         setColors(merged);
         setSyncEnabled(true);
         localStorage.setItem(storageKey, JSON.stringify(merged));
         localStorage.setItem(syncFlagKey, 'true');
-        console.log(`☁️ Couleurs chargées depuis Supabase (${context})`);
-      } else {
-        console.log(`☁️ Pas de données sync dans Supabase (${context})`);
       }
     };
-
     initFromSupabase();
   }, [userEmail, context, loadFromSupabase, mergeWithDefaults, storageKey, syncFlagKey]);
 
-  // ========== EXISTING FUNCTIONS (UPDATED) ==========
+  // ========== COLOR FUNCTIONS ==========
 
-  // Recharger les couleurs depuis localStorage (pour synchronisation entre composants)
   const reloadColors = useCallback(() => {
     try {
       const stored = localStorage.getItem(storageKey);
@@ -220,30 +174,27 @@ export const useColors = (context = 'general', userEmail = null) => {
         return merged;
       }
     } catch (error) {
-      console.error(`🎨 Erreur reload couleurs (${context}):`, error);
+      console.error(`🎨 Erreur reload (${context}):`, error);
     }
     return DEFAULT_COLORS;
   }, [storageKey, context, mergeWithDefaults]);
 
-  // Sauvegarder les couleurs (local + Supabase si sync activé)
   const saveColors = useCallback((newColors) => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(newColors));
       setColors(newColors);
-      
-      // Sync vers Supabase si activé
-      if (syncEnabled && userEmail) {
-        saveToSupabase(newColors);
-      }
-      
+      if (syncEnabled && userEmail) saveToSupabase(newColors);
       return true;
     } catch (error) {
-      console.error(`🎨 Erreur sauvegarde couleurs (${context}):`, error);
+      console.error(`🎨 Erreur sauvegarde (${context}):`, error);
       return false;
     }
   }, [storageKey, context, syncEnabled, userEmail, saveToSupabase]);
 
-  // Mettre à jour une couleur de service
+  /**
+   * v4.0: Mettre à jour une couleur de service (élément individuel)
+   * Passe automatiquement en mode "individual" pour la catégorie concernée
+   */
   const updateServiceColor = useCallback((serviceCode, colorType, value) => {
     setColors(prev => {
       const updated = {
@@ -256,73 +207,247 @@ export const useColors = (context = 'general', userEmail = null) => {
           }
         }
       };
-      localStorage.setItem(storageKey, JSON.stringify(updated));
       
-      // Sync vers Supabase si activé
-      if (syncEnabled && userEmail) {
-        saveToSupabase(updated);
+      // v4.0: Trouver la catégorie et passer en mode individuel
+      const category = findCategoryForCode(serviceCode);
+      if (category) {
+        updated.categoryModes = {
+          ...updated.categoryModes,
+          [category.key]: 'individual'
+        };
       }
       
+      // Si c'est un élément de sous-catégorie, passer aussi en mode individuel pour la sous-cat
+      const parentSubCat = findParentSubCategory(serviceCode);
+      if (parentSubCat && parentSubCat !== serviceCode) {
+        updated.subCategoryModes = {
+          ...updated.subCategoryModes,
+          [parentSubCat]: 'individual'
+        };
+      }
+      
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      if (syncEnabled && userEmail) saveToSupabase(updated);
       return updated;
     });
   }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
-  // Mettre à jour la couleur des postes supplémentaires
-  const updatePostesSupp = useCallback((value) => {
+  /**
+   * Mettre à jour la couleur d'un groupe (catégorie) - pour le header
+   */
+  const updateGroupColor = useCallback((groupKey, colorType, value) => {
     setColors(prev => {
       const updated = {
         ...prev,
-        postesSupp: { text: value }
+        groups: {
+          ...prev.groups,
+          [groupKey]: {
+            ...prev.groups?.[groupKey],
+            [colorType]: value
+          }
+        }
       };
       localStorage.setItem(storageKey, JSON.stringify(updated));
-      
-      // Sync vers Supabase si activé
-      if (syncEnabled && userEmail) {
-        saveToSupabase(updated);
-      }
-      
+      if (syncEnabled && userEmail) saveToSupabase(updated);
       return updated;
     });
   }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
-  // Mettre à jour les couleurs du texte libre
+  /**
+   * v4.0: Mettre à jour la couleur d'une catégorie entière
+   * Applique la couleur à TOUS les éléments de la catégorie
+   */
+  const updateCategoryColor = useCallback((categoryKey, colorType, value) => {
+    setColors(prev => {
+      const category = COLOR_CATEGORIES[categoryKey];
+      if (!category) return prev;
+      
+      const newServices = { ...prev.services };
+      const newGroups = {
+        ...prev.groups,
+        [categoryKey]: {
+          ...prev.groups?.[categoryKey],
+          [colorType]: value
+        }
+      };
+      
+      // Appliquer à tous les éléments de la catégorie
+      if (category.items) {
+        Object.keys(category.items).forEach(code => {
+          newServices[code] = {
+            ...newServices[code],
+            [colorType]: value
+          };
+        });
+      }
+      
+      // Pour les catégories avec sous-catégories, appliquer aussi aux sous-catégories
+      if (category.subCategories) {
+        Object.keys(category.subCategories).forEach(subCatCode => {
+          newServices[subCatCode] = {
+            ...newServices[subCatCode],
+            [colorType]: value
+          };
+          // Et aux combinaisons horaires
+          const horaires = getHorairesForSubCategory(subCatCode);
+          horaires.forEach(h => {
+            const combinedCode = `${subCatCode} ${h.code}`;
+            newServices[combinedCode] = {
+              ...newServices[combinedCode],
+              [colorType]: value
+            };
+          });
+        });
+      }
+      
+      const updated = {
+        ...prev,
+        services: newServices,
+        groups: newGroups,
+        categoryModes: {
+          ...prev.categoryModes,
+          [categoryKey]: 'group' // Rester/passer en mode groupe
+        }
+      };
+      
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      if (syncEnabled && userEmail) saveToSupabase(updated);
+      return updated;
+    });
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
+
+  /**
+   * v4.0: Définir le mode d'une catégorie (groupe/individual)
+   */
+  const setCategoryMode = useCallback((categoryKey, mode) => {
+    setColors(prev => {
+      const updated = {
+        ...prev,
+        categoryModes: {
+          ...prev.categoryModes,
+          [categoryKey]: mode
+        }
+      };
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      if (syncEnabled && userEmail) saveToSupabase(updated);
+      return updated;
+    });
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
+
+  /**
+   * v4.0: Obtenir le mode d'une catégorie
+   */
+  const getCategoryMode = useCallback((categoryKey) => {
+    // Si explicitement défini
+    if (colors.categoryModes?.[categoryKey]) {
+      return colors.categoryModes[categoryKey];
+    }
+    // Par défaut : groupe
+    return 'group';
+  }, [colors]);
+
+  /**
+   * v3.3: Mettre à jour la couleur d'une sous-catégorie (ex: FO RO, CRC, etc.)
+   * Applique la couleur à tous les éléments combinés avec les bons horaires
+   */
+  const updateSubCategoryColor = useCallback((subCatCode, colorType, value) => {
+    setColors(prev => {
+      const newServices = { ...prev.services };
+      
+      // Mettre à jour la sous-catégorie elle-même
+      newServices[subCatCode] = {
+        ...newServices[subCatCode],
+        [colorType]: value
+      };
+      
+      // Récupérer les horaires spécifiques à cette sous-catégorie
+      const horaires = getHorairesForSubCategory(subCatCode);
+      
+      // Mettre à jour toutes les combinaisons avec horaires
+      horaires.forEach(horaire => {
+        const combinedCode = `${subCatCode} ${horaire.code}`;
+        newServices[combinedCode] = {
+          ...newServices[combinedCode],
+          [colorType]: value
+        };
+      });
+      
+      const updated = {
+        ...prev,
+        services: newServices,
+        subCategoryModes: {
+          ...prev.subCategoryModes,
+          [subCatCode]: 'group' // Repasser en mode groupe
+        }
+      };
+      
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      if (syncEnabled && userEmail) saveToSupabase(updated);
+      return updated;
+    });
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
+
+  /**
+   * Changer le mode d'une sous-catégorie (groupe/individuel)
+   */
+  const setSubCategoryMode = useCallback((subCatCode, mode) => {
+    setColors(prev => {
+      const updated = {
+        ...prev,
+        subCategoryModes: {
+          ...prev.subCategoryModes,
+          [subCatCode]: mode
+        }
+      };
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      if (syncEnabled && userEmail) saveToSupabase(updated);
+      return updated;
+    });
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
+
+  /**
+   * Obtenir le mode d'une sous-catégorie
+   */
+  const getSubCategoryMode = useCallback((subCatCode) => {
+    // Si explicitement défini
+    if (colors.subCategoryModes?.[subCatCode]) {
+      return colors.subCategoryModes[subCatCode];
+    }
+    // Par défaut, vérifier si les couleurs sont uniformes
+    return isSubCategoryUniform(subCatCode, colors) ? 'group' : 'individual';
+  }, [colors]);
+
+  const updatePostesSupp = useCallback((value) => {
+    setColors(prev => {
+      const updated = { ...prev, postesSupp: { text: value } };
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+      if (syncEnabled && userEmail) saveToSupabase(updated);
+      return updated;
+    });
+  }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
+
   const updateTexteLibre = useCallback((colorType, value) => {
     setColors(prev => {
       const updated = {
         ...prev,
-        texteLibre: {
-          ...prev.texteLibre,
-          [colorType]: value
-        }
+        texteLibre: { ...prev.texteLibre, [colorType]: value }
       };
       localStorage.setItem(storageKey, JSON.stringify(updated));
-      
-      // Sync vers Supabase si activé
-      if (syncEnabled && userEmail) {
-        saveToSupabase(updated);
-      }
-      
+      if (syncEnabled && userEmail) saveToSupabase(updated);
       return updated;
     });
   }, [storageKey, syncEnabled, userEmail, saveToSupabase]);
 
-  // Réinitialiser aux valeurs par défaut
   const resetColors = useCallback(async () => {
     localStorage.removeItem(storageKey);
     setColors(DEFAULT_COLORS);
-    
-    // Supprimer aussi de Supabase si sync activé
     if (syncEnabled && userEmail) {
       await deleteFromSupabase();
-      // Désactiver la sync après reset
       setSyncEnabled(false);
       localStorage.setItem(syncFlagKey, 'false');
     }
-    
-    console.log(`🎨 resetColors (${context}) - couleurs réinitialisées`);
-  }, [storageKey, context, syncEnabled, userEmail, deleteFromSupabase, syncFlagKey]);
+  }, [storageKey, syncEnabled, userEmail, deleteFromSupabase, syncFlagKey]);
 
-  // Exporter la configuration
   const exportColors = useCallback(() => {
     const dataStr = JSON.stringify(colors, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
@@ -336,23 +461,21 @@ export const useColors = (context = 'general', userEmail = null) => {
     URL.revokeObjectURL(url);
   }, [colors, context]);
 
-  // Importer une configuration
   const importColors = useCallback((file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = async (e) => {
         try {
           const imported = JSON.parse(e.target.result);
-          // Valider la structure
           if (imported.services && typeof imported.services === 'object') {
             const merged = mergeWithDefaults(imported);
             saveColors(merged);
             resolve(true);
           } else {
-            reject(new Error('Format de fichier invalide'));
+            reject(new Error('Format invalide'));
           }
         } catch (error) {
-          reject(new Error('Erreur de lecture du fichier'));
+          reject(new Error('Erreur de lecture'));
         }
       };
       reader.onerror = () => reject(new Error('Erreur de lecture'));
@@ -360,9 +483,85 @@ export const useColors = (context = 'general', userEmail = null) => {
     });
   }, [saveColors, mergeWithDefaults]);
 
-  // Obtenir la couleur d'un service (avec fallback)
+  /**
+   * v4.1 FIX: Obtenir la couleur d'un service avec respect du mode Groupe/Individuel
+   * 
+   * LOGIQUE:
+   * 1. Trouver la catégorie du code
+   * 2. Vérifier le mode de la catégorie (group/individual)
+   * 3. Si MODE GROUPE: utiliser directement la couleur du groupe (ignorer couleurs individuelles)
+   * 4. Si MODE INDIVIDUEL: cascade classique (service > sous-cat > groupe > défaut)
+   */
   const getServiceColor = useCallback((serviceCode) => {
-    return colors.services[serviceCode] || DEFAULT_COLORS.services[serviceCode] || { bg: 'transparent', text: '#ffffff' };
+    if (!serviceCode) return { bg: 'transparent', text: '#000000' };
+    
+    // 1. Trouver la catégorie pour ce code
+    const category = findCategoryForCode(serviceCode);
+    
+    if (category) {
+      // 2. Vérifier le mode de la catégorie
+      const categoryMode = colors.categoryModes?.[category.key] || 'group';
+      
+      // 3. MODE GROUPE: utiliser la couleur du groupe directement
+      if (categoryMode === 'group') {
+        // Priorité: couleur groupe personnalisée > couleur par défaut du groupe
+        if (colors.groups?.[category.key]?.bg && colors.groups[category.key].bg !== 'transparent') {
+          return colors.groups[category.key];
+        }
+        // Sinon couleur par défaut de la catégorie
+        return category.defaultColor || { bg: 'transparent', text: '#000000' };
+      }
+      
+      // 4. MODE INDIVIDUEL: cascade classique
+      // 4a. Couleur personnalisée de l'élément individuel
+      const customService = colors.services?.[serviceCode];
+      if (customService?.bg && customService.bg !== 'transparent') {
+        return customService;
+      }
+      
+      // 4b. Couleur de la sous-catégorie parent (pour habilitation/formation et postes)
+      const parentSubCat = findParentSubCategory(serviceCode);
+      if (parentSubCat && parentSubCat !== serviceCode) {
+        // Vérifier le mode de la sous-catégorie
+        const subCatMode = colors.subCategoryModes?.[parentSubCat] || 'group';
+        
+        if (subCatMode === 'group') {
+          // En mode groupe pour la sous-cat, utiliser sa couleur
+          const parentColor = colors.services?.[parentSubCat];
+          if (parentColor?.bg && parentColor.bg !== 'transparent') {
+            return parentColor;
+          }
+        } else {
+          // En mode individuel, vérifier la couleur spécifique
+          const parentColor = colors.services?.[parentSubCat];
+          if (parentColor?.bg && parentColor.bg !== 'transparent') {
+            return parentColor;
+          }
+        }
+      }
+      
+      // 4c. Couleur personnalisée du groupe (fallback)
+      if (colors.groups?.[category.key]?.bg && colors.groups[category.key].bg !== 'transparent') {
+        return colors.groups[category.key];
+      }
+      
+      // 4d. Couleur par défaut de l'item ou du groupe
+      const itemDefault = category.items?.[serviceCode]?.defaultColor;
+      return itemDefault || category.defaultColor || { bg: 'transparent', text: '#000000' };
+    }
+    
+    // 5. Code non trouvé dans les catégories - fallback dans DEFAULT_COLORS
+    if (DEFAULT_COLORS.services?.[serviceCode]) {
+      return DEFAULT_COLORS.services[serviceCode];
+    }
+    
+    return { bg: 'transparent', text: '#000000' };
+  }, [colors]);
+
+  const getGroupColor = useCallback((groupKey) => {
+    if (colors.groups?.[groupKey]) return colors.groups[groupKey];
+    if (COLOR_CATEGORIES[groupKey]) return COLOR_CATEGORIES[groupKey].defaultColor;
+    return { bg: 'transparent', text: '#000000' };
   }, [colors]);
 
   return {
@@ -370,18 +569,26 @@ export const useColors = (context = 'general', userEmail = null) => {
     isLoaded,
     saveColors,
     updateServiceColor,
+    updateGroupColor,
+    updateCategoryColor,      // v4.0
+    setCategoryMode,          // v4.0
+    getCategoryMode,          // v4.0
+    updateSubCategoryColor,
+    setSubCategoryMode,
+    getSubCategoryMode,
     updatePostesSupp,
     updateTexteLibre,
     resetColors,
     exportColors,
     importColors,
     getServiceColor,
+    getGroupColor,
     reloadColors,
     context,
-    // Nouvelles fonctions de sync
     syncEnabled,
     isSyncing,
     toggleSync,
+    categories: COLOR_CATEGORIES,
   };
 };
 
