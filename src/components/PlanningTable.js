@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users, Palette, Type } from 'lucide-react';
 import { MONTHS } from '../constants/config';
 import { DEFAULT_COLORS } from '../constants/defaultColors';
-import { getPaieType, PAIE_ICONS } from '../constants/paie2026';
 import useColors from '../hooks/useColors';
 import planningService from '../services/planningService';
 import ModalCouleurs from './modals/ModalCouleurs';
@@ -20,63 +19,7 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * FIX v2.16: Affichage correct du texte libre (service=LIBRE + texteLibre)
  * NEW v2.17: Synchronisation multi-appareils des couleurs via Supabase
  * FIX v2.18: Debug log pour currentUser
- * FIX v2.19: Support des codes combinés (ex: "FO CRC -", "MA O")
- * FIX v2.20: Affichage 2 lignes pour codes combinés (horaire en haut, catégorie en bas)
- * FIX v2.21: Couleur basée sur POSTE+SERVICE combiné (réserve vs roulement)
- * NEW v4.5.0: Support statut_conge combinable (C, C?, CNA) avec service/poste
- * NEW v4.6.0: Icônes paie 2026 (Digiposte/Virement) dans les en-têtes de jours
  */
-
-// Horaires simples pour détecter les combinaisons
-const HORAIRES_SIMPLES = ['-', 'O', 'X', 'I'];
-// Codes spéciaux qui ne sont PAS des horaires (repos, absences, etc.)
-const CODES_NON_HORAIRES = ['RP', 'NU', 'F', 'MA', 'D', 'DISPO', 'VL', 'INAC', 'INACTIN', 'VM', 'EIA', 'DPX', 'PSE', 'VT', 'D2I', 'RU', 'RA', 'RN', 'RQ', 'TY', 'AY', 'AH', 'DD', 'HAB', 'FO', 'LIBRE'];
-// Codes statut congé (stockés dans statut_conge, pas dans service_code)
-const STATUT_CONGE_CODES = ['C', 'C?', 'CNA'];
-
-// Couleurs pour les statuts congé
-const STATUT_CONGE_COLORS = {
-  'C': { bg: '#facc15', text: '#713f12' },      // Jaune vif - Congé accordé
-  'C?': { bg: '#fef08a', text: '#854d0e' },     // Jaune clair - En attente
-  'CNA': { bg: '#fca5a5', text: '#991b1b' }     // Rouge clair - Refusé
-};
-
-/**
- * Parse un code combiné et retourne horaire + catégorie séparés
- * "FO RO -" → { horaire: "-", categorie: "FO RO" }
- * "MA O" → { horaire: "O", categorie: "MA" }
- * "HAB" → { horaire: null, categorie: "HAB" }
- * "-" → { horaire: "-", categorie: null }
- * "RP" → { horaire: "RP", categorie: null }
- */
-const parseCombinedCode = (serviceCode) => {
-  if (!serviceCode) return { horaire: null, categorie: null };
-  
-  const trimmed = serviceCode.trim();
-  const parts = trimmed.split(' ');
-  
-  // Code simple (1 seul élément)
-  if (parts.length === 1) {
-    // Si c'est un horaire simple, pas de catégorie
-    if (HORAIRES_SIMPLES.includes(trimmed)) {
-      return { horaire: trimmed, categorie: null };
-    }
-    // Sinon c'est une catégorie seule (ex: "HAB", "VL", "D", "RP")
-    return { horaire: null, categorie: trimmed };
-  }
-  
-  // Code combiné (plusieurs éléments)
-  const lastPart = parts[parts.length - 1];
-  
-  // Si le dernier élément est un horaire simple → combinaison catégorie + horaire
-  if (HORAIRES_SIMPLES.includes(lastPart)) {
-    const categorie = parts.slice(0, -1).join(' ');
-    return { horaire: lastPart, categorie: categorie || null };
-  }
-  
-  // Sinon tout est catégorie (ex: "FO RO" sans horaire)
-  return { horaire: null, categorie: trimmed };
-};
 
 // Composant barre de navigation rendu via portail - VERSION COMPACTE
 const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd, onOpenColors }) => {
@@ -224,36 +167,10 @@ const PlanningTable = ({
     }
   };
   
-  /**
-   * v2.21: Construit le code complet pour la recherche de couleur
-   * 
-   * LOGIQUE:
-   * - Si service est un horaire simple (-, O, X) ET poste est défini → "POSTE SERVICE" (ex: "CRC -")
-   * - Si service est un code non-horaire (RP, MA, C, etc.) → utiliser service seul
-   * - Si service seul (pas de poste) → utiliser service tel quel
-   * 
-   * Cela permet:
-   * - Agents ROULEMENT avec "-" seul → catégorie "Horaires"
-   * - Agents RÉSERVE avec "-" + poste "CRC" → catégorie "Poste (Réserve)" via "CRC -"
-   */
-  const buildColorCode = (service, poste) => {
-    if (!service) return null;
-    
-    // Si le service est un horaire simple ET on a un poste → combiner
-    if (HORAIRES_SIMPLES.includes(service) && poste) {
-      return `${poste} ${service}`;
-    }
-    
-    // Sinon utiliser le service tel quel
-    return service;
-  };
-  
   // Fonction pour obtenir le style de couleur d'une cellule
   const getCellColorStyle = (serviceCode) => {
     if (!serviceCode) return {};
-    
     const colorConfig = getServiceColor(serviceCode);
-    
     if (!colorConfig) return {};
     
     return {
@@ -261,27 +178,12 @@ const PlanningTable = ({
       color: colorConfig.text,
     };
   };
-
-  // Fonction pour obtenir le style de couleur d'un statut congé
-  const getStatutCongeStyle = (statutConge) => {
-    if (!statutConge || !STATUT_CONGE_COLORS[statutConge]) return {};
-    return {
-      backgroundColor: STATUT_CONGE_COLORS[statutConge].bg,
-      color: STATUT_CONGE_COLORS[statutConge].text,
-    };
-  };
   
-  /**
-   * v4.6.0: Génère l'en-tête de jour avec icône paie si applicable
-   */
   const getDayHeader = (day) => {
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
     const dayName = planningService.getDayName(day, currentMonth, year);
     
-    // Vérifier si c'est une date de paie 2026
-    const paieType = getPaieType(day, currentMonth, year);
-    
-    let className = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] relative ';
+    let className = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] ';
     
     if (isFerier) {
       className += 'bg-red-100 text-red-900';
@@ -296,42 +198,14 @@ const PlanningTable = ({
       className += ' cursor-pointer hover:bg-blue-100 hover:text-blue-800 transition-colors group';
     }
     
-    // Déterminer l'icône à afficher
-    let backgroundIcon = null;
-    if (paieType === 'digiposte') {
-      backgroundIcon = PAIE_ICONS.general.digiposte;
-    } else if (paieType === 'virement') {
-      backgroundIcon = PAIE_ICONS.general.euro;
-    } else if (paieType === 'both') {
-      // Si les deux tombent le même jour (rare), priorité Digiposte
-      backgroundIcon = PAIE_ICONS.general.digiposte;
-    }
-    
     return (
       <th 
         key={day} 
         className={className}
         onClick={isClickable ? () => onDayHeaderClick(day) : undefined}
         title={isClickable ? `Voir les equipes du ${day}` : undefined}
-        style={backgroundIcon ? {
-          backgroundImage: `url(${backgroundIcon})`,
-          backgroundSize: '32px 32px',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-        } : undefined}
       >
-        {/* Overlay semi-transparent pour lisibilité si icône présente */}
-        {backgroundIcon && (
-          <div 
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              backgroundColor: isFerier ? 'rgba(254, 226, 226, 0.75)' : 
-                             isWeekend ? 'rgba(240, 253, 244, 0.75)' : 
-                             'rgba(249, 250, 251, 0.75)',
-            }}
-          />
-        )}
-        <div className="flex flex-col items-center relative z-10">
+        <div className="flex flex-col items-center">
           <span className="text-xs uppercase">{dayName}</span>
           <span className="font-bold text-sm">{day}</span>
           {isFerier && <span className="text-xs">Ferie</span>}
@@ -356,151 +230,64 @@ const PlanningTable = ({
     
     if (planningData) {
       if (typeof planningData === 'string') {
-        // ===== String simple: code direct =====
-        const { horaire, categorie } = parseCombinedCode(planningData);
+        cellContent = planningData;
         cellStyle = getCellColorStyle(planningData);
-        
-        // Si c'est un code combiné (horaire + catégorie), afficher sur 2 lignes
-        if (horaire && categorie) {
-          cellContent = (
-            <div className="flex flex-col h-full justify-center">
-              <span className="font-medium">{horaire}</span>
-              <span className="text-xs font-bold">{categorie}</span>
-            </div>
-          );
-        } else {
-          // Code simple - afficher tel quel
-          cellContent = planningData;
-        }
       } else if (typeof planningData === 'object') {
-        // ===== Objet: service + poste + statut_conge + extras =====
         const service = planningData.service || '';
         const poste = planningData.poste || '';
         const texteLibre = planningData.texteLibre || '';
-        const statutConge = planningData.statut_conge || planningData.statutConge || '';
         const postesSupplementaires = planningData.postesSupplementaires || 
           (planningData.posteSupplementaire ? [planningData.posteSupplementaire] : []);
         
         hasNote = Boolean(planningData.note);
         isTexteLibre = service === 'LIBRE' && texteLibre;
         
-        // ===== v2.21: Construire le code complet pour la couleur =====
-        const colorCode = buildColorCode(service, poste);
-        
         // Couleur selon le type
         if (isTexteLibre) {
+          // Utiliser la couleur configurée pour le texte libre
           const texteLibreColors = colors.texteLibre || { bg: '#fef3c7', text: '#92400e' };
           cellStyle = {
             backgroundColor: texteLibreColors.bg,
             color: texteLibreColors.text,
           };
-        } else if (statutConge && !service) {
-          // Statut congé seul (ex: C? en attente de commande)
-          cellStyle = getStatutCongeStyle(statutConge);
         } else {
-          cellStyle = getCellColorStyle(colorCode);
+          cellStyle = getCellColorStyle(service);
         }
         
         // Couleur des postes supplémentaires
         const postesColor = colors.postesSupp?.text || '#8b5cf6';
         
-        // Parser le service pour affichage
-        const { horaire, categorie } = parseCombinedCode(service);
-        const displayText = isTexteLibre ? texteLibre : (horaire || service);
-        // La catégorie du service combiné OU le poste existant
-        const displayCategorie = categorie || poste;
+        // Texte à afficher : texteLibre si LIBRE, sinon service
+        const displayText = isTexteLibre ? texteLibre : service;
         
-        // ===== v4.5.0: Affichage avec statut congé =====
-        const renderBottomLine = () => {
-          // Cas 1: Statut congé seul (pas de service ni poste)
-          if (statutConge && !service && !poste) {
-            return null; // Centré, géré plus bas
-          }
-          
-          // Cas 2: Service + Poste + Statut congé → "Poste | Statut"
-          if (displayCategorie && statutConge) {
-            return (
-              <div className="flex items-center justify-center gap-0.5">
-                <span className="text-xs font-bold">{displayCategorie}</span>
-                <span className="text-gray-400 mx-0.5">|</span>
+        cellContent = (
+          <div className="flex flex-col h-full justify-between">
+            {hasNote && (
+              <div className="absolute top-0 right-0 p-0.5" title="Note existante">
+                <StickyNote className="w-3 h-3 text-amber-500" />
+              </div>
+            )}
+            {isTexteLibre && (
+              <div className="absolute top-0 left-0 p-0.5" title="Texte libre">
+                <Type className="w-3 h-3 text-purple-500" />
+              </div>
+            )}
+            <div className="flex flex-col">
+              <span className={`font-medium ${isTexteLibre ? 'text-[10px]' : ''}`}>{displayText}</span>
+              {poste && <span className="text-xs font-bold">{poste}</span>}
+            </div>
+            {postesSupplementaires.length > 0 && (
+              <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
                 <span 
-                  className="text-[10px] font-semibold px-1 rounded"
-                  style={getStatutCongeStyle(statutConge)}
+                  className="text-[9px] italic font-medium"
+                  style={{ color: postesColor }}
                 >
-                  {statutConge}
+                  {postesSupplementaires.join(' ')}
                 </span>
               </div>
-            );
-          }
-          
-          // Cas 3: Service + Statut congé (sans poste) → Statut en bas
-          if (statutConge && !displayCategorie) {
-            return (
-              <span 
-                className="text-[10px] font-semibold px-1 rounded"
-                style={getStatutCongeStyle(statutConge)}
-              >
-                {statutConge}
-              </span>
-            );
-          }
-          
-          // Cas 4: Poste seul (pas de statut congé)
-          if (displayCategorie) {
-            return <span className="text-xs font-bold">{displayCategorie}</span>;
-          }
-          
-          return null;
-        };
-        
-        // Statut congé seul → centré
-        if (statutConge && !service && !poste) {
-          cellContent = (
-            <div className="flex flex-col h-full justify-center items-center">
-              {hasNote && (
-                <div className="absolute top-0 right-0 p-0.5" title="Note existante">
-                  <StickyNote className="w-3 h-3 text-amber-500" />
-                </div>
-              )}
-              <span 
-                className="text-sm font-bold px-1.5 py-0.5 rounded"
-                style={getStatutCongeStyle(statutConge)}
-              >
-                {statutConge}
-              </span>
-            </div>
-          );
-        } else {
-          // Affichage normal avec service/poste et éventuellement statut congé
-          cellContent = (
-            <div className="flex flex-col h-full justify-between">
-              {hasNote && (
-                <div className="absolute top-0 right-0 p-0.5" title="Note existante">
-                  <StickyNote className="w-3 h-3 text-amber-500" />
-                </div>
-              )}
-              {isTexteLibre && (
-                <div className="absolute top-0 left-0 p-0.5" title="Texte libre">
-                  <Type className="w-3 h-3 text-purple-500" />
-                </div>
-              )}
-              <div className="flex flex-col">
-                {displayText && <span className={`font-medium ${isTexteLibre ? 'text-[10px]' : ''}`}>{displayText}</span>}
-                {renderBottomLine()}
-              </div>
-              {postesSupplementaires.length > 0 && (
-                <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
-                  <span 
-                    className="text-[9px] italic font-medium"
-                    style={{ color: postesColor }}
-                  >
-                    {postesSupplementaires.join(' ')}
-                  </span>
-                </div>
-              )}
-            </div>
-          );
-        }
+            )}
+          </div>
+        );
       }
     } else {
       // Cellule vide - couleurs de fond selon jour
@@ -701,23 +488,9 @@ const PlanningTable = ({
               <div className="flex items-center gap-2">
                 <span 
                   className="inline-block w-4 h-4 rounded"
-                  style={{ backgroundColor: STATUT_CONGE_COLORS['C'].bg }}
+                  style={{ backgroundColor: getServiceColor('C').bg }}
                 ></span>
                 <span>C = Conges</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span 
-                  className="inline-block w-4 h-4 rounded"
-                  style={{ backgroundColor: STATUT_CONGE_COLORS['C?'].bg }}
-                ></span>
-                <span>C? = En attente</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span 
-                  className="inline-block w-4 h-4 rounded"
-                  style={{ backgroundColor: STATUT_CONGE_COLORS['CNA'].bg }}
-                ></span>
-                <span>CNA = Refusé</span>
               </div>
             </div>
           </div>
@@ -788,37 +561,6 @@ const PlanningTable = ({
                 >RDV</span>
                 <span>Fond jaune clair</span>
               </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Légende Paie 2026 */}
-        <div className="mt-4 pt-3 border-t border-gray-200">
-          <p className="font-medium mb-2 text-sm">📅 Dates de paie 2026 :</p>
-          <div className="flex flex-wrap gap-4 text-xs">
-            <div className="flex items-center gap-2">
-              <div 
-                className="w-8 h-8 rounded border border-gray-300 bg-gray-50"
-                style={{
-                  backgroundImage: `url(${PAIE_ICONS.general.digiposte})`,
-                  backgroundSize: '24px 24px',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat',
-                }}
-              />
-              <span>Bulletin Digiposte disponible</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div 
-                className="w-8 h-8 rounded border border-gray-300 bg-gray-50"
-                style={{
-                  backgroundImage: `url(${PAIE_ICONS.general.euro})`,
-                  backgroundSize: '24px 24px',
-                  backgroundPosition: 'center',
-                  backgroundRepeat: 'no-repeat',
-                }}
-              />
-              <span>Virement salaire</span>
             </div>
           </div>
         </div>
