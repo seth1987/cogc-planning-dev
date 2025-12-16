@@ -1,26 +1,75 @@
-import React, { useState, useEffect } from 'react';
-import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search, Calendar, AlertCircle } from 'lucide-react';
-import { SERVICE_CODES, POSTES_CODES, POSTES_SUPPLEMENTAIRES, POSTES_PAR_GROUPE, GROUPES_AVEC_POSTE, MONTHS } from '../../constants/config';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search, Calendar, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { 
+  SERVICE_CODES, 
+  POSTES_CODES, 
+  POSTES_SUPPLEMENTAIRES, 
+  POSTES_PAR_GROUPE, 
+  GROUPES_AVEC_POSTE, 
+  MONTHS,
+  SERVICE_JOUR_CODES,
+  HABILITATION_CODES,
+  JOURS_RH_CODES,
+  ABSENCES_CODES,
+  STATUT_CONGE_CODES,
+  PCD_CODES
+} from '../../constants/config';
 
-// Couleurs UNIQUEMENT pour la modal d'édition 
+// Couleurs pour la modal d'édition - par catégorie
 const MODAL_COLORS = {
-  'MA': 'bg-red-200 text-red-800 font-semibold',
-  'C': 'bg-yellow-400 text-yellow-900 font-semibold',
+  // Horaires - pas de couleur spéciale
+  '-': 'bg-gray-100 text-gray-800',
+  'O': 'bg-gray-100 text-gray-800',
+  'X': 'bg-gray-100 text-gray-800',
+  'I': 'bg-gray-100 text-gray-800',
   'RP': 'bg-green-100 text-green-800',
-  'RU': 'bg-green-100 text-green-800',
-  'HAB': 'bg-orange-200 text-orange-800',
-  'FO': 'bg-orange-200 text-orange-800',
-  'D': 'bg-blue-200 text-blue-800',
-  'I': 'bg-pink-100 text-pink-700',
   'NU': 'bg-gray-200 text-gray-600',
+  // Absences
+  'MA': 'bg-red-200 text-red-800 font-semibold',
+  'F': 'bg-purple-200 text-purple-800 font-semibold',
+  // Statut congé (stocké dans statut_conge)
+  'C': 'bg-yellow-400 text-yellow-900 font-semibold',
+  'C?': 'bg-yellow-200 text-yellow-800 font-semibold',
+  'CNA': 'bg-red-300 text-red-900 font-semibold',
+  // Service de jour (bleu clair)
+  'VL': 'bg-blue-100 text-blue-800',
+  'D': 'bg-blue-100 text-blue-800',
+  'EIA': 'bg-blue-100 text-blue-800',
+  'DPX': 'bg-blue-100 text-blue-800',
+  'PSE': 'bg-blue-100 text-blue-800',
+  'INAC': 'bg-blue-100 text-blue-800',
+  'VM': 'bg-blue-100 text-blue-800',
+  // Habilitation (orange)
+  'HAB': 'bg-orange-200 text-orange-800',
+  'FO RO': 'bg-orange-200 text-orange-800',
+  'FO RC': 'bg-orange-200 text-orange-800',
+  'FO CAC': 'bg-orange-200 text-orange-800',
+  'FO CRC': 'bg-orange-200 text-orange-800',
+  'FO ACR': 'bg-orange-200 text-orange-800',
+  'FO CCU': 'bg-orange-200 text-orange-800',
+  // Jours RH (jaune clair)
   'VT': 'bg-yellow-100 text-yellow-800',
-  'D2I': 'bg-gray-300 text-gray-700',
+  'D2I': 'bg-yellow-100 text-yellow-800',
+  'RU': 'bg-yellow-100 text-yellow-800',
+  'RA': 'bg-yellow-100 text-yellow-800',
+  'RN': 'bg-yellow-100 text-yellow-800',
+  'RQ': 'bg-yellow-100 text-yellow-800',
+  'TY': 'bg-yellow-100 text-yellow-800',
+  'AY': 'bg-yellow-100 text-yellow-800',
+  'AH': 'bg-yellow-100 text-yellow-800',
+  'DD': 'bg-yellow-100 text-yellow-800',
+  // PCD (cyan/turquoise)
+  'CCCBO': 'bg-cyan-200 text-cyan-800',
+  'CBVD': 'bg-cyan-200 text-cyan-800',
 };
+
+// Codes PCD pour le sous-menu (2 options)
+const PCD_POSTE_CODES = ['CCCBO', 'CBVD'];
 
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 2.4.4 - Fix chargement texteLibre depuis cellData
+ * @version 4.5.0 - Ajout statut_conge combinable (C, C?, CNA)
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -36,9 +85,13 @@ const ModalCellEdit = ({
   onClose 
 }) => {
   // États pour service, poste et postes supplémentaires
-  const [tempService, setTempService] = useState('');
+  const [tempService, setTempService] = useState('');      // Horaire (-, O, X, I, RP, NU)
+  const [tempCategorie, setTempCategorie] = useState('');  // Catégorie (Service jour, Habilitation, Jours RH, MA, F, etc.)
   const [tempPoste, setTempPoste] = useState('');
   const [tempPostesSupplementaires, setTempPostesSupplementaires] = useState([]);
+  
+  // === NOUVEL ÉTAT POUR STATUT CONGÉ ===
+  const [tempStatutConge, setTempStatutConge] = useState(''); // C, C?, CNA ou ''
   
   // États pour la gestion des notes
   const [tempNote, setTempNote] = useState('');
@@ -63,67 +116,119 @@ const ModalCellEdit = ({
   const [croisementSearch, setCroisementSearch] = useState('');
   const [croisementLoading, setCroisementLoading] = useState(false);
 
-  // DEBUG: Log des props reçues à chaque render
+  // === NOUVEAUX ÉTATS POUR ACCORDÉONS ET RECHERCHE ===
+  const [searchTerm, setSearchTerm] = useState('');
+  const [openSections, setOpenSections] = useState({
+    serviceJour: false,
+    habilitation: false,
+    joursRH: false
+  });
+
+  // === ÉTAT POUR SOUS-MENU PCD ===
+  const [showPcdDropdown, setShowPcdDropdown] = useState(false);
+  const pcdButtonRef = useRef(null);
+
+  // Liste de tous les codes de catégorie pour détection (sans C, C?, CNA car dans statut_conge)
+  const ALL_CATEGORIE_CODES = [
+    ...SERVICE_JOUR_CODES.map(c => c.code),
+    ...HABILITATION_CODES.map(c => c.code),
+    ...JOURS_RH_CODES.map(c => c.code),
+    ...ABSENCES_CODES.map(c => c.code)
+  ];
+
+  // Liste des codes horaire (incluant RP et NU)
+  const ALL_HORAIRE_CODES = SERVICE_CODES.map(c => c.code);
+
+  // Liste des codes statut congé
+  const STATUT_CONGE_LIST = ['C', 'C?', 'CNA'];
+
+  // Fermer le dropdown PCD quand on clique ailleurs
   useEffect(() => {
-    const planningKeys = Object.keys(allPlanning || {});
-    const agentsWithData = planningKeys.filter(key => {
-      const agentData = allPlanning[key];
-      return agentData && Object.keys(agentData).length > 0;
-    });
-    
-    console.log('🔍 ModalCellEdit - Props reçues:');
-    console.log('   allPlanning type:', typeof allPlanning);
-    console.log('   allPlanning keys count:', planningKeys.length);
-    console.log('   allPlanning sample keys:', planningKeys.slice(0, 5));
-    console.log('   Agents avec données:', agentsWithData.length);
-    console.log('   selectedCell:', selectedCell);
-    console.log('   selectedCell.day type:', typeof selectedCell?.day);
-  }, [allPlanning, selectedCell]);
+    const handleClickOutside = (event) => {
+      if (pcdButtonRef.current && !pcdButtonRef.current.contains(event.target)) {
+        setShowPcdDropdown(false);
+      }
+    };
+
+    if (showPcdDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPcdDropdown]);
 
   // Initialiser les états avec les données existantes
   useEffect(() => {
     if (cellData) {
       console.log('📦 CellData reçu:', JSON.stringify(cellData, null, 2));
-      console.log('📦 cellData.service:', cellData.service);
-      console.log('📦 cellData.texteLibre:', cellData.texteLibre);
-      console.log('📦 typeof cellData.texteLibre:', typeof cellData.texteLibre);
       
-      // Cas 1: texteLibre explicite dans les données (non null, non undefined, non vide)
+      // === INITIALISER STATUT CONGÉ ===
+      setTempStatutConge(cellData.statut_conge || cellData.statutConge || '');
+      
+      // Déterminer si c'est un texte libre
       const hasExplicitTexteLibre = cellData.texteLibre && cellData.texteLibre.trim() !== '';
-      
-      // Cas 2: service non standard (mais PAS 'LIBRE' lui-même qui est juste un marqueur)
       const isNonStandardService = cellData.service && 
         cellData.service !== 'LIBRE' && 
-        !SERVICE_CODES.some(sc => sc.code === cellData.service);
-      
-      // Cas 3: Service est LIBRE mais pas de texteLibre (état transitoire ou erreur)
-      const isLibreWithoutText = cellData.service === 'LIBRE' && !hasExplicitTexteLibre;
-
-      console.log('🔍 Analyse cellData:');
-      console.log('   hasExplicitTexteLibre:', hasExplicitTexteLibre);
-      console.log('   isNonStandardService:', isNonStandardService);
-      console.log('   isLibreWithoutText:', isLibreWithoutText);
+        !ALL_HORAIRE_CODES.includes(cellData.service) &&
+        !ALL_CATEGORIE_CODES.includes(cellData.service) &&
+        !PCD_POSTE_CODES.includes(cellData.service) &&
+        !STATUT_CONGE_LIST.includes(cellData.service);
 
       if (hasExplicitTexteLibre) {
-        // Texte libre explicite → utiliser tel quel
-        console.log('✏️ Mode texte libre explicite:', cellData.texteLibre);
-        setTempService('LIBRE');
+        setTempService('');
+        setTempCategorie('LIBRE');
         setTempTexteLibre(cellData.texteLibre);
       } else if (isNonStandardService) {
-        // Service non standard (ex: ancien texte libre stocké directement dans service)
-        console.log('✏️ Service non standard détecté comme texte libre:', cellData.service);
-        setTempService('LIBRE');
+        setTempService('');
+        setTempCategorie('LIBRE');
         setTempTexteLibre(cellData.service);
-      } else if (isLibreWithoutText) {
-        // Service LIBRE mais pas de texte → garder LIBRE et texte vide
-        // L'utilisateur devra cliquer sur LIBRE pour saisir le texte
-        console.log('⚠️ Service LIBRE sans texteLibre - état transitoire');
-        setTempService('LIBRE');
+      } else if (cellData.service === 'LIBRE') {
+        setTempService('');
+        setTempCategorie('LIBRE');
         setTempTexteLibre('');
       } else {
-        // Service standard
-        console.log('📋 Service standard:', cellData.service);
-        setTempService(cellData.service || '');
+        // Analyser le service stocké
+        const storedService = cellData.service || '';
+        
+        // Vérifier si c'est un ancien code congé (migration)
+        if (STATUT_CONGE_LIST.includes(storedService)) {
+          // Migration : ancien format où C/C?/CNA était dans service_code
+          setTempService('');
+          setTempCategorie('');
+          if (!cellData.statut_conge && !cellData.statutConge) {
+            setTempStatutConge(storedService);
+          }
+        }
+        // Vérifier si c'est un horaire simple
+        else if (ALL_HORAIRE_CODES.includes(storedService)) {
+          setTempService(storedService);
+          setTempCategorie('');
+        }
+        // Vérifier si c'est une catégorie
+        else if (ALL_CATEGORIE_CODES.includes(storedService)) {
+          setTempService('');
+          setTempCategorie(storedService);
+        }
+        // Combinaison potentielle (ex: "FO RC -" ou "MA O")
+        else if (storedService.includes(' ')) {
+          const parts = storedService.split(' ');
+          const lastPart = parts[parts.length - 1];
+          const firstParts = parts.slice(0, -1).join(' ');
+          
+          if (ALL_HORAIRE_CODES.includes(lastPart)) {
+            setTempService(lastPart);
+            setTempCategorie(firstParts);
+          } else {
+            // Peut-être code comme "FO RC"
+            setTempService('');
+            setTempCategorie(storedService);
+          }
+        } else {
+          setTempService(storedService);
+          setTempCategorie('');
+        }
         setTempTexteLibre('');
       }
       
@@ -131,17 +236,20 @@ const ModalCellEdit = ({
       setTempNote(cellData.note || '');
       setTempPostesSupplementaires(cellData.postesSupplementaires || []);
     } else {
-      console.log('📦 CellData est null/undefined - réinitialisation');
       setTempService('');
+      setTempCategorie('');
       setTempPoste('');
       setTempNote('');
       setTempTexteLibre('');
       setTempPostesSupplementaires([]);
+      setTempStatutConge('');
     }
-    // Reset édition multiple
+    // Reset édition multiple et recherche
     setApplyToMultipleDays(false);
     setEndDate('');
     setDateRangeWarning('');
+    setSearchTerm('');
+    setShowPcdDropdown(false);
   }, [cellData, selectedCell]);
 
   // useEffect pour validation automatique de la plage de dates
@@ -167,15 +275,27 @@ const ModalCellEdit = ({
 
   if (!selectedCell) return null;
 
-// === FONCTIONS HELPER POUR ÉDITION MULTIPLE ===
+  // === FONCTIONS HELPER ===
   
-  // Calculer le nombre de jours dans le mois actuel
   const getDaysInMonth = (month, year) => {
     const monthIndex = MONTHS.indexOf(month);
     return new Date(year, monthIndex + 1, 0).getDate();
   };
 
-  // Fonction pour les boutons rapides
+  // Fonction pour obtenir le numéro du mois (1-12) à partir du nom
+  const getMonthNumber = (monthName) => {
+    const monthIndex = MONTHS.indexOf(monthName);
+    return monthIndex >= 0 ? monthIndex + 1 : 1;
+  };
+
+  // Formater la date de début en JJ/MM/AAAA
+  const formatStartDate = () => {
+    if (!selectedCell) return '';
+    const day = String(selectedCell.day).padStart(2, '0');
+    const month = String(getMonthNumber(currentMonth)).padStart(2, '0');
+    return `${day}/${month}/${currentYear}`;
+  };
+
   const handleQuickDateRange = (days) => {
     const currentDay = selectedCell.day;
     const daysInMonth = getDaysInMonth(currentMonth, currentYear);
@@ -193,22 +313,6 @@ const ModalCellEdit = ({
     const dateStr = `${currentYear}-${month}-${dayStr}`;
     
     setEndDate(dateStr);
-    validateDateRange(currentDay, targetDay);
-  };
-
-  // Validation de la plage de dates
-  const validateDateRange = (startDay, endDay) => {
-    const daysCount = endDay - startDay + 1;
-    
-    if (endDay < startDay) {
-      setDateRangeWarning('❌ La date de fin doit être >= à la date de début');
-    } else if (daysCount > 31) {
-      setDateRangeWarning('⚠️ Maximum 31 jours');
-    } else if (daysCount > 7) {
-      setDateRangeWarning(`⚠️ ${daysCount} jours seront modifiés`);
-    } else {
-      setDateRangeWarning(`✅ ${daysCount} jour${daysCount > 1 ? 's' : ''} sera${daysCount > 1 ? 'nt' : ''} modifié${daysCount > 1 ? 's' : ''}`);
-    }
   };
 
   // Trouver le groupe de l'agent sélectionné
@@ -222,11 +326,8 @@ const ModalCellEdit = ({
   };
 
   const agentGroup = findAgentGroup();
-
-  // Vérifier si l'agent a accès au sélecteur de poste
   const hasPosteSelector = GROUPES_AVEC_POSTE.some(g => agentGroup?.includes(g) || agentGroup === g);
 
-  // Déterminer les postes disponibles pour cet agent
   const getAvailablePostes = () => {
     for (const [groupeKey, postes] of Object.entries(POSTES_PAR_GROUPE)) {
       if (agentGroup?.includes(groupeKey) || agentGroup === groupeKey) {
@@ -238,24 +339,19 @@ const ModalCellEdit = ({
 
   const availablePostes = getAvailablePostes();
 
-  // Générer le label de la section Poste selon le groupe
   const getPosteLabel = () => {
-    if (agentGroup?.includes('RC - ROULEMENT REGULATEUR CENTRE')) {
-      return 'Poste (RC)';
-    }
-    if (agentGroup?.includes('EAC - APPORT DENFERT')) {
-      return 'Poste (EAC)';
-    }
+    if (agentGroup?.includes('RC - ROULEMENT REGULATEUR CENTRE')) return 'Poste (RC)';
+    if (agentGroup?.includes('EAC - APPORT DENFERT')) return 'Poste (EAC)';
     return 'Poste (Réserve)';
   };
 
-  // Fonction pour obtenir la couleur d'un code service dans la modal
+  // Fonction pour obtenir la couleur d'un code
   const getModalColor = (code, isSelected) => {
+    const baseColor = MODAL_COLORS[code] || 'bg-gray-100 text-gray-700';
     if (isSelected) {
-      const baseColor = MODAL_COLORS[code] || 'bg-gray-200 text-gray-800';
       return `ring-2 ring-blue-500 ${baseColor}`;
     }
-    return MODAL_COLORS[code] || 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+    return `${baseColor} hover:opacity-80`;
   };
 
   // Toggle un poste supplémentaire
@@ -267,6 +363,74 @@ const ModalCellEdit = ({
         return [...prev, code];
       }
     });
+  };
+
+  // Sélection d'un horaire
+  const selectHoraire = (code) => {
+    if (tempService === code) {
+      setTempService(''); // Désélectionner
+    } else {
+      setTempService(code);
+    }
+  };
+
+  // Sélection d'une catégorie
+  const selectCategorie = (code) => {
+    if (tempCategorie === code) {
+      setTempCategorie(''); // Désélectionner
+    } else {
+      setTempCategorie(code);
+      // Si on sélectionne une catégorie autre que LIBRE, effacer le texte libre
+      if (code !== 'LIBRE') {
+        setTempTexteLibre('');
+      }
+    }
+  };
+
+  // === SÉLECTION STATUT CONGÉ ===
+  const selectStatutConge = (code) => {
+    if (tempStatutConge === code) {
+      setTempStatutConge(''); // Désélectionner
+    } else {
+      setTempStatutConge(code);
+    }
+  };
+
+  // Toggle section accordéon
+  const toggleSection = (section) => {
+    setOpenSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  // Vérifier si le poste sélectionné est un code PCD
+  const isPcdPosteSelected = PCD_POSTE_CODES.includes(tempPoste);
+
+  // Sélection d'un poste PCD depuis le dropdown
+  const selectPcdPoste = (code) => {
+    setTempPoste(tempPoste === code ? '' : code);
+    setShowPcdDropdown(false);
+  };
+
+  // Toggle le dropdown PCD
+  const togglePcdDropdown = () => {
+    setShowPcdDropdown(!showPcdDropdown);
+  };
+
+  // === FILTRAGE PAR RECHERCHE ===
+  const filterBySearch = (codes) => {
+    if (!searchTerm.trim()) return codes;
+    const term = searchTerm.toUpperCase().trim();
+    return codes.filter(({ code, desc }) => 
+      code.toUpperCase().includes(term) || desc.toUpperCase().includes(term)
+    );
+  };
+
+  // Vérifier si une catégorie a des résultats de recherche
+  const hasSearchResults = (codes) => {
+    if (!searchTerm.trim()) return true;
+    return filterBySearch(codes).length > 0;
   };
 
   // === GESTION NOTES ===
@@ -314,9 +478,8 @@ const ModalCellEdit = ({
   const handleValidateTexteLibre = () => {
     const texte = texteLibreInput.trim();
     if (texte) {
-      console.log('✅ Validation texte libre:', texte);
       setTempTexteLibre(texte);
-      setTempService('LIBRE');
+      setTempCategorie('LIBRE');
     }
     setShowTexteLibreModal(false);
   };
@@ -329,26 +492,21 @@ const ModalCellEdit = ({
   const handleDeleteTexteLibre = () => {
     if (window.confirm('Êtes-vous sûr de vouloir supprimer ce texte libre ?')) {
       setTempTexteLibre('');
-      setTempService('');
+      setTempCategorie('');
     }
   };
 
   const selectTexteLibre = () => {
-    // Toujours ouvrir la modal pour saisir/modifier le texte
     if (tempTexteLibre) {
-      // Si déjà du texte libre valide, ouvrir en mode édition
       openEditTexteLibreModal();
     } else {
-      // Sinon, ouvrir en mode ajout
-      setTempService('LIBRE');
+      setTempCategorie('LIBRE');
       openAddTexteLibreModal();
     }
   };
 
   // === GESTION CROISEMENT ===
-
   const openCroisementModal = () => {
-    console.log('🔄 Ouverture modal croisement');
     setSelectedCroisementAgent(null);
     setCroisementSearch('');
     setShowCroisementModal(true);
@@ -360,98 +518,65 @@ const ModalCellEdit = ({
     setCroisementSearch('');
   };
 
-  // Filtrer les agents pour le croisement
   const getFilteredAgentsForCroisement = () => {
     const allAgentsList = Object.values(agentsData).flat();
-    
     return allAgentsList.filter(agent => {
       const fullName = `${agent.nom} ${agent.prenom}`;
       if (fullName === selectedCell.agent) return false;
       if (croisementSearch) {
         const search = croisementSearch.toLowerCase();
-        return fullName.toLowerCase().includes(search) || 
-               agent.nom.toLowerCase().includes(search) ||
-               agent.prenom.toLowerCase().includes(search);
+        return fullName.toLowerCase().includes(search);
       }
       return true;
     });
   };
 
-  /**
-   * Normalise un nom pour la comparaison
-   */
-  const normalizeName = (name) => {
-    return name?.trim().toLowerCase().replace(/\s+/g, ' ') || '';
-  };
-
-  /**
-   * Trouve la clé correspondante dans allPlanning pour un nom d'agent
-   */
   const findPlanningKey = (agentName) => {
     if (!allPlanning || !agentName) return null;
-    
-    if (allPlanning[agentName] !== undefined) {
-      return agentName;
-    }
-    
-    const normalizedSearch = normalizeName(agentName);
-    const keys = Object.keys(allPlanning);
-    
-    for (const key of keys) {
-      if (normalizeName(key) === normalizedSearch) {
-        return key;
-      }
-    }
-    
-    for (const key of keys) {
-      if (normalizeName(key).includes(normalizedSearch) || 
-          normalizedSearch.includes(normalizeName(key))) {
-        return key;
-      }
-    }
-    
-    return null;
+    if (allPlanning[agentName] !== undefined) return agentName;
+    const normalizedSearch = agentName.trim().toLowerCase();
+    return Object.keys(allPlanning).find(key => 
+      key.trim().toLowerCase() === normalizedSearch
+    ) || null;
   };
 
-  /**
-   * Récupérer les données planning d'un agent pour un jour donné
-   */
   const getAgentPlanningForDay = (agentName, day) => {
     const planningKey = findPlanningKey(agentName);
     if (!planningKey) return null;
-    
     const agentData = allPlanning[planningKey];
     let cellValue = agentData?.[day] || agentData?.[String(day)] || agentData?.[Number(day)];
-    
     if (!cellValue) return null;
-    
     if (typeof cellValue === 'string') {
-      return { service: cellValue, poste: null, note: null, postesSupplementaires: null };
+      return { service: cellValue, poste: null, note: null, postesSupplementaires: null, statut_conge: null };
     }
-    
     return {
       service: cellValue.service || null,
       poste: cellValue.poste || null,
       note: cellValue.note || null,
       postesSupplementaires: cellValue.postesSupplementaires || null,
-      texteLibre: cellValue.texteLibre || null
+      texteLibre: cellValue.texteLibre || null,
+      statut_conge: cellValue.statut_conge || null
     };
   };
 
-  // Effectuer le croisement
+  const findAgentId = (fullName) => {
+    for (const agents of Object.values(agentsData)) {
+      const agent = agents.find(a => `${a.nom} ${a.prenom}` === fullName);
+      if (agent) return agent.id;
+    }
+    return null;
+  };
+
   const handleConfirmCroisement = async () => {
     if (!selectedCroisementAgent) {
       alert('Veuillez sélectionner un agent pour le croisement');
       return;
     }
-
     setCroisementLoading(true);
-
     try {
       const agent1Name = selectedCell.agent;
       const agent2Name = `${selectedCroisementAgent.nom} ${selectedCroisementAgent.prenom}`;
       const day = selectedCell.day;
-
       const agent1Data = cellData || {};
       const agent2Data = getAgentPlanningForDay(agent2Name, day) || {};
 
@@ -460,15 +585,17 @@ const ModalCellEdit = ({
         poste: agent2Data.poste || '',
         postesSupplementaires: agent2Data.postesSupplementaires || [],
         note: `Croisement avec ${agent2Name}`,
-        texteLibre: agent2Data.texteLibre || ''
+        texteLibre: agent2Data.texteLibre || '',
+        statut_conge: agent2Data.statut_conge || ''
       };
 
       const newAgent2Data = {
-        service: agent1Data.service || tempService || '',
+        service: agent1Data.service || buildFinalService(),
         poste: agent1Data.poste || tempPoste || '',
         postesSupplementaires: agent1Data.postesSupplementaires || tempPostesSupplementaires || [],
         note: `Croisement avec ${agent1Name}`,
-        texteLibre: agent1Data.texteLibre || tempTexteLibre || ''
+        texteLibre: agent1Data.texteLibre || tempTexteLibre || '',
+        statut_conge: agent1Data.statut_conge || tempStatutConge || ''
       };
 
       if (onCroisement) {
@@ -487,7 +614,6 @@ const ModalCellEdit = ({
 
       closeCroisementModal();
       onClose();
-
     } catch (error) {
       console.error('Erreur lors du croisement:', error);
       alert(`Erreur lors du croisement: ${error.message}`);
@@ -496,46 +622,57 @@ const ModalCellEdit = ({
     }
   };
 
-  const findAgentId = (fullName) => {
-    for (const agents of Object.values(agentsData)) {
-      const agent = agents.find(a => `${a.nom} ${a.prenom}` === fullName);
-      if (agent) return agent.id;
+  // === CONSTRUCTION DU SERVICE FINAL ===
+  const buildFinalService = () => {
+    // Texte libre
+    if (tempCategorie === 'LIBRE' && tempTexteLibre) {
+      return 'LIBRE';
     }
-    return null;
+    
+    // Catégorie seule (ex: MA, FO RC)
+    if (tempCategorie && !tempService) {
+      return tempCategorie;
+    }
+    
+    // Horaire seul (ex: -, O, X, RP)
+    if (tempService && !tempCategorie) {
+      return tempService;
+    }
+    
+    // Combinaison catégorie + horaire (ex: "MA O", "FO RC -")
+    if (tempCategorie && tempService) {
+      return `${tempCategorie} ${tempService}`;
+    }
+    
+    return '';
   };
 
   const handleSave = async () => {
-    let planningData;
-    
-    // Déterminer le service final
-    // FIX v2.4.4: Vérifier que tempTexteLibre est non-vide
+    const finalService = buildFinalService();
     const hasValidTexteLibre = tempTexteLibre && tempTexteLibre.trim() !== '';
-    const isTexteLibre = tempService === 'LIBRE' && hasValidTexteLibre;
-    const finalService = isTexteLibre ? 'LIBRE' : tempService;
+    const isTexteLibre = tempCategorie === 'LIBRE' && hasValidTexteLibre;
     
     console.log('💾 Sauvegarde - tempService:', tempService);
-    console.log('💾 Sauvegarde - tempTexteLibre:', tempTexteLibre);
-    console.log('💾 Sauvegarde - hasValidTexteLibre:', hasValidTexteLibre);
-    console.log('💾 Sauvegarde - isTexteLibre:', isTexteLibre);
+    console.log('💾 Sauvegarde - tempCategorie:', tempCategorie);
     console.log('💾 Sauvegarde - finalService:', finalService);
+    console.log('💾 Sauvegarde - tempPoste:', tempPoste);
+    console.log('💾 Sauvegarde - tempStatutConge:', tempStatutConge);
     
-    // Construire l'objet de données
-    // FIX v2.4.4: Toujours créer un objet si texte libre valide
-    if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote || isTexteLibre) {
+    let planningData;
+    
+    // Toujours créer un objet si statut_conge est défini
+    if (tempPoste || tempPostesSupplementaires.length > 0 || tempNote || isTexteLibre || tempStatutConge) {
       planningData = { 
         service: finalService,
         ...(tempPoste && { poste: tempPoste }),
         ...(tempPostesSupplementaires.length > 0 && { postesSupplementaires: tempPostesSupplementaires }),
         ...(tempNote && { note: tempNote }),
-        // FIX v2.4.4: Sauvegarder texteLibre seulement si valide
-        ...(isTexteLibre && { texteLibre: tempTexteLibre.trim() })
+        ...(isTexteLibre && { texteLibre: tempTexteLibre.trim() }),
+        ...(tempStatutConge && { statut_conge: tempStatutConge })
       };
     } else {
-      // Service simple (string)
       planningData = finalService;
     }
-    
-    console.log('💾 Planning data final:', JSON.stringify(planningData, null, 2));
     
     // === GESTION ÉDITION MULTIPLE ===
     if (applyToMultipleDays && endDate) {
@@ -582,11 +719,54 @@ const ModalCellEdit = ({
   const hasExistingPostesSupp = tempPostesSupplementaires.length > 0;
   const hasCroisementNote = tempNote?.toLowerCase().includes('croisement avec');
 
-  // Compter combien d'agents ont des données pour ce jour (pour debug)
-  const agentsWithDataForDay = Object.keys(allPlanning || {}).filter(key => {
-    const data = allPlanning[key];
-    return data && data[selectedCell.day] !== undefined;
-  }).length;
+  // Aperçu du service final
+  const previewService = buildFinalService();
+
+  // === COMPOSANT ACCORDÉON ===
+  const AccordionSection = ({ id, title, colorClass, children, isOpen, onToggle, badge }) => (
+    <div className="mb-3">
+      <button 
+        onClick={() => onToggle(id)}
+        className={`w-full flex items-center justify-between p-2 rounded-lg transition-colors ${
+          isOpen ? 'bg-gray-100' : 'bg-gray-50 hover:bg-gray-100'
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          {isOpen ? <ChevronDown className="w-4 h-4 text-gray-500" /> : <ChevronRight className="w-4 h-4 text-gray-500" />}
+          <span className={`w-3 h-3 ${colorClass} rounded`}></span>
+          <span className="text-sm font-medium text-gray-700">{title}</span>
+          {badge && <span className="text-xs text-gray-400 ml-1">({badge})</span>}
+        </div>
+      </button>
+      {isOpen && (
+        <div className="mt-2 pl-2">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+
+  // === RENDU DES BOUTONS DE CODE ===
+  const renderCodeButtons = (codes, onClick, isSelectedFn, cols = 4) => {
+    const filteredCodes = filterBySearch(codes);
+    if (filteredCodes.length === 0) {
+      return <p className="text-xs text-gray-400 italic py-2">Aucun résultat pour "{searchTerm}"</p>;
+    }
+    return (
+      <div className={`grid grid-cols-${cols} gap-2`}>
+        {filteredCodes.map(({ code, desc }) => (
+          <button
+            key={code}
+            onClick={() => onClick(code)}
+            className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, isSelectedFn(code))}`}
+          >
+            <div className="font-semibold">{code}</div>
+            <div className="text-[10px] mt-0.5">{desc}</div>
+          </button>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -599,6 +779,20 @@ const ModalCellEdit = ({
               <p className="text-sm text-gray-600">Jour {selectedCell.day}</p>
               {agentGroup && (
                 <p className="text-xs text-gray-400">{agentGroup}</p>
+              )}
+              {/* Aperçu du service */}
+              {(previewService || tempStatutConge) && (
+                <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                  <span className="text-xs text-blue-600 font-medium">Aperçu : </span>
+                  <span className="text-sm font-semibold text-blue-800">{previewService || '-'}</span>
+                  {tempPoste && <span className="text-xs text-gray-600 ml-2">/ {tempPoste}</span>}
+                  {tempStatutConge && (
+                    <span className={`ml-2 px-1.5 py-0.5 rounded text-xs font-semibold ${MODAL_COLORS[tempStatutConge]}`}>
+                      {tempStatutConge}
+                    </span>
+                  )}
+                  {hasExistingTexteLibre && <span className="text-xs text-purple-600 ml-2">({tempTexteLibre})</span>}
+                </div>
               )}
               {hasExistingNote && (
                 <div className="flex items-center gap-1 mt-1">
@@ -615,12 +809,6 @@ const ModalCellEdit = ({
                   )}
                 </div>
               )}
-              {hasExistingTexteLibre && (
-                <div className="flex items-center gap-1 mt-1">
-                  <Type className="w-3 h-3 text-purple-500" />
-                  <span className="text-xs text-purple-600">Texte libre : {tempTexteLibre}</span>
-                </div>
-              )}
               {hasExistingPostesSupp && (
                 <div className="flex items-center gap-1 mt-1">
                   <Check className="w-3 h-3 text-purple-500" />
@@ -633,75 +821,77 @@ const ModalCellEdit = ({
             </button>
           </div>
           
-          {/* Section Service / Horaire */}
+          {/* === BARRE DE RECHERCHE === */}
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Service / Horaire</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Rechercher un code (ex: FO, MA, VL...)"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              />
+              {searchTerm && (
+                <button 
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* === SECTION HORAIRES (TOUJOURS VISIBLE - jamais filtrée) === */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Horaires</label>
+            <div className="grid grid-cols-6 gap-2">
               {SERVICE_CODES.map(({ code, desc }) => (
                 <button
                   key={code}
-                  onClick={() => {
-                    setTempService(code);
-                    // Si on sélectionne un autre service que LIBRE, effacer le texte libre
-                    if (code !== 'LIBRE') {
-                      setTempTexteLibre('');
-                    }
-                  }}
+                  onClick={() => selectHoraire(code)}
                   className={`p-2 rounded text-center text-xs transition-all ${getModalColor(code, tempService === code)}`}
                 >
                   <div className="font-semibold">{code}</div>
-                  <div className="text-xs mt-1">{desc}</div>
+                  <div className="text-[10px] mt-0.5 leading-tight">{desc}</div>
                 </button>
               ))}
-              
-              {/* Bouton Texte Libre */}
-              <button
-                onClick={selectTexteLibre}
-                className={`p-2 rounded text-center text-xs transition-all ${
-                  tempService === 'LIBRE'
-                    ? 'ring-2 ring-purple-500 bg-purple-100 text-purple-800'
-                    : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-2 border-dashed border-purple-300'
-                }`}
-              >
-                <div className="font-semibold flex items-center justify-center gap-1">
-                  <Type className="w-3 h-3" />
-                  LIBRE
-                </div>
-                <div className="text-xs mt-1">Texte libre</div>
-              </button>
             </div>
-            
-            {/* Affichage du texte libre existant */}
-            {tempService === 'LIBRE' && hasExistingTexteLibre && (
-              <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-start gap-2">
-                    <Type className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-purple-900 font-medium">{tempTexteLibre}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={openEditTexteLibreModal} className="p-1 text-purple-600 hover:text-purple-800" title="Modifier">
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button onClick={handleDeleteTexteLibre} className="p-1 text-red-500 hover:text-red-700" title="Supprimer">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Message si LIBRE sélectionné mais pas de texte */}
-            {tempService === 'LIBRE' && !hasExistingTexteLibre && (
-              <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <p className="text-sm text-amber-800">
-                  ⚠️ Cliquez sur le bouton LIBRE pour saisir votre texte
-                </p>
+          </div>
+
+          {/* === SECTION STATUT CONGÉ (NOUVEAU - combinable) === */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              <span className="inline-flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-yellow-200 text-yellow-800 rounded text-xs font-semibold">Congés</span>
+                <span>Statut congé</span>
+                <span className="text-xs text-gray-500 font-normal">(combinable avec horaire/poste)</span>
+              </span>
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {STATUT_CONGE_CODES.filter(c => c.code !== '').map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectStatutConge(code)}
+                  className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempStatutConge === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-xs mt-0.5">{desc}</div>
+                </button>
+              ))}
+            </div>
+            {tempStatutConge && (
+              <div className="mt-2 p-2 bg-yellow-50 rounded border border-yellow-200">
+                <span className="text-xs text-yellow-700">
+                  Statut congé sélectionné : <span className="font-semibold">{tempStatutConge}</span>
+                  {tempService && <span className="ml-1"> (combiné avec {tempService})</span>}
+                </span>
               </div>
             )}
           </div>
 
-          {/* Section Poste */}
+          {/* === SECTION POSTE RÉSERVE (AVEC BOUTON PCD ET DROPDOWN) === */}
           {hasPosteSelector && (
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">{getPosteLabel()}</label>
@@ -719,8 +909,134 @@ const ModalCellEdit = ({
                     {poste}
                   </button>
                 ))}
+                
+                {/* === BOUTON PCD AVEC DROPDOWN === */}
+                <div className="relative" ref={pcdButtonRef}>
+                  <button
+                    onClick={togglePcdDropdown}
+                    className={`w-full p-2 rounded text-center text-xs transition-all flex items-center justify-center gap-1 ${
+                      isPcdPosteSelected
+                        ? 'ring-2 ring-blue-500 bg-cyan-200 text-cyan-800 font-semibold'
+                        : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'
+                    }`}
+                  >
+                    <span>{isPcdPosteSelected ? tempPoste : 'PCD'}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform ${showPcdDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {/* Dropdown PCD */}
+                  {showPcdDropdown && (
+                    <div className="absolute top-full left-0 mt-1 w-full bg-white border border-cyan-300 rounded-lg shadow-lg z-10 overflow-hidden">
+                      {PCD_POSTE_CODES.map(code => (
+                        <button
+                          key={code}
+                          onClick={() => selectPcdPoste(code)}
+                          className={`w-full px-3 py-2 text-xs text-left transition-colors ${
+                            tempPoste === code
+                              ? 'bg-cyan-200 text-cyan-900 font-semibold'
+                              : 'bg-white text-cyan-800 hover:bg-cyan-100'
+                          }`}
+                        >
+                          {code}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+              
+              {/* Indicateur poste PCD sélectionné */}
+              {isPcdPosteSelected && (
+                <div className="mt-2 p-2 bg-cyan-50 rounded border border-cyan-200">
+                  <span className="text-xs text-cyan-700">
+                    Poste PCD sélectionné : <span className="font-semibold">{tempPoste}</span>
+                  </span>
+                </div>
+              )}
             </div>
+          )}
+
+          {/* === SECTION ABSENCES (MA, F) === */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Absences <span className="text-xs text-gray-500">(combinable avec horaire)</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {ABSENCES_CODES.map(({ code, desc }) => (
+                <button
+                  key={code}
+                  onClick={() => selectCategorie(code)}
+                  className={`p-3 rounded text-center text-sm transition-all ${getModalColor(code, tempCategorie === code)}`}
+                >
+                  <div className="font-semibold">{code}</div>
+                  <div className="text-xs mt-0.5">{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* === BOUTON TEXTE LIBRE (TOUJOURS VISIBLE) === */}
+          <div className="mb-4">
+            <button
+              onClick={selectTexteLibre}
+              className={`w-full p-3 rounded text-center text-sm transition-all ${
+                tempCategorie === 'LIBRE'
+                  ? 'ring-2 ring-purple-500 bg-purple-100 text-purple-800'
+                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-2 border-dashed border-purple-300'
+              }`}
+            >
+              <div className="font-semibold flex items-center justify-center gap-2">
+                <Type className="w-4 h-4" />
+                TEXTE LIBRE
+              </div>
+              {hasExistingTexteLibre && (
+                <div className="text-xs mt-1 text-purple-600">Actuel : {tempTexteLibre}</div>
+              )}
+            </button>
+          </div>
+
+          {/* === SECTIONS ACCORDÉON (FERMÉES PAR DÉFAUT, FILTRABLES) === */}
+          
+          {/* Service de jour */}
+          {hasSearchResults(SERVICE_JOUR_CODES) && (
+            <AccordionSection 
+              id="serviceJour" 
+              title="Service de jour" 
+              colorClass="bg-blue-200"
+              isOpen={openSections.serviceJour || searchTerm.trim() !== ''}
+              onToggle={toggleSection}
+              badge="VL, D, EIA..."
+            >
+              {renderCodeButtons(SERVICE_JOUR_CODES, selectCategorie, (code) => tempCategorie === code, 4)}
+            </AccordionSection>
+          )}
+
+          {/* Habilitation/Formation */}
+          {hasSearchResults(HABILITATION_CODES) && (
+            <AccordionSection 
+              id="habilitation" 
+              title="Habilitation / Formation" 
+              colorClass="bg-orange-200"
+              isOpen={openSections.habilitation || searchTerm.trim() !== ''}
+              onToggle={toggleSection}
+              badge="HAB, FO..."
+            >
+              {renderCodeButtons(HABILITATION_CODES, selectCategorie, (code) => tempCategorie === code, 4)}
+            </AccordionSection>
+          )}
+
+          {/* Jours RH */}
+          {hasSearchResults(JOURS_RH_CODES) && (
+            <AccordionSection 
+              id="joursRH" 
+              title="Jours RH" 
+              colorClass="bg-yellow-200"
+              isOpen={openSections.joursRH || searchTerm.trim() !== ''}
+              onToggle={toggleSection}
+              badge="VT, D2I, RU..."
+            >
+              {renderCodeButtons(JOURS_RH_CODES, selectCategorie, (code) => tempCategorie === code, 5)}
+            </AccordionSection>
           )}
 
           {/* Section Postes supplémentaires */}
@@ -729,7 +1045,7 @@ const ModalCellEdit = ({
               Postes figés / Postes supplémentaires 
               <span className="text-xs text-gray-500 ml-2">(sélection multiple possible)</span>
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {POSTES_SUPPLEMENTAIRES.map(({ code, desc }) => {
                 const isSelected = tempPostesSupplementaires.includes(code);
                 return (
@@ -746,7 +1062,7 @@ const ModalCellEdit = ({
                       <Check className="w-3 h-3 absolute top-1 right-1 text-blue-600" />
                     )}
                     <div className="font-semibold italic">{code}</div>
-                    <div className="text-xs mt-1 not-italic">{desc.replace('Poste ', '').replace(' supplémentaire', '')}</div>
+                    <div className="text-[10px] mt-0.5 not-italic">{desc.replace('Poste ', '').replace(' supplémentaire', '')}</div>
                   </button>
                 );
               })}
@@ -773,7 +1089,6 @@ const ModalCellEdit = ({
                     ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100' 
                     : 'bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200'
                 }`}
-                title={hasExistingNote ? "Modifier la note" : "Ajouter une note"}
               >
                 {hasExistingNote ? <Edit3 className="w-4 h-4" /> : <MessageSquarePlus className="w-4 h-4" />}
                 <span>{hasExistingNote ? 'Note' : '+ Note'}</span>
@@ -787,16 +1102,13 @@ const ModalCellEdit = ({
                     ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100 cursor-pointer' 
                     : 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed'
                 }`}
-                title="Supprimer la note"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Note</span>
               </button>
 
               <button
                 onClick={openCroisementModal}
                 className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-lg border-2 bg-purple-100 border-purple-400 text-purple-800 hover:bg-purple-200 transition-all"
-                title="Échanger le service avec un autre agent"
               >
                 <ArrowLeftRight className="w-4 h-4" />
                 <span>Croisement</span>
@@ -817,180 +1129,146 @@ const ModalCellEdit = ({
             )}
           </div>
 
-{/* === SECTION ÉDITION MULTIPLE === */}
-        <div style={{
-          background: 'linear-gradient(to right, rgba(0, 240, 255, 0.05), rgba(0, 102, 179, 0.05))',
-          border: '1px solid rgba(0, 240, 255, 0.3)',
-          borderRadius: '8px',
-          padding: '12px',
-          marginTop: '16px'
-        }}>
-          <label style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            color: '#e0e0e0',
-            marginBottom: '8px'
+          {/* === SECTION ÉDITION MULTIPLE === */}
+          <div style={{
+            background: 'linear-gradient(to right, rgba(0, 240, 255, 0.05), rgba(0, 102, 179, 0.05))',
+            border: '1px solid rgba(0, 240, 255, 0.3)',
+            borderRadius: '8px',
+            padding: '12px',
+            marginTop: '16px'
           }}>
-            <input
-              type="checkbox"
-              checked={applyToMultipleDays}
-              onChange={(e) => setApplyToMultipleDays(e.target.checked)}
-              style={{
-                width: '18px',
-                height: '18px',
-                cursor: 'pointer',
-                accentColor: '#00f0ff'
-              }}
-            />
-            <Calendar size={16} style={{ color: '#00f0ff' }} />
-            <span>Appliquer à plusieurs jours</span>
-          </label>
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: '#374151',
+              marginBottom: '8px'
+            }}>
+              <input
+                type="checkbox"
+                checked={applyToMultipleDays}
+                onChange={(e) => setApplyToMultipleDays(e.target.checked)}
+                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+              />
+              <Calendar size={16} style={{ color: '#0066b3' }} />
+              <span>Appliquer à plusieurs jours</span>
+            </label>
 
-          {applyToMultipleDays && (
-            <div style={{ marginTop: '12px', paddingLeft: '4px' }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                marginBottom: '12px'
-              }}>
-                <span style={{ color: '#b0b0b0', fontSize: '13px', minWidth: '45px' }}>
-                  Du :
-                </span>
-                <input
-                  type="text"
-                  value={`${selectedCell.day.toString().padStart(2, '0')}/${currentMonth}/${currentYear}`}
-                  disabled
-                  style={{
-                    padding: '8px 12px',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(0, 240, 255, 0.2)',
-                    borderRadius: '6px',
-                    color: '#888',
-                    fontSize: '13px',
-                    width: '140px'
-                  }}
-                />
-              </div>
-
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                marginBottom: '12px'
-              }}>
-                <span style={{ color: '#b0b0b0', fontSize: '13px', minWidth: '45px' }}>
-                  Au :
-                </span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  min={(() => {
-                    const monthIndex = MONTHS.indexOf(currentMonth);
-                    const month = String(monthIndex + 1).padStart(2, '0');
-                    const day = String(selectedCell.day).padStart(2, '0');
-                    return `${currentYear}-${month}-${day}`;
-                  })()}
-                  max={(() => {
-                    const monthIndex = MONTHS.indexOf(currentMonth);
-                    const month = String(monthIndex + 1).padStart(2, '0');
-                    const daysInMonth = getDaysInMonth(currentMonth, currentYear);
-                    return `${currentYear}-${month}-${String(daysInMonth).padStart(2, '0')}`;
-                  })()}
-                  style={{
-                    padding: '8px 12px',
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    border: '1px solid rgba(0, 240, 255, 0.4)',
-                    borderRadius: '6px',
-                    color: '#e0e0e0',
-                    fontSize: '13px',
-                    flex: 1,
-                    cursor: 'pointer'
-                  }}
-                />
-              </div>
-
-              {/* Boutons rapides */}
-              <div style={{
-                display: 'flex',
-                gap: '6px',
-                marginBottom: '12px',
-                flexWrap: 'wrap'
-              }}>
-                {[
-                  { label: '3j', value: 3 },
-                  { label: '5j', value: 5 },
-                  { label: '7j', value: 7 },
-                  { label: 'Fin mois', value: 'end' }
-                ].map(btn => (
-                  <button
-                    key={btn.label}
-                    onClick={() => handleQuickDateRange(btn.value)}
+            {applyToMultipleDays && (
+              <div style={{ marginTop: '12px', paddingLeft: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <span style={{ color: '#6b7280', fontSize: '13px', minWidth: '45px' }}>Du :</span>
+                  <input
+                    type="text"
+                    value={formatStartDate()}
+                    disabled
                     style={{
-                      padding: '6px 12px',
-                      background: 'rgba(0, 240, 255, 0.1)',
-                      border: '1px solid rgba(0, 240, 255, 0.3)',
+                      padding: '8px 12px',
+                      background: '#f3f4f6',
+                      border: '1px solid #d1d5db',
                       borderRadius: '6px',
-                      color: '#00f0ff',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      fontWeight: '500'
+                      color: '#6b7280',
+                      fontSize: '13px',
+                      width: '140px'
                     }}
-                    onMouseEnter={(e) => {
-                      e.target.style.background = 'rgba(0, 240, 255, 0.2)';
-                      e.target.style.borderColor = 'rgba(0, 240, 255, 0.5)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.target.style.background = 'rgba(0, 240, 255, 0.1)';
-                      e.target.style.borderColor = 'rgba(0, 240, 255, 0.3)';
-                    }}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Warning/Info message */}
-              {dateRangeWarning && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 12px',
-                  background: dateRangeWarning.startsWith('❌') 
-                    ? 'rgba(255, 0, 0, 0.1)'
-                    : dateRangeWarning.startsWith('⚠️')
-                    ? 'rgba(255, 165, 0, 0.1)'
-                    : 'rgba(0, 255, 0, 0.1)',
-                  border: `1px solid ${
-                    dateRangeWarning.startsWith('❌')
-                      ? 'rgba(255, 0, 0, 0.3)'
-                      : dateRangeWarning.startsWith('⚠️')
-                      ? 'rgba(255, 165, 0, 0.3)'
-                      : 'rgba(0, 255, 0, 0.3)'
-                  }`,
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  color: dateRangeWarning.startsWith('❌')
-                    ? '#ff6b6b'
-                    : dateRangeWarning.startsWith('⚠️')
-                    ? '#ffa500'
-                    : '#4ade80'
-                }}>
-                  <AlertCircle size={14} />
-                  <span>{dateRangeWarning}</span>
+                  />
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <span style={{ color: '#6b7280', fontSize: '13px', minWidth: '45px' }}>Au :</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    min={(() => {
+                      const monthIndex = MONTHS.indexOf(currentMonth);
+                      const month = String(monthIndex + 1).padStart(2, '0');
+                      const day = String(selectedCell.day).padStart(2, '0');
+                      return `${currentYear}-${month}-${day}`;
+                    })()}
+                    max={(() => {
+                      const monthIndex = MONTHS.indexOf(currentMonth);
+                      const month = String(monthIndex + 1).padStart(2, '0');
+                      const daysInMonth = getDaysInMonth(currentMonth, currentYear);
+                      return `${currentYear}-${month}-${String(daysInMonth).padStart(2, '0')}`;
+                    })()}
+                    style={{
+                      padding: '8px 12px',
+                      background: '#fff',
+                      border: '1px solid #0066b3',
+                      borderRadius: '6px',
+                      color: '#374151',
+                      fontSize: '13px',
+                      flex: 1,
+                      cursor: 'pointer'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: '3j', value: 3 },
+                    { label: '5j', value: 5 },
+                    { label: '7j', value: 7 },
+                    { label: 'Fin mois', value: 'end' }
+                  ].map(btn => (
+                    <button
+                      key={btn.label}
+                      onClick={() => handleQuickDateRange(btn.value)}
+                      style={{
+                        padding: '6px 12px',
+                        background: '#e0f2fe',
+                        border: '1px solid #0066b3',
+                        borderRadius: '6px',
+                        color: '#0066b3',
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        fontWeight: '500'
+                      }}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+
+                {dateRangeWarning && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 12px',
+                    background: dateRangeWarning.startsWith('❌') 
+                      ? '#fef2f2'
+                      : dateRangeWarning.startsWith('⚠️')
+                      ? '#fffbeb'
+                      : '#f0fdf4',
+                    border: `1px solid ${
+                      dateRangeWarning.startsWith('❌')
+                        ? '#fecaca'
+                        : dateRangeWarning.startsWith('⚠️')
+                        ? '#fde68a'
+                        : '#bbf7d0'
+                    }`,
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    color: dateRangeWarning.startsWith('❌')
+                      ? '#dc2626'
+                      : dateRangeWarning.startsWith('⚠️')
+                      ? '#d97706'
+                      : '#16a34a'
+                  }}>
+                    <AlertCircle size={14} />
+                    <span>{dateRangeWarning}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Boutons d'action */}
-          <div className="flex justify-between pt-4 border-t">
+          <div className="flex justify-between pt-4 border-t mt-4">
             <button onClick={handleDelete} className="px-4 py-2 text-sm bg-red-600 text-white rounded hover:bg-red-700">
               Effacer
             </button>
@@ -1000,7 +1278,7 @@ const ModalCellEdit = ({
               </button>
               <button 
                 onClick={handleSave}
-                disabled={!tempService && !tempTexteLibre}
+                disabled={!tempService && !tempCategorie && !tempPoste && !tempStatutConge}
                 className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-300"
               >
                 Sauvegarder
@@ -1156,8 +1434,8 @@ const ModalCellEdit = ({
                   <div className="flex-1 text-center">
                     <div className="font-medium">{selectedCell.agent}</div>
                     <div className="text-xs text-gray-500">
-                      {cellData?.service || tempService || '-'}
-                      {(cellData?.poste || tempPoste) && ` / ${cellData?.poste || tempPoste}`}
+                      {previewService || '-'}
+                      {tempPoste && ` / ${tempPoste}`}
                     </div>
                   </div>
                   <ArrowLeftRight className="w-5 h-5 text-purple-500" />
