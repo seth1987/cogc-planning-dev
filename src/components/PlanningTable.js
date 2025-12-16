@@ -236,11 +236,19 @@ const PlanningTable = ({
         const service = planningData.service || '';
         const poste = planningData.poste || '';
         const texteLibre = planningData.texteLibre || '';
+        const statutConge = planningData.statutConge || ''; // ✅ FIX v2.19: Support statut congé
         const postesSupplementaires = planningData.postesSupplementaires || 
           (planningData.posteSupplementaire ? [planningData.posteSupplementaire] : []);
         
         hasNote = Boolean(planningData.note);
         isTexteLibre = service === 'LIBRE' && texteLibre;
+        
+        // Couleurs pour les statuts congé
+        const STATUT_CONGE_COLORS = {
+          'C': { bg: '#facc15', text: '#713f12' },
+          'C?': { bg: '#fef08a', text: '#854d0e' },
+          'CNA': { bg: '#fca5a5', text: '#991b1b' }
+        };
         
         // Couleur selon le type
         if (isTexteLibre) {
@@ -276,6 +284,18 @@ const PlanningTable = ({
               <span className={`font-medium ${isTexteLibre ? 'text-[10px]' : ''}`}>{displayText}</span>
               {poste && <span className="text-xs font-bold">{poste}</span>}
             </div>
+            {/* ✅ FIX v2.19: Affichage statut congé (C, C?, CNA) */}
+            {statutConge && (
+              <span 
+                className="text-[8px] font-bold px-1 rounded mt-0.5"
+                style={{
+                  backgroundColor: STATUT_CONGE_COLORS[statutConge]?.bg || '#e5e7eb',
+                  color: STATUT_CONGE_COLORS[statutConge]?.text || '#374151'
+                }}
+              >
+                {statutConge}
+              </span>
+            )}
             {postesSupplementaires.length > 0 && (
               <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
                 <span 
