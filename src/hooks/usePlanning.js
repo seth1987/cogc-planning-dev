@@ -281,11 +281,13 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
           : null;
         // ✅ FIX v1.4.0: Extraire texteLibre
         const texteLibre = typeof value === 'object' ? (value.texteLibre || null) : null;
+        // ✅ FIX v1.6.0: Extraire statut_conge
+        const statutConge = typeof value === 'object' ? (value.statut_conge || null) : null;
         
-        console.log(`📝 Sauvegarde avec texteLibre: "${texteLibre}"`);
+        console.log(`📝 Sauvegarde avec texteLibre: "${texteLibre}", statutConge: "${statutConge}"`);
         
-        // Sauvegarde avec note, postes supplémentaires ET texteLibre
-        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires, texteLibre);
+        // Sauvegarde avec note, postes supplémentaires, texteLibre ET statutConge
+        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires, texteLibre, statutConge);
       }
       
       // Mise à jour optimiste du state local
