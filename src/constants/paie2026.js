@@ -41,16 +41,10 @@ export const DATES_PAIE_2026 = {
   ]
 };
 
-// Chemins des icônes
+// Chemins des icônes (nouveaux logos unifiés)
 export const PAIE_ICONS = {
-  general: {
-    digiposte: '/icons/logo_digiposte_planning_general.png',
-    euro: '/icons/logo_euro_planning_general.jpg'
-  },
-  perso: {
-    digiposte: '/icons/logo_digiposte_planning_perso.png',
-    euro: '/icons/logo_euro_planning_perso.png' // Fallback vers general si non existant
-  }
+  digiposte: '/icons/logo_digiposte.png',
+  argent: '/icons/logo_argent.png'
 };
 
 /**
