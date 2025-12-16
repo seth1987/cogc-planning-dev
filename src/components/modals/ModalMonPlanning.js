@@ -32,7 +32,7 @@ import ModalCouleurs from './ModalCouleurs';
  *   - Dropdown PCD pour réserves
  *   - Section Notes améliorée
  * 
- * v3.1 - Icônes paie 2026 (Digiposte/Virement) dans les cellules du calendrier
+ * v3.1 - Icônes paie 2026 (Digiposte/Virement) en coin supérieur droit (14×14px)
  */
 
 // Couleurs pour les statuts congé
@@ -722,13 +722,10 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                   // v3.1: Vérifier si c'est une date de paie 2026
                   const paieType = dayInfo.currentMonth ? getPaieType(dayInfo.day, currentMonth, currentYear) : null;
                   let paieIcon = null;
-                  if (paieType === 'digiposte') {
-                    paieIcon = PAIE_ICONS.perso.digiposte;
+                  if (paieType === 'digiposte' || paieType === 'both') {
+                    paieIcon = PAIE_ICONS.digiposte;
                   } else if (paieType === 'virement') {
-                    // Fallback vers general si perso n'existe pas
-                    paieIcon = PAIE_ICONS.perso.euro || PAIE_ICONS.general.euro;
-                  } else if (paieType === 'both') {
-                    paieIcon = PAIE_ICONS.perso.digiposte;
+                    paieIcon = PAIE_ICONS.argent;
                   }
                   
                   return (
@@ -741,26 +738,24 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                         ...(isWeekend && dayInfo.currentMonth ? styles.weekendDay : {}),
                         backgroundColor: dayInfo.currentMonth ? getCellBackgroundColor(dayInfo.planning) : 'transparent',
                         color: dayInfo.currentMonth ? getCellTextColor(dayInfo.planning) : 'rgba(255,255,255,0.2)',
-                        // v3.1: Icône paie en arrière-plan
-                        backgroundImage: paieIcon ? `url(${paieIcon})` : 'none',
-                        backgroundSize: '24px 24px',
-                        backgroundPosition: 'center',
-                        backgroundRepeat: 'no-repeat',
                         position: 'relative',
                       }}
                       onClick={() => handleDayClick(dayInfo)}
                     >
-                      {/* Overlay semi-transparent pour lisibilité si icône présente */}
+                      {/* v3.1: Icône paie en coin supérieur droit */}
                       {paieIcon && dayInfo.currentMonth && (
-                        <div 
+                        <img 
+                          src={paieIcon}
+                          alt={paieType === 'virement' ? 'Virement' : 'Digiposte'}
                           style={{
                             position: 'absolute',
-                            inset: 0,
-                            backgroundColor: getCellBackgroundColor(dayInfo.planning) === 'rgba(255, 255, 255, 0.08)' 
-                              ? 'rgba(26, 26, 46, 0.7)' 
-                              : `${getCellBackgroundColor(dayInfo.planning)}dd`,
-                            borderRadius: '6px',
+                            top: '2px',
+                            right: '2px',
+                            width: '14px',
+                            height: '14px',
+                            objectFit: 'contain',
                             pointerEvents: 'none',
+                            zIndex: 2,
                           }}
                         />
                       )}
@@ -796,21 +791,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
           {/* Légende Paie 2026 */}
           <div style={styles.paieLegend}>
             <div style={styles.paieLegendItem}>
-              <div style={{
-                width: '24px', height: '24px', borderRadius: '4px',
-                backgroundImage: `url(${PAIE_ICONS.perso.digiposte})`,
-                backgroundSize: '20px 20px', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
-                border: '1px solid rgba(255,255,255,0.2)'
-              }} />
+              <img src={PAIE_ICONS.digiposte} alt="Digiposte" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
               <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>Digiposte</span>
             </div>
             <div style={styles.paieLegendItem}>
-              <div style={{
-                width: '24px', height: '24px', borderRadius: '4px',
-                backgroundImage: `url(${PAIE_ICONS.general.euro})`,
-                backgroundSize: '20px 20px', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
-                border: '1px solid rgba(255,255,255,0.2)'
-              }} />
+              <img src={PAIE_ICONS.argent} alt="Virement" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
               <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>Virement</span>
             </div>
           </div>
