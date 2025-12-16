@@ -156,13 +156,15 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
                 postesSupplementaires: entry.postes_supplementaires 
               }),
               // ✅ FIX v1.4.0: Inclure texte_libre depuis la DB
-              ...(entry.texte_libre && { texteLibre: entry.texte_libre })
+              ...(entry.texte_libre && { texteLibre: entry.texte_libre }),
+              // ✅ FIX v1.5.0: Inclure statut_conge depuis la DB
+              ...(entry.statut_conge && { statutConge: entry.statut_conge })
             };
             
             // Si pas de données supplémentaires, garder le format simple
             if (!entry.poste_code && !entry.commentaire && 
                 (!entry.postes_supplementaires || entry.postes_supplementaires.length === 0) &&
-                !entry.texte_libre) {
+                !entry.texte_libre && !entry.statut_conge) {
               planningData[agentName][day] = entry.service_code;
             } else {
               planningData[agentName][day] = cellData;
@@ -230,7 +232,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
     if (!cellValue) return null;
     
     if (typeof cellValue === 'string') {
-      return { service: cellValue, poste: null, note: null, postesSupplementaires: null, texteLibre: null };
+      return { service: cellValue, poste: null, note: null, postesSupplementaires: null, texteLibre: null, statutConge: null };
     }
     
     return {
@@ -239,7 +241,9 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       note: cellValue.note || null,
       postesSupplementaires: cellValue.postesSupplementaires || null,
       // ✅ FIX v1.4.0: Inclure texteLibre
-      texteLibre: cellValue.texteLibre || null
+      texteLibre: cellValue.texteLibre || null,
+      // ✅ FIX v1.5.0: Inclure statutConge
+      statutConge: cellValue.statutConge || null
     };
   }, [planning]);
 
@@ -277,19 +281,35 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
           : null;
         // ✅ FIX v1.4.0: Extraire texteLibre
         const texteLibre = typeof value === 'object' ? (value.texteLibre || null) : null;
+        // ✅ FIX v1.6.0: Extraire statut_conge
+        const statutConge = typeof value === 'object' ? (value.statut_conge || null) : null;
         
-        console.log(`📝 Sauvegarde avec texteLibre: "${texteLibre}"`);
+        console.log(`📝 Sauvegarde avec texteLibre: "${texteLibre}", statutConge: "${statutConge}"`);
         
-        // Sauvegarde avec note, postes supplémentaires ET texteLibre
-        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires, texteLibre);
+        // Sauvegarde avec note, postes supplémentaires, texteLibre ET statutConge
+        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires, texteLibre, statutConge);
       }
       
       // Mise à jour optimiste du state local
+      // ✅ FIX v1.7.0: Normaliser le format pour affichage immédiat (statut_conge → statutConge)
+      let normalizedValue = value;
+      if (typeof value === 'object' && value !== null) {
+        normalizedValue = {
+          service: value.service,
+          ...(value.poste && { poste: value.poste }),
+          ...(value.note && { note: value.note }),
+          ...(value.postesSupplementaires && { postesSupplementaires: value.postesSupplementaires }),
+          ...(value.texteLibre && { texteLibre: value.texteLibre }),
+          // Normaliser statut_conge → statutConge pour l'affichage
+          ...((value.statut_conge || value.statutConge) && { statutConge: value.statut_conge || value.statutConge })
+        };
+      }
+      
       setPlanning(prev => ({
         ...prev,
         [agentName]: {
           ...prev[agentName],
-          [day]: value
+          [day]: normalizedValue
         }
       }));
       

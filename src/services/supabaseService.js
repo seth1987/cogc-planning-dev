@@ -334,8 +334,9 @@ class SupabaseService {
    * @param {string|null} note - Note/commentaire associé à cette cellule
    * @param {string[]|null} postesSupplementaires - Liste des postes supplémentaires (italique)
    * @param {string|null} texteLibre - Texte libre personnalisé
+   * @param {string|null} statutConge - Statut congé (C, C?, CNA)
    */
-  async savePlanning(agentId, date, serviceCode, posteCode = null, note = null, postesSupplementaires = null, texteLibre = null) {
+  async savePlanning(agentId, date, serviceCode, posteCode = null, note = null, postesSupplementaires = null, texteLibre = null, statutConge = null) {
     // Chercher si une entrée existe déjà
     const { data: existing } = await supabase
       .from('planning')
@@ -355,6 +356,8 @@ class SupabaseService {
         : null,
       // ✅ FIX v2.5.0: Sauvegarder texte_libre
       texte_libre: texteLibre || null,
+      // ✅ FIX v2.6.0: Sauvegarder statut_conge
+      statut_conge: statutConge || null,
       statut: 'actif',
       updated_at: new Date().toISOString()
     };
