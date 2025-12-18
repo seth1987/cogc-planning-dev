@@ -12,7 +12,7 @@ import { supabase } from '../../lib/supabaseClient';
  * - Détails mensuels repliables en fin de modal
  * - Benchmarking Réserve (pour agents RESERVE REGULATEUR PN/DR uniquement)
  * 
- * v1.6 - Ajout section Postes Figés & Rapatriés (données globales COGC)
+ * v1.7 - Fix responsive mobile : grilles adaptatives
  */
 const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -513,7 +513,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
       <div style={styles.modal} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div style={styles.header}>
-          <h2 style={styles.title}>📊 Statistiques</h2>
+          <h2 style={styles.title}>Statistiques</h2>
           <button style={styles.closeBtn} onClick={onClose}>✕</button>
         </div>
 
@@ -1111,6 +1111,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
   );
 };
 
+// v1.7: Styles optimisés mobile
 const styles = {
   overlay: {
     position: 'fixed',
@@ -1120,7 +1121,7 @@ const styles = {
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 9999,
-    padding: '20px'
+    padding: '10px'
   },
   modal: {
     backgroundColor: '#1a1a2e',
@@ -1136,214 +1137,225 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '20px',
+    padding: '16px 20px',
     borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
     position: 'sticky',
     top: 0,
     backgroundColor: '#1a1a2e',
     zIndex: 10
   },
-  title: { margin: 0, color: '#00f0ff', fontSize: '20px' },
+  title: { margin: 0, color: '#00f0ff', fontSize: '18px' },
   closeBtn: {
     background: 'none', border: 'none', color: 'white',
     fontSize: '24px', cursor: 'pointer', padding: '5px 10px'
   },
   agentInfo: {
     display: 'flex', justifyContent: 'center', alignItems: 'center',
-    gap: '15px', padding: '15px', backgroundColor: 'rgba(0, 102, 179, 0.2)'
+    gap: '10px', padding: '12px', backgroundColor: 'rgba(0, 102, 179, 0.2)',
+    flexWrap: 'wrap'
   },
-  agentName: { color: 'white', fontWeight: 'bold' },
+  agentName: { color: 'white', fontWeight: 'bold', fontSize: '14px' },
   agentGroup: {
     color: '#00f0ff', backgroundColor: 'rgba(0, 240, 255, 0.2)',
-    padding: '4px 12px', borderRadius: '12px', fontSize: '12px'
+    padding: '4px 10px', borderRadius: '12px', fontSize: '11px'
   },
   yearSelector: {
     display: 'flex', justifyContent: 'center', alignItems: 'center',
-    gap: '20px', padding: '15px'
+    gap: '15px', padding: '12px'
   },
   yearBtn: {
     background: 'rgba(0, 240, 255, 0.2)', border: '1px solid rgba(0, 240, 255, 0.4)',
-    color: 'white', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontSize: '16px'
+    color: 'white', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '14px'
   },
-  yearTitle: { color: 'white', fontSize: '24px', fontWeight: 'bold' },
+  yearTitle: { color: 'white', fontSize: '20px', fontWeight: 'bold' },
   loading: { textAlign: 'center', color: 'white', padding: '40px' },
   loadingSmall: { textAlign: 'center', color: 'rgba(255,255,255,0.6)', padding: '20px', fontSize: '14px' },
-  content: { padding: '20px' },
-  section: { marginBottom: '30px' },
+  content: { padding: '15px' },
+  section: { marginBottom: '25px' },
   sectionTitle: {
-    color: '#00f0ff', fontSize: '16px', marginBottom: '15px',
-    paddingBottom: '10px', borderBottom: '1px solid rgba(0, 240, 255, 0.2)'
+    color: '#00f0ff', fontSize: '14px', marginBottom: '12px',
+    paddingBottom: '8px', borderBottom: '1px solid rgba(0, 240, 255, 0.2)'
   },
   sectionTitleClickable: {
     color: '#00f0ff', 
-    fontSize: '16px', 
-    marginBottom: '15px',
-    paddingBottom: '10px', 
+    fontSize: '14px', 
+    marginBottom: '12px',
+    paddingBottom: '8px', 
     borderBottom: '1px solid rgba(0, 240, 255, 0.2)',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
+    gap: '8px',
     userSelect: 'none',
     transition: 'color 0.2s ease'
   },
   toggleIcon: {
-    fontSize: '12px',
+    fontSize: '10px',
     color: '#00f0ff',
-    width: '16px',
+    width: '14px',
     display: 'inline-block'
   },
   subSectionTitle: {
     color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: '14px',
-    marginBottom: '10px',
+    fontSize: '13px',
+    marginBottom: '8px',
     fontWeight: 'bold'
   },
+  // v1.7: Grille RESPONSIVE pour vacations - s'adapte à l'écran
   vacationsGrid: { 
     display: 'grid', 
-    gridTemplateColumns: 'repeat(5, 1fr)', 
-    gap: '12px' 
+    gridTemplateColumns: 'repeat(auto-fit, minmax(60px, 1fr))', 
+    gap: '8px'
   },
+  // v1.7: Grille RESPONSIVE pour congés
   congesGrid: { 
     display: 'grid', 
-    gridTemplateColumns: 'repeat(2, 1fr)', 
-    gap: '15px' 
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', 
+    gap: '10px' 
   },
+  // v1.7: Grille RESPONSIVE pour figés
   figesGrid: { 
     display: 'grid', 
-    gridTemplateColumns: 'repeat(2, 1fr)', 
-    gap: '15px' 
+    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', 
+    gap: '10px' 
   },
+  // v1.7: Carte stat compacte
   statCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.05)', 
-    borderRadius: '12px',
-    padding: '15px 10px', 
-    textAlign: 'center'
+    borderRadius: '10px',
+    padding: '10px 6px', 
+    textAlign: 'center',
+    minWidth: '60px'
   },
   statCardConge: {
-    borderRadius: '12px',
-    padding: '20px 15px', 
+    borderRadius: '10px',
+    padding: '15px 10px', 
     textAlign: 'center',
-    border: '2px solid'
+    border: '2px solid',
+    minWidth: '120px'
   },
   statCardFige: {
-    borderRadius: '12px',
-    padding: '20px 15px', 
+    borderRadius: '10px',
+    padding: '15px 10px', 
     textAlign: 'center',
-    border: '2px solid'
+    border: '2px solid',
+    minWidth: '120px'
   },
+  // v1.7: Icône stat plus petite pour mobile
   statIcon: {
+    width: '42px', height: '42px', borderRadius: '50%',
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    margin: '0 auto 6px', fontSize: '16px', fontWeight: 'bold', color: 'white'
+  },
+  statIconConge: {
+    width: '50px', height: '50px', borderRadius: '50%',
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    margin: '0 auto 8px', fontSize: '18px', fontWeight: 'bold'
+  },
+  statIconFige: {
     width: '50px', height: '50px', borderRadius: '50%',
     display: 'flex', justifyContent: 'center', alignItems: 'center',
     margin: '0 auto 8px', fontSize: '18px', fontWeight: 'bold', color: 'white'
   },
-  statIconConge: {
-    width: '60px', height: '60px', borderRadius: '50%',
-    display: 'flex', justifyContent: 'center', alignItems: 'center',
-    margin: '0 auto 10px', fontSize: '22px', fontWeight: 'bold'
-  },
-  statIconFige: {
-    width: '60px', height: '60px', borderRadius: '50%',
-    display: 'flex', justifyContent: 'center', alignItems: 'center',
-    margin: '0 auto 10px', fontSize: '22px', fontWeight: 'bold', color: 'white'
-  },
-  statLabel: { color: 'rgba(255, 255, 255, 0.9)', fontSize: '12px', marginBottom: '2px' },
-  statMarker: { color: 'rgba(255, 255, 255, 0.5)', fontSize: '10px' },
+  statLabel: { color: 'rgba(255, 255, 255, 0.9)', fontSize: '11px', marginBottom: '2px' },
+  statMarker: { color: 'rgba(255, 255, 255, 0.5)', fontSize: '9px' },
   statMarkerConge: { fontSize: '10px', fontWeight: '500' },
   globalInfo: {
     color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: '12px',
-    marginBottom: '15px',
+    fontSize: '11px',
+    marginBottom: '12px',
     textAlign: 'center',
     fontStyle: 'italic'
   },
   totalBox: {
-    textAlign: 'center', marginTop: '15px', padding: '12px',
-    backgroundColor: 'rgba(0, 240, 255, 0.1)', borderRadius: '8px', color: 'white', fontSize: '15px'
+    textAlign: 'center', marginTop: '12px', padding: '10px',
+    backgroundColor: 'rgba(0, 240, 255, 0.1)', borderRadius: '8px', color: 'white', fontSize: '14px'
   },
   tableContainer: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: '11px' },
   th: {
-    padding: '10px 4px', backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    padding: '8px 4px', backgroundColor: 'rgba(0, 0, 0, 0.3)',
     color: 'white', textAlign: 'center', fontWeight: 'bold', fontSize: '10px'
   },
   tr: { borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
-  td: { padding: '8px 4px', color: 'white', textAlign: 'center', fontSize: '11px' },
+  td: { padding: '6px 4px', color: 'white', textAlign: 'center', fontSize: '11px' },
+  // v1.7: Grille RESPONSIVE pour suppléments
   supplementsSummary: {
     display: 'grid', 
-    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
-    gap: '12px',
-    marginBottom: '15px'
+    gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', 
+    gap: '10px',
+    marginBottom: '12px'
   },
   supplementCard: {
     border: '1px solid',
-    borderRadius: '12px', 
-    padding: '15px 10px', 
-    textAlign: 'center'
+    borderRadius: '10px', 
+    padding: '12px 8px', 
+    textAlign: 'center',
+    minWidth: '80px'
   },
   supplementName: { 
-    fontSize: '14px', 
+    fontSize: '12px', 
     fontWeight: 'bold', 
-    marginBottom: '8px' 
+    marginBottom: '6px' 
   },
   supplementCount: { 
     color: 'white', 
-    fontSize: '24px', 
+    fontSize: '20px', 
     fontWeight: 'bold',
     marginBottom: '4px'
   },
   supplementPercent: {
     color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: '11px'
+    fontSize: '10px'
   },
-  noData: { color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', fontStyle: 'italic' },
+  noData: { color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', fontStyle: 'italic', fontSize: '13px' },
   // v1.5: Styles pour le benchmarking
   benchmarkInfo: {
     color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: '13px',
-    marginBottom: '15px',
+    fontSize: '12px',
+    marginBottom: '12px',
     textAlign: 'center'
   },
   benchmarkTable: {
     width: '100%',
     borderCollapse: 'collapse',
-    fontSize: '12px'
+    fontSize: '11px'
   },
   benchmarkTh: {
-    padding: '12px 8px',
+    padding: '10px 6px',
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
     color: 'white',
     textAlign: 'center',
     fontWeight: 'bold',
-    fontSize: '11px',
+    fontSize: '10px',
     borderBottom: '2px solid rgba(0, 240, 255, 0.3)'
   },
   benchmarkTr: {
     borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
   },
   benchmarkTd: {
-    padding: '12px 8px',
+    padding: '10px 6px',
     color: 'white',
     textAlign: 'center',
-    fontSize: '13px'
+    fontSize: '12px'
   },
   benchmarkTdLabel: {
-    padding: '12px 8px',
+    padding: '10px 6px',
     color: 'white',
     textAlign: 'left',
-    fontSize: '13px'
+    fontSize: '12px'
   },
   benchmarkSubtitle: {
-    fontSize: '10px',
+    fontSize: '9px',
     color: 'rgba(255, 255, 255, 0.5)',
     marginTop: '2px'
   },
   percentBar: {
-    width: '60px',
-    height: '6px',
+    width: '50px',
+    height: '5px',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: '3px',
-    margin: '0 auto 4px',
+    margin: '0 auto 3px',
     overflow: 'hidden'
   },
   percentBarFill: {
