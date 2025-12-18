@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Palette, Search, X, ChevronDown, ChevronRight, Type, Check, Edit3, StickyNote, Trash2 } from 'lucide-react';
+import { Palette, Search, X, ChevronDown, ChevronRight, Type, Check, Edit3, StickyNote, Trash2, Lock } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import { 
   SERVICE_CODES, 
@@ -33,6 +33,13 @@ import ModalCouleurs from './ModalCouleurs';
  *   - Section Notes améliorée
  * 
  * v3.1 - Icônes paie 2026 (Digiposte/Virement) en coin supérieur droit (14×14px)
+ * 
+ * v3.2 - NOTE PRIVÉE
+ *   - Nouveau champ note_privee (TEXT) visible uniquement dans Mon Planning
+ *   - Icône Lock (🔒) grise en coin inférieur gauche si note privée existe
+ *   - Indépendante du service : peut exister sans horaire défini
+ *   - Non effacée par le bouton "Effacer" de la case
+ *   - Bouton dédié "Effacer note privée" pour suppression
  */
 
 // Couleurs pour les statuts congé
@@ -113,6 +120,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [tempStatutConge, setTempStatutConge] = useState('');
   const [tempNote, setTempNote] = useState('');
   const [tempTexteLibre, setTempTexteLibre] = useState('');
+  const [tempNotePrivee, setTempNotePrivee] = useState('');  // v3.2: Note privée
   
   // === ÉTATS RECHERCHE ET ACCORDÉONS ===
   const [searchTerm, setSearchTerm] = useState('');
@@ -133,6 +141,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [showTexteLibreModal, setShowTexteLibreModal] = useState(false);
   const [texteLibreInput, setTexteLibreInput] = useState('');
   const [isTexteLibreEditMode, setIsTexteLibreEditMode] = useState(false);
+  
+  // === ÉTATS MODAL NOTE PRIVÉE (v3.2) ===
+  const [showNotePriveeModal, setShowNotePriveeModal] = useState(false);
+  const [notePriveeInput, setNotePriveeInput] = useState('');
+  const [isNotePriveeEditMode, setIsNotePriveeEditMode] = useState(false);
 
   const months = [
     'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -274,6 +287,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     setTempPoste(existing?.poste_code || '');
     setTempPostesSupplementaires(existing?.postes_supplementaires || []);
     setTempNote(existing?.commentaire || '');
+    setTempNotePrivee(existing?.note_privee || '');  // v3.2: Charger note privée
     
     // Analyser le service stocké
     const storedService = existing?.service_code || '';
@@ -329,6 +343,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     setTempNote('');
     setTempStatutConge('');
     setTempTexteLibre('');
+    setTempNotePrivee('');  // v3.2: Reset note privée
     setSearchTerm('');
   };
 
@@ -373,6 +388,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
           commentaire: tempNote || null,
           statut_conge: tempStatutConge || null,
           texte_libre: hasTexteLibre ? tempTexteLibre.trim() : null,
+          note_privee: tempNotePrivee || null,  // v3.2: Sauvegarder note privée
           updated_at: new Date().toISOString()
         }, { onConflict: 'agent_id,date' });
 
@@ -387,18 +403,40 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     }
   };
 
+  // v3.2: Effacer la case SANS effacer la note privée
   const deleteEntry = async () => {
     if (!selectedDay || !agentInfo) return;
-    if (!window.confirm('Effacer cette entrée ?')) return;
+    if (!window.confirm('Effacer cette entrée ? (La note privée sera conservée)')) return;
 
     try {
-      const { error } = await supabase
-        .from('planning')
-        .delete()
-        .eq('agent_id', agentInfo.id)
-        .eq('date', selectedDay.date);
+      // Si une note privée existe, on met à jour en gardant uniquement la note privée
+      if (tempNotePrivee) {
+        const { error } = await supabase
+          .from('planning')
+          .upsert({
+            agent_id: agentInfo.id,
+            date: selectedDay.date,
+            service_code: null,
+            poste_code: null,
+            postes_supplementaires: null,
+            commentaire: null,
+            statut_conge: null,
+            texte_libre: null,
+            note_privee: tempNotePrivee,  // Conserver la note privée
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'agent_id,date' });
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        // Pas de note privée, on peut supprimer complètement
+        const { error } = await supabase
+          .from('planning')
+          .delete()
+          .eq('agent_id', agentInfo.id)
+          .eq('date', selectedDay.date);
+
+        if (error) throw error;
+      }
 
       hasChanges.current = true;
       await loadPlanning();
@@ -532,6 +570,30 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     }
   };
 
+  // === GESTION NOTE PRIVÉE (v3.2) ===
+  const openAddNotePriveeModal = () => {
+    setNotePriveeInput('');
+    setIsNotePriveeEditMode(false);
+    setShowNotePriveeModal(true);
+  };
+
+  const openEditNotePriveeModal = () => {
+    setNotePriveeInput(tempNotePrivee);
+    setIsNotePriveeEditMode(true);
+    setShowNotePriveeModal(true);
+  };
+
+  const handleValidateNotePrivee = () => {
+    setTempNotePrivee(notePriveeInput.trim());
+    setShowNotePriveeModal(false);
+  };
+
+  const handleDeleteNotePrivee = () => {
+    if (window.confirm('Supprimer cette note privée ?')) {
+      setTempNotePrivee('');
+    }
+  };
+
   // === COULEURS CELLULES CALENDRIER ===
   const getCellBackgroundColor = (planning) => {
     if (planning?.statut_conge && !planning?.service_code) {
@@ -613,6 +675,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const previewService = buildFinalService();
   const hasExistingNote = Boolean(tempNote);
   const hasExistingTexteLibre = Boolean(tempTexteLibre && tempTexteLibre.trim() !== '');
+  const hasExistingNotePrivee = Boolean(tempNotePrivee);  // v3.2
 
   // === RENDU BOUTONS CODE ===
   const renderCodeButtons = (codes, onClick, isSelectedFn, cols = 4) => {
@@ -728,6 +791,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                     paieIcon = PAIE_ICONS.argent;
                   }
                   
+                  // v3.2: Vérifier si note privée existe
+                  const hasNotePrivee = dayInfo.planning?.note_privee;
+                  // Vérifier si note classique existe
+                  const hasNoteClassique = dayInfo.planning?.commentaire;
+                  
                   return (
                     <div
                       key={idx}
@@ -759,6 +827,37 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                           }}
                         />
                       )}
+                      
+                      {/* v3.2: Icône note classique en coin supérieur gauche */}
+                      {hasNoteClassique && dayInfo.currentMonth && (
+                        <StickyNote 
+                          size={10}
+                          style={{
+                            position: 'absolute',
+                            top: '2px',
+                            left: '2px',
+                            color: '#fbbf24',
+                            pointerEvents: 'none',
+                            zIndex: 2,
+                          }}
+                        />
+                      )}
+                      
+                      {/* v3.2: Icône note privée en coin inférieur gauche */}
+                      {hasNotePrivee && dayInfo.currentMonth && (
+                        <Lock 
+                          size={10}
+                          style={{
+                            position: 'absolute',
+                            bottom: '2px',
+                            left: '2px',
+                            color: '#6b7280',
+                            pointerEvents: 'none',
+                            zIndex: 2,
+                          }}
+                        />
+                      )}
+                      
                       <span style={{ 
                         fontSize: '12px', 
                         fontWeight: 'bold', 
@@ -788,7 +887,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
             <span style={{...styles.legendItem, backgroundColor: getServiceColor('D').bg, color: getServiceColor('D').text}}>D</span>
           </div>
           
-          {/* Légende Paie 2026 */}
+          {/* Légende Paie 2026 + Notes */}
           <div style={styles.paieLegend}>
             <div style={styles.paieLegendItem}>
               <img src={PAIE_ICONS.digiposte} alt="Digiposte" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
@@ -797,6 +896,14 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
             <div style={styles.paieLegendItem}>
               <img src={PAIE_ICONS.argent} alt="Virement" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
               <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>Virement</span>
+            </div>
+            <div style={styles.paieLegendItem}>
+              <StickyNote size={14} style={{ color: '#fbbf24' }} />
+              <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>Note</span>
+            </div>
+            <div style={styles.paieLegendItem}>
+              <Lock size={14} style={{ color: '#6b7280' }} />
+              <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.7)' }}>Privée</span>
             </div>
           </div>
         </div>
@@ -1089,9 +1196,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                 )}
               </div>
 
-              {/* === SECTION NOTES === */}
+              {/* === SECTION NOTES (classique + privée) === */}
               <div style={styles.section}>
                 <label style={styles.sectionLabel}>Notes</label>
+                
+                {/* Ligne 1 : Note classique */}
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                   <button
                     onClick={hasExistingNote ? openEditNoteModal : openAddNoteModal}
@@ -1115,17 +1224,65 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                         borderRadius: '6px', cursor: 'pointer',
                         backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626'
                       }}
+                      title="Effacer la note"
                     >
                       <Trash2 size={14} />
                     </button>
                   )}
                 </div>
                 
+                {/* Affichage note classique */}
                 {hasExistingNote && (
-                  <div style={{ padding: '10px', backgroundColor: '#fef3c7', borderRadius: '6px', border: '1px solid #fde68a' }}>
+                  <div style={{ padding: '10px', backgroundColor: '#fef3c7', borderRadius: '6px', border: '1px solid #fde68a', marginBottom: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                       <StickyNote size={14} style={{ color: '#f59e0b', flexShrink: 0, marginTop: '2px' }} />
                       <p style={{ margin: 0, fontSize: '12px', color: '#92400e', whiteSpace: 'pre-wrap' }}>{tempNote}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Ligne 2 : Note privée (v3.2) */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <button
+                    onClick={hasExistingNotePrivee ? openEditNotePriveeModal : openAddNotePriveeModal}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 12px',
+                      borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
+                      backgroundColor: hasExistingNotePrivee ? '#e5e7eb' : '#f3f4f6',
+                      border: hasExistingNotePrivee ? '1px solid #9ca3af' : '1px solid #d1d5db',
+                      color: '#4b5563'
+                    }}
+                  >
+                    {hasExistingNotePrivee ? <Edit3 size={14} /> : <Lock size={14} />}
+                    <span>{hasExistingNotePrivee ? 'Modifier note privée' : '+ Note privée'}</span>
+                  </button>
+                  
+                  {hasExistingNotePrivee && (
+                    <button
+                      onClick={handleDeleteNotePrivee}
+                      style={{
+                        display: 'flex', alignItems: 'center', padding: '8px 12px',
+                        borderRadius: '6px', cursor: 'pointer',
+                        backgroundColor: '#fee2e2', border: '1px solid #fca5a5', color: '#dc2626'
+                      }}
+                      title="Effacer la note privée"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+                
+                {/* Affichage note privée */}
+                {hasExistingNotePrivee && (
+                  <div style={{ padding: '10px', backgroundColor: '#f3f4f6', borderRadius: '6px', border: '1px solid #d1d5db' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                      <Lock size={14} style={{ color: '#6b7280', flexShrink: 0, marginTop: '2px' }} />
+                      <div>
+                        <p style={{ margin: 0, fontSize: '12px', color: '#4b5563', whiteSpace: 'pre-wrap' }}>{tempNotePrivee}</p>
+                        <p style={{ margin: '4px 0 0', fontSize: '10px', color: '#9ca3af', fontStyle: 'italic' }}>
+                          🔒 Visible uniquement dans Mon Planning
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1137,9 +1294,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                 <div style={styles.rightActions}>
                   <button style={styles.cancelBtn} onClick={closeEditor}>Annuler</button>
                   <button 
-                    style={{...styles.saveBtn, opacity: (!tempService && !tempCategorie && !tempPoste && !tempStatutConge) ? 0.5 : 1}}
+                    style={{...styles.saveBtn, opacity: (!tempService && !tempCategorie && !tempPoste && !tempStatutConge && !tempNotePrivee) ? 0.5 : 1}}
                     onClick={saveEdit}
-                    disabled={!tempService && !tempCategorie && !tempPoste && !tempStatutConge}
                   >
                     Sauvegarder
                   </button>
@@ -1200,6 +1356,37 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
               <button onClick={() => setShowTexteLibreModal(false)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', backgroundColor: 'white', color: '#666', cursor: 'pointer' }}>Annuler</button>
               <button onClick={handleValidateTexteLibre} disabled={!texteLibreInput.trim()} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: '#a855f7', color: 'white', cursor: 'pointer', fontWeight: '500', opacity: texteLibreInput.trim() ? 1 : 0.5 }}>Valider</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* === SOUS-MODAL NOTE PRIVÉE (v3.2) === */}
+      {showNotePriveeModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10001 }} onClick={() => setShowNotePriveeModal(false)}>
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '20px', width: '100%', maxWidth: '400px', margin: '16px' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h4 style={{ margin: 0, fontSize: '16px', color: '#333', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {isNotePriveeEditMode ? <><Edit3 size={18} color="#6b7280" />Modifier la note privée</> : <><Lock size={18} color="#6b7280" />Note privée</>}
+              </h4>
+              <button onClick={() => setShowNotePriveeModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#666' }}><X size={20} /></button>
+            </div>
+            <div style={{ padding: '10px', backgroundColor: '#f3f4f6', borderRadius: '6px', marginBottom: '12px', border: '1px solid #e5e7eb' }}>
+              <p style={{ margin: 0, fontSize: '11px', color: '#6b7280' }}>
+                🔒 Cette note est <strong>privée</strong> : elle n'apparaît que dans "Mon Planning" et n'est pas visible sur le planning général.
+              </p>
+            </div>
+            <textarea
+              value={notePriveeInput}
+              onChange={(e) => setNotePriveeInput(e.target.value)}
+              placeholder="Saisissez votre note personnelle..."
+              style={{ width: '100%', height: '100px', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box' }}
+              autoFocus
+            />
+            <p style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>{notePriveeInput.length} caractères</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button onClick={() => setShowNotePriveeModal(false)} style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid #ddd', backgroundColor: 'white', color: '#666', cursor: 'pointer' }}>Annuler</button>
+              <button onClick={handleValidateNotePrivee} style={{ padding: '8px 16px', borderRadius: '6px', border: 'none', backgroundColor: '#6b7280', color: 'white', cursor: 'pointer', fontWeight: '500' }}>Valider</button>
             </div>
           </div>
         </div>
@@ -1280,7 +1467,7 @@ const styles = {
   legendItem: { padding: '3px 6px', borderRadius: '6px', fontSize: '9px', fontWeight: 'bold' },
   paieLegend: {
     display: 'flex', justifyContent: 'center', gap: '16px', padding: '8px 8px 12px',
-    borderTop: '1px solid rgba(255,255,255,0.05)'
+    borderTop: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap'
   },
   paieLegendItem: {
     display: 'flex', alignItems: 'center', gap: '6px'
