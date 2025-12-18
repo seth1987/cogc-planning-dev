@@ -69,7 +69,7 @@ const PCD_POSTE_CODES = ['CCCBO', 'CBVD'];
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 4.5.1 - Fix date de départ modifiable dans édition multiple
+ * @version 4.5.2 - Fix préservation note_privee lors effacement + visibilité texte modales
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -723,8 +723,35 @@ const ModalCellEdit = ({
     onClose();
   };
 
-  const handleDelete = () => {
-    onUpdateCell(selectedCell.agent, selectedCell.day, '');
+  // === EFFACEMENT AVEC PRÉSERVATION NOTE PRIVÉE ===
+  const handleDelete = async () => {
+    // Récupérer la note privée existante
+    const existingNotePrivee = cellData?.note_privee || cellData?.notePrivee || '';
+    
+    if (existingNotePrivee) {
+      // Si note privée existe, la conserver
+      if (!window.confirm('Effacer cette entrée ?\n\n(Votre note privée sera conservée)')) return;
+      
+      try {
+        await onUpdateCell(selectedCell.agent, selectedCell.day, {
+          service: null,
+          poste: null,
+          postesSupplementaires: null,
+          note: null,
+          texteLibre: null,
+          statut_conge: null,
+          note_privee: existingNotePrivee
+        });
+      } catch (error) {
+        console.error('Erreur suppression avec note privée:', error);
+        alert('Erreur lors de la suppression');
+        return;
+      }
+    } else {
+      // Pas de note privée, suppression complète
+      await onUpdateCell(selectedCell.agent, selectedCell.day, '');
+    }
+    
     onClose();
   };
 
@@ -845,6 +872,7 @@ const ModalCellEdit = ({
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Rechercher un code (ex: FO, MA, VL...)"
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                style={{ color: '#333' }}
               />
               {searchTerm && (
                 <button 
@@ -1335,6 +1363,7 @@ const ModalCellEdit = ({
                 onChange={(e) => setNoteInput(e.target.value)}
                 placeholder="Saisissez votre commentaire ici..."
                 className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none text-sm"
+                style={{ color: '#333' }}
                 autoFocus
               />
               <p className="text-xs text-gray-500 mt-1">{noteInput.length} caractères</p>
@@ -1370,6 +1399,7 @@ const ModalCellEdit = ({
                 onChange={(e) => setTexteLibreInput(e.target.value)}
                 placeholder="Ex: RDV médecin, Réunion, ..."
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                style={{ color: '#333' }}
                 autoFocus
                 maxLength={20}
               />
@@ -1412,6 +1442,7 @@ const ModalCellEdit = ({
                   onChange={(e) => setCroisementSearch(e.target.value)}
                   placeholder="Rechercher un agent..."
                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                  style={{ color: '#333' }}
                 />
               </div>
 
