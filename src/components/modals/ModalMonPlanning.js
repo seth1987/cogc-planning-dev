@@ -40,6 +40,8 @@ import ModalCouleurs from './ModalCouleurs';
  *   - Indépendante du service : peut exister sans horaire défini
  *   - Non effacée par le bouton "Effacer" de la case
  *   - Bouton dédié "Effacer note privée" pour suppression
+ * 
+ * v3.2.1 - Fix visibilité texte dans modales de saisie
  */
 
 // Couleurs pour les statuts congé
@@ -948,7 +950,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                   placeholder="Rechercher un code (ex: FO, MA, VL...)"
                   style={{
                     width: '100%', padding: '10px 12px 10px 40px', border: '1px solid #d1d5db',
-                    borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box'
+                    borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box', color: '#333'
                   }}
                 />
                 {searchTerm && (
@@ -1320,7 +1322,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
               value={noteInput}
               onChange={(e) => setNoteInput(e.target.value)}
               placeholder="Saisissez votre commentaire..."
-              style={{ width: '100%', height: '100px', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box' }}
+              style={{ width: '100%', height: '100px', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', color: '#333' }}
               autoFocus
             />
             <p style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>{noteInput.length} caractères</p>
@@ -1348,7 +1350,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
               value={texteLibreInput}
               onChange={(e) => setTexteLibreInput(e.target.value)}
               placeholder="Ex: RDV médecin, Réunion..."
-              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', boxSizing: 'border-box', color: '#333' }}
               autoFocus
               maxLength={20}
             />
@@ -1380,7 +1382,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
               value={notePriveeInput}
               onChange={(e) => setNotePriveeInput(e.target.value)}
               placeholder="Saisissez votre note personnelle..."
-              style={{ width: '100%', height: '100px', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box' }}
+              style={{ width: '100%', height: '100px', padding: '10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', color: '#333' }}
               autoFocus
             />
             <p style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>{notePriveeInput.length} caractères</p>
