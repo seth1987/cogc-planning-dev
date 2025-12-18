@@ -69,7 +69,7 @@ const PCD_POSTE_CODES = ['CCCBO', 'CBVD'];
 /**
  * ModalCellEdit - Modal d'édition d'une cellule du planning
  * 
- * @version 4.5.0 - Ajout statut_conge combinable (C, C?, CNA)
+ * @version 4.5.1 - Fix date de départ modifiable dans édition multiple
  */
 const ModalCellEdit = ({ 
   selectedCell, 
@@ -105,8 +105,9 @@ const ModalCellEdit = ({
   const [texteLibreInput, setTexteLibreInput] = useState('');
   const [isTexteLibreEditMode, setIsTexteLibreEditMode] = useState(false);
 
-  // === NOUVEAUX ÉTATS POUR ÉDITION MULTIPLE ===
+  // === ÉTATS POUR ÉDITION MULTIPLE (avec date de départ modifiable) ===
   const [applyToMultipleDays, setApplyToMultipleDays] = useState(false);
+  const [startDate, setStartDate] = useState(''); // Date de départ modifiable
   const [endDate, setEndDate] = useState('');
   const [dateRangeWarning, setDateRangeWarning] = useState('');
 
@@ -246,20 +247,31 @@ const ModalCellEdit = ({
     }
     // Reset édition multiple et recherche
     setApplyToMultipleDays(false);
+    setStartDate('');
     setEndDate('');
     setDateRangeWarning('');
     setSearchTerm('');
     setShowPcdDropdown(false);
   }, [cellData, selectedCell]);
 
+  // === INITIALISER LA DATE DE DÉPART QUAND ON ACTIVE L'ÉDITION MULTIPLE ===
+  useEffect(() => {
+    if (applyToMultipleDays && selectedCell && !startDate) {
+      const monthIndex = MONTHS.indexOf(currentMonth);
+      const month = String(monthIndex + 1).padStart(2, '0');
+      const day = String(selectedCell.day).padStart(2, '0');
+      setStartDate(`${currentYear}-${month}-${day}`);
+    }
+  }, [applyToMultipleDays, selectedCell, currentMonth, currentYear, startDate]);
+
   // useEffect pour validation automatique de la plage de dates
   useEffect(() => {
-    if (applyToMultipleDays && endDate && selectedCell) {
-      const [, , day] = endDate.split('-').map(Number);
-      const currentDay = selectedCell.day;
-      const daysCount = day - currentDay + 1;
+    if (applyToMultipleDays && startDate && endDate) {
+      const [, , startDay] = startDate.split('-').map(Number);
+      const [, , endDay] = endDate.split('-').map(Number);
+      const daysCount = endDay - startDay + 1;
       
-      if (day < currentDay) {
+      if (endDay < startDay) {
         setDateRangeWarning('❌ La date de fin doit être >= à la date de début');
       } else if (daysCount > 31) {
         setDateRangeWarning('⚠️ Maximum 31 jours');
@@ -268,10 +280,12 @@ const ModalCellEdit = ({
       } else {
         setDateRangeWarning(`✅ ${daysCount} jour${daysCount > 1 ? 's' : ''} sera${daysCount > 1 ? 'nt' : ''} modifié${daysCount > 1 ? 's' : ''}`);
       }
+    } else if (applyToMultipleDays && startDate && !endDate) {
+      setDateRangeWarning('');
     } else {
       setDateRangeWarning('');
     }
-  }, [endDate, applyToMultipleDays, selectedCell]);
+  }, [startDate, endDate, applyToMultipleDays]);
 
   if (!selectedCell) return null;
 
@@ -288,23 +302,23 @@ const ModalCellEdit = ({
     return monthIndex >= 0 ? monthIndex + 1 : 1;
   };
 
-  // Formater la date de début en JJ/MM/AAAA
-  const formatStartDate = () => {
-    if (!selectedCell) return '';
-    const day = String(selectedCell.day).padStart(2, '0');
-    const month = String(getMonthNumber(currentMonth)).padStart(2, '0');
-    return `${day}/${month}/${currentYear}`;
-  };
-
   const handleQuickDateRange = (days) => {
-    const currentDay = selectedCell.day;
+    // Utiliser startDate si défini, sinon la date de la cellule
+    let baseDay;
+    if (startDate) {
+      const [, , d] = startDate.split('-').map(Number);
+      baseDay = d;
+    } else {
+      baseDay = selectedCell.day;
+    }
+    
     const daysInMonth = getDaysInMonth(currentMonth, currentYear);
     
     let targetDay;
     if (days === 'end') {
       targetDay = daysInMonth;
     } else {
-      targetDay = Math.min(currentDay + days - 1, daysInMonth);
+      targetDay = Math.min(baseDay + days - 1, daysInMonth);
     }
     
     const monthIndex = MONTHS.indexOf(currentMonth);
@@ -675,9 +689,9 @@ const ModalCellEdit = ({
     }
     
     // === GESTION ÉDITION MULTIPLE ===
-    if (applyToMultipleDays && endDate) {
+    if (applyToMultipleDays && startDate && endDate) {
+      const [, , startDay] = startDate.split('-').map(Number);
       const [, , endDay] = endDate.split('-').map(Number);
-      const startDay = selectedCell.day;
       
       if (endDay < startDay) {
         alert('❌ La date de fin doit être >= à la date de début');
@@ -1158,31 +1172,45 @@ const ModalCellEdit = ({
 
             {applyToMultipleDays && (
               <div style={{ marginTop: '12px', paddingLeft: '4px' }}>
+                {/* Date de départ - maintenant modifiable */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                   <span style={{ color: '#6b7280', fontSize: '13px', minWidth: '45px' }}>Du :</span>
                   <input
-                    type="text"
-                    value={formatStartDate()}
-                    disabled
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    min={(() => {
+                      const monthIndex = MONTHS.indexOf(currentMonth);
+                      const month = String(monthIndex + 1).padStart(2, '0');
+                      return `${currentYear}-${month}-01`;
+                    })()}
+                    max={(() => {
+                      const monthIndex = MONTHS.indexOf(currentMonth);
+                      const month = String(monthIndex + 1).padStart(2, '0');
+                      const daysInMonth = getDaysInMonth(currentMonth, currentYear);
+                      return `${currentYear}-${month}-${String(daysInMonth).padStart(2, '0')}`;
+                    })()}
                     style={{
                       padding: '8px 12px',
-                      background: '#f3f4f6',
-                      border: '1px solid #d1d5db',
+                      background: '#fff',
+                      border: '1px solid #0066b3',
                       borderRadius: '6px',
-                      color: '#6b7280',
+                      color: '#374151',
                       fontSize: '13px',
-                      width: '140px'
+                      flex: 1,
+                      cursor: 'pointer'
                     }}
                   />
                 </div>
 
+                {/* Date de fin */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
                   <span style={{ color: '#6b7280', fontSize: '13px', minWidth: '45px' }}>Au :</span>
                   <input
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    min={(() => {
+                    min={startDate || (() => {
                       const monthIndex = MONTHS.indexOf(currentMonth);
                       const month = String(monthIndex + 1).padStart(2, '0');
                       const day = String(selectedCell.day).padStart(2, '0');
