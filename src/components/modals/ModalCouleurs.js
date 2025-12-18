@@ -1,18 +1,19 @@
-import React, { useRef, useState, useMemo } from 'react';
-import { X, Download, Upload, RotateCcw, Palette, Save, Cloud, CloudOff, Loader, ChevronDown, ChevronUp, Search } from 'lucide-react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
+import { X, Download, Upload, RotateCcw, Palette, Save, Cloud, CloudOff, Loader, ChevronDown, ChevronUp, Search, Smartphone } from 'lucide-react';
 import { COLOR_CATEGORIES, searchCodes, getHorairesForSubCategory } from '../../constants/defaultColors';
 import useColors from '../../hooks/useColors';
 
 /**
  * ModalCouleurs - Panneau de personnalisation des couleurs
  * 
- * VERSION 4.1 - Fix responsive mobile
+ * VERSION 4.2 - Disclaimer mode paysage mobile
  * 
  * - Toggle Groupe/Individuel pour chaque catégorie
  * - Mode Groupe : 1 couleur pour toute la catégorie
  * - Mode Individuel : personnalisation élément par élément
  * - Modification d'un élément → repasse auto en Individuel
  * - v4.1: Layout adaptatif mobile pour header catégories
+ * - v4.2: Disclaimer mobile suggérant le mode paysage
  */
 const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null }) => {
   const {
@@ -37,6 +38,26 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
   } = useColors(context, userEmail);
   
   const fileInputRef = useRef(null);
+  
+  // v4.2: Détection mobile en mode portrait
+  const [isMobilePortrait, setIsMobilePortrait] = useState(false);
+  
+  useEffect(() => {
+    const checkMobilePortrait = () => {
+      const isNarrow = window.innerWidth < 768;
+      const isPortrait = window.innerHeight > window.innerWidth;
+      setIsMobilePortrait(isNarrow && isPortrait);
+    };
+    
+    checkMobilePortrait();
+    window.addEventListener('resize', checkMobilePortrait);
+    window.addEventListener('orientationchange', checkMobilePortrait);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobilePortrait);
+      window.removeEventListener('orientationchange', checkMobilePortrait);
+    };
+  }, []);
   
   // État initial des accordéons basé sur defaultOpen
   const getInitialExpandedState = () => {
@@ -594,6 +615,31 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
         {/* Content */}
         <div style={{ padding: '16px', overflowY: 'auto', flex: 1 }}>
           
+          {/* v4.2: 📱 Disclaimer Mobile - Mode Paysage */}
+          {isMobilePortrait && (
+            <div style={mobileDisclaimerStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Smartphone 
+                  size={20} 
+                  color="#f59e0b" 
+                  style={{ 
+                    transform: 'rotate(90deg)',
+                    animation: 'pulse 2s ease-in-out infinite',
+                    flexShrink: 0
+                  }} 
+                />
+                <div>
+                  <div style={{ color: '#f59e0b', fontSize: '12px', fontWeight: 'bold' }}>
+                    Mode paysage recommandé
+                  </div>
+                  <div style={{ color: '#999', fontSize: '11px', marginTop: '2px' }}>
+                    Basculez votre téléphone à l'horizontale pour modifier les couleurs plus facilement
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           {/* Barre de recherche */}
           <div style={{
             position: 'relative',
@@ -730,7 +776,10 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
         </div>
       </div>
       
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      `}</style>
     </div>
   );
 };
@@ -760,6 +809,15 @@ const headerStyle = (context) => ({
 });
 
 const closeButtonStyle = { background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px' };
+
+// v4.2: Style du disclaimer mobile
+const mobileDisclaimerStyle = {
+  backgroundColor: 'rgba(245, 158, 11, 0.1)',
+  border: '1px solid rgba(245, 158, 11, 0.3)',
+  borderRadius: '8px',
+  padding: '12px',
+  marginBottom: '16px',
+};
 
 const syncSectionStyle = (enabled) => ({
   backgroundColor: enabled ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.05)',
