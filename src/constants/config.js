@@ -257,6 +257,7 @@ export const GROUPES_AVEC_POSTE = [
 // Postes figés / Postes supplémentaires (disponibles pour réserve ET roulement)
 export const POSTES_SUPPLEMENTAIRES = [
   { code: '+ACR', desc: 'Poste ACR supplémentaire' },
+  { code: '+ACRF', desc: 'ACR Figé - temps réguls' },
   { code: '+RO', desc: 'Poste RO supplémentaire' },
   { code: '+RE', desc: 'Poste RE supplémentaire' },
   { code: '+RC', desc: 'Poste RC supplémentaire' },
