@@ -262,6 +262,7 @@ export const POSTES_SUPPLEMENTAIRES = [
   { code: '+RC', desc: 'Poste RC supplémentaire' },
   { code: '+CCU', desc: 'Poste CCU supplémentaire' },
   { code: '+CAC', desc: 'Poste CAC supplémentaire' },
+  { code: '+SOUF', desc: 'Poste SOUF supplémentaire' },
   { code: '+OV', desc: 'Poste OV supplémentaire' },
   { code: '+PN', desc: 'Rapatriement Paris Nord' }
 ];
