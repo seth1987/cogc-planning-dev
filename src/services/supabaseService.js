@@ -27,7 +27,7 @@ const extractGroupeCode = (groupeComplet) => {
 
 /**
  * Service Supabase pour COGC Planning
- * @version 2.5.0 - Support complet texte libre (lecture/écriture)
+ * @version 2.6.0 - Support note_privee dans planning général
  */
 class SupabaseService {
   // Exposer le client Supabase pour accès direct si nécessaire
@@ -269,7 +269,7 @@ class SupabaseService {
 
   /**
    * Récupère les entrées de planning pour une période donnée
-   * @version 2.5.0 - Inclut texte_libre dans le SELECT
+   * @version 2.6.0 - Inclut note_privee dans le SELECT
    * 
    * @param {string} startDate - Date de début (YYYY-MM-DD)
    * @param {string} endDate - Date de fin (YYYY-MM-DD)
@@ -278,10 +278,10 @@ class SupabaseService {
   async getPlanningForMonth(startDate, endDate) {
     console.log(`🔍 getPlanningForMonth: ${startDate} → ${endDate}`);
     
-    // ✅ FIX v2.5.0: Inclure texte_libre dans le SELECT
+    // ✅ FIX v2.6.0: Inclure note_privee dans le SELECT
     const { data, error, count } = await supabase
       .from('planning')
-      .select('*, commentaire, postes_supplementaires, texte_libre', { count: 'exact' })
+      .select('*, commentaire, postes_supplementaires, texte_libre, note_privee', { count: 'exact' })
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date')
@@ -299,13 +299,16 @@ class SupabaseService {
       // Analyser la répartition par jour
       const byDay = {};
       let texteLibreCount = 0;
+      let notePriveeCount = 0;
       data.forEach(entry => {
         const day = parseInt(entry.date.split('-')[2], 10);
         byDay[day] = (byDay[day] || 0) + 1;
         if (entry.texte_libre) texteLibreCount++;
+        if (entry.note_privee) notePriveeCount++;
       });
       console.log('📊 Répartition par jour:', byDay);
       console.log(`📝 Entrées avec texte_libre: ${texteLibreCount}`);
+      console.log(`🔒 Entrées avec note_privee: ${notePriveeCount}`);
       
       // Vérifier spécifiquement les jours 23-31
       const endMonthEntries = data.filter(entry => {
@@ -324,8 +327,8 @@ class SupabaseService {
   }
 
   /**
-   * Sauvegarde une entrée de planning avec support des notes, postes supplémentaires et texte libre
-   * @version 2.5.0 - Support texte_libre
+   * Sauvegarde une entrée de planning avec support des notes, postes supplémentaires, texte libre et note privée
+   * @version 2.6.0 - Support note_privee
    * 
    * @param {string} agentId - ID de l'agent
    * @param {string} date - Date au format YYYY-MM-DD
@@ -335,8 +338,9 @@ class SupabaseService {
    * @param {string[]|null} postesSupplementaires - Liste des postes supplémentaires (italique)
    * @param {string|null} texteLibre - Texte libre personnalisé
    * @param {string|null} statutConge - Statut congé (C, C?, CNA)
+   * @param {string|null} notePrivee - Note privée visible uniquement dans Mon Planning
    */
-  async savePlanning(agentId, date, serviceCode, posteCode = null, note = null, postesSupplementaires = null, texteLibre = null, statutConge = null) {
+  async savePlanning(agentId, date, serviceCode, posteCode = null, note = null, postesSupplementaires = null, texteLibre = null, statutConge = null, notePrivee = null) {
     // Chercher si une entrée existe déjà
     const { data: existing } = await supabase
       .from('planning')
@@ -358,6 +362,8 @@ class SupabaseService {
       texte_libre: texteLibre || null,
       // ✅ FIX v2.6.0: Sauvegarder statut_conge
       statut_conge: statutConge || null,
+      // ✅ FIX v2.6.0: Sauvegarder note_privee
+      note_privee: notePrivee || null,
       statut: 'actif',
       updated_at: new Date().toISOString()
     };
