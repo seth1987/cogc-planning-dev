@@ -6,7 +6,7 @@ import supabaseService from '../../services/supabaseService';
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée, Jour) et par poste
  * 
- * @version 1.7.0 - Ajout bouton SOUF + refonte affichage "Jour" par service
+ * @version 1.7.1 - Correction boutons : ACRF matin, SOUF soir uniquement
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -59,7 +59,7 @@ const ModalPrevisionnelJour = ({
       symbole: 'X',
       colonneJour: 'J', // Lire X dans colonne J
       icon: Moon,
-      postes: ['CRC', 'ACR', 'RC', 'CCU', 'RE', 'SOUF'],
+      postes: ['CRC', 'ACR', 'RC', 'CCU', 'RE'],
       color: 'indigo'
     },
     matin: {
@@ -68,7 +68,7 @@ const ModalPrevisionnelJour = ({
       symbole: '-',
       colonneJour: 'J',
       icon: Sun,
-      postes: ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'SOUF'],
+      postes: ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'ACRF'],
       color: 'yellow'
     },
     soir: {
@@ -95,7 +95,7 @@ const ModalPrevisionnelJour = ({
       symbole: 'X',
       colonneJour: 'J+1', // Lire X dans colonne J+1
       icon: Moon,
-      postes: ['CRC', 'ACR', 'RC', 'CCU', 'RE', 'SOUF'],
+      postes: ['CRC', 'ACR', 'RC', 'CCU', 'RE'],
       color: 'indigo'
     }
   }), []);
@@ -491,11 +491,17 @@ const ModalPrevisionnelJour = ({
       buttonClass += 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300';
     }
 
+    // Labels spéciaux pour certains boutons
+    let displayLabel = poste;
+    if (poste === 'ACRF') {
+      displayLabel = 'ACRF'; // ACR Figé - temps pour les réguls
+    }
+
     const buttonLabel = status === 'fige' 
-      ? `${poste} FIGÉ` 
+      ? `${displayLabel} FIGÉ` 
       : status === 'rapatrie' 
-        ? `${poste} RAP. PN` 
-        : poste;
+        ? `${displayLabel} RAP. PN` 
+        : displayLabel;
 
     return (
       <div className="relative" key={poste} style={{ zIndex: isDropdownOpen ? 100 : 1 }}>
@@ -506,6 +512,7 @@ const ModalPrevisionnelJour = ({
           }}
           className={buttonClass}
           disabled={isSaving}
+          title={poste === 'ACRF' ? 'ACR Figé - temps pour les réguls' : undefined}
         >
           {isSaving ? (
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -638,6 +645,9 @@ const ModalPrevisionnelJour = ({
 
     const colors = colorClasses[color] || colorClasses.indigo;
 
+    // Filtrer les postes spéciaux (ACRF, SOUF) pour l'affichage des agents
+    const postesAffichage = postes.filter(p => !['ACRF', 'SOUF'].includes(p));
+
     return (
       <div className={`rounded-lg border ${colors.border} ${colors.bg}`} style={{ overflow: 'visible' }}>
         <div className={`${colors.header} px-4 py-2.5 flex items-center justify-between rounded-t-lg`}>
@@ -653,7 +663,7 @@ const ModalPrevisionnelJour = ({
         </div>
 
         <div className="px-4 py-3 space-y-2">
-          {postes.map(poste => {
+          {postesAffichage.map(poste => {
             const agentsPoste = equipes[poste] || [];
             
             return (
