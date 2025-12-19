@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users, Palette, Type } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users, Palette, Type, Moon, Sun } from 'lucide-react';
 import { MONTHS } from '../constants/config';
 import { DEFAULT_COLORS } from '../constants/defaultColors';
 import useColors from '../hooks/useColors';
+import useTheme, { NEXAVERSE_THEME, LIGHT_THEME } from '../hooks/useTheme';
 import planningService from '../services/planningService';
 import ModalCouleurs from './modals/ModalCouleurs';
 
@@ -19,15 +20,32 @@ import ModalCouleurs from './modals/ModalCouleurs';
  * FIX v2.16: Affichage correct du texte libre (service=LIBRE + texteLibre)
  * NEW v2.17: Synchronisation multi-appareils des couleurs via Supabase
  * FIX v2.18: Debug log pour currentUser
+ * NEW v2.19: Toggle Mode Clair / Mode Sombre (Nexaverse) avec option "Se souvenir"
  */
 
-// Composant barre de navigation rendu via portail - VERSION COMPACTE
-const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd, onOpenColors }) => {
+// Composant barre de navigation rendu via portail - VERSION AVEC TOGGLE THEME
+const NavigationBar = ({ 
+  onScrollLeft, 
+  onScrollRight, 
+  onScrollStart, 
+  onScrollEnd, 
+  onOpenColors,
+  isDarkMode,
+  onToggleTheme,
+  rememberChoice,
+  onToggleRemember
+}) => {
+  const [showThemePopover, setShowThemePopover] = useState(false);
+  
   return ReactDOM.createPortal(
     <div 
-      className="fixed bottom-0 left-0 right-0 z-[9999] bg-gradient-to-r from-blue-600 to-blue-700 px-2 py-1.5 flex items-center justify-center gap-2"
+      className={`fixed bottom-0 left-0 right-0 z-[9999] px-2 py-1.5 flex items-center justify-center gap-2 ${
+        isDarkMode 
+          ? 'bg-gradient-to-r from-[#1a1a2e] to-[#16213e] border-t border-[rgba(0,240,255,0.3)]' 
+          : 'bg-gradient-to-r from-blue-600 to-blue-700'
+      }`}
       style={{ 
-        boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.3)',
+        boxShadow: isDarkMode ? '0 -2px 20px rgba(0, 240, 255, 0.2)' : '0 -2px 10px rgba(0, 0, 0, 0.3)',
         position: 'fixed',
         bottom: 0,
         left: 0,
@@ -38,15 +56,115 @@ const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd
       {/* Bouton couleurs à gauche */}
       <button
         onClick={onOpenColors}
-        className="p-1.5 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors mr-2"
+        className={`p-1.5 rounded-full transition-colors ${
+          isDarkMode 
+            ? 'bg-[rgba(0,240,255,0.2)] hover:bg-[rgba(0,240,255,0.3)] text-[#00f0ff]' 
+            : 'bg-white/20 hover:bg-white/30 text-white'
+        }`}
         title="Personnaliser les couleurs"
       >
         <Palette size={18} />
       </button>
 
+      {/* Toggle Thème avec popover */}
+      <div className="relative">
+        <button
+          onClick={() => setShowThemePopover(!showThemePopover)}
+          className={`p-1.5 rounded-full transition-all ${
+            isDarkMode 
+              ? 'bg-[rgba(0,240,255,0.2)] hover:bg-[rgba(0,240,255,0.3)] text-[#00f0ff]' 
+              : 'bg-white/20 hover:bg-white/30 text-white'
+          }`}
+          title={isDarkMode ? "Mode Sombre actif" : "Mode Clair actif"}
+        >
+          {isDarkMode ? <Moon size={18} /> : <Sun size={18} />}
+        </button>
+        
+        {/* Popover pour le toggle */}
+        {showThemePopover && (
+          <>
+            {/* Overlay pour fermer */}
+            <div 
+              className="fixed inset-0 z-[9998]" 
+              onClick={() => setShowThemePopover(false)}
+            />
+            
+            {/* Contenu du popover */}
+            <div 
+              className={`absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 p-3 rounded-lg shadow-lg z-[10000] min-w-[200px] ${
+                isDarkMode 
+                  ? 'bg-[#16213e] border border-[rgba(0,240,255,0.3)]' 
+                  : 'bg-white border border-gray-200'
+              }`}
+              style={{ 
+                boxShadow: isDarkMode 
+                  ? '0 -4px 20px rgba(0, 240, 255, 0.2)' 
+                  : '0 -4px 20px rgba(0, 0, 0, 0.15)'
+              }}
+            >
+              {/* Toggle principal */}
+              <div className="flex items-center justify-between mb-3">
+                <span className={`text-sm font-medium ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>
+                  {isDarkMode ? '🌙 Mode Sombre' : '☀️ Mode Clair'}
+                </span>
+                <button
+                  onClick={() => {
+                    onToggleTheme();
+                  }}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    isDarkMode 
+                      ? 'bg-[#00f0ff]' 
+                      : 'bg-gray-300'
+                  }`}
+                >
+                  <span 
+                    className={`absolute top-1 w-4 h-4 rounded-full transition-transform ${
+                      isDarkMode 
+                        ? 'translate-x-7 bg-[#1a1a2e]' 
+                        : 'translate-x-1 bg-white'
+                    }`}
+                  />
+                </button>
+              </div>
+              
+              {/* Séparateur */}
+              <div className={`border-t mb-3 ${isDarkMode ? 'border-[rgba(255,255,255,0.1)]' : 'border-gray-100'}`} />
+              
+              {/* Checkbox "Se souvenir" */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rememberChoice}
+                  onChange={(e) => onToggleRemember(e.target.checked)}
+                  className={`w-4 h-4 rounded ${
+                    isDarkMode 
+                      ? 'accent-[#00f0ff]' 
+                      : 'accent-blue-600'
+                  }`}
+                />
+                <span className={`text-xs ${isDarkMode ? 'text-[rgba(255,255,255,0.7)]' : 'text-gray-600'}`}>
+                  Se souvenir de mon choix
+                </span>
+              </label>
+              
+              {/* Indication */}
+              {rememberChoice && (
+                <p className={`text-xs mt-2 ${isDarkMode ? 'text-[#00f0ff]' : 'text-blue-600'}`}>
+                  ✓ Préférence sauvegardée
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
       <button
         onClick={onScrollStart}
-        className="flex items-center gap-0.5 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-white text-xs font-medium transition-colors"
+        className={`flex items-center gap-0.5 px-2 py-1 rounded text-xs font-medium transition-colors ${
+          isDarkMode 
+            ? 'bg-[rgba(0,240,255,0.2)] hover:bg-[rgba(0,240,255,0.3)] text-[#00f0ff]' 
+            : 'bg-white/20 hover:bg-white/30 text-white'
+        }`}
         title="Aller au début du mois (Jour 1)"
       >
         <ChevronLeft size={14} />
@@ -56,19 +174,27 @@ const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd
       
       <button
         onClick={onScrollLeft}
-        className="p-1.5 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+        className={`p-1.5 rounded-full transition-colors ${
+          isDarkMode 
+            ? 'bg-[rgba(0,240,255,0.2)] hover:bg-[rgba(0,240,255,0.3)] text-[#00f0ff]' 
+            : 'bg-white/20 hover:bg-white/30 text-white'
+        }`}
         title="Défiler vers la gauche"
       >
         <ChevronLeft size={18} />
       </button>
       
-      <span className="text-white text-xs font-medium px-2 hidden sm:block">
+      <span className={`text-xs font-medium px-2 hidden sm:block ${isDarkMode ? 'text-[#00f0ff]' : 'text-white'}`}>
         ◀ ▶
       </span>
       
       <button
         onClick={onScrollRight}
-        className="p-1.5 bg-white/20 hover:bg-white/30 rounded-full text-white transition-colors"
+        className={`p-1.5 rounded-full transition-colors ${
+          isDarkMode 
+            ? 'bg-[rgba(0,240,255,0.2)] hover:bg-[rgba(0,240,255,0.3)] text-[#00f0ff]' 
+            : 'bg-white/20 hover:bg-white/30 text-white'
+        }`}
         title="Défiler vers la droite"
       >
         <ChevronRight size={18} />
@@ -76,7 +202,11 @@ const NavigationBar = ({ onScrollLeft, onScrollRight, onScrollStart, onScrollEnd
       
       <button
         onClick={onScrollEnd}
-        className="flex items-center gap-0.5 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-white text-xs font-medium transition-colors"
+        className={`flex items-center gap-0.5 px-2 py-1 rounded text-xs font-medium transition-colors ${
+          isDarkMode 
+            ? 'bg-[rgba(0,240,255,0.2)] hover:bg-[rgba(0,240,255,0.3)] text-[#00f0ff]' 
+            : 'bg-white/20 hover:bg-white/30 text-white'
+        }`}
         title="Aller à la fin du mois (Jour 31)"
       >
         <span>J31</span>
@@ -110,12 +240,16 @@ const PlanningTable = ({
   // Hook pour les couleurs personnalisées (avec sync si userEmail présent)
   const { colors, getServiceColor, reloadColors } = useColors('general', userEmail);
   
+  // Hook pour le thème clair/sombre
+  const { isDarkMode, toggleTheme, rememberChoice, setRememberChoice } = useTheme('general');
+  
   // State pour la modal couleurs
   const [showColorModal, setShowColorModal] = useState(false);
   
   useEffect(() => {
     console.log(`📅 PlanningTable: currentMonth=${currentMonth}, currentYear prop=${currentYear}, year utilisé=${year}`);
-  }, [currentMonth, currentYear, year]);
+    console.log(`🌓 PlanningTable: isDarkMode=${isDarkMode}, rememberChoice=${rememberChoice}`);
+  }, [currentMonth, currentYear, year, isDarkMode, rememberChoice]);
   
   const daysInMonth = planningService.getDaysInMonth(currentMonth, year);
   const [collapsedGroups, setCollapsedGroups] = useState({});
@@ -183,25 +317,47 @@ const PlanningTable = ({
     const { isWeekend, isFerier } = planningService.getJourType(day, currentMonth, year);
     const dayName = planningService.getDayName(day, currentMonth, year);
     
-    let className = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] ';
+    // Classes de base communes
+    let baseClasses = 'px-1 py-2 text-center text-xs font-medium min-w-[55px] ';
     
-    if (isFerier) {
-      className += 'bg-red-100 text-red-900';
-    } else if (isWeekend) {
-      className += 'bg-green-100 text-green-800';
+    // Styles selon le thème et le type de jour
+    let bgColor, textColor;
+    
+    if (isDarkMode) {
+      if (isFerier) {
+        bgColor = 'rgba(239, 68, 68, 0.3)'; // Rouge semi-transparent
+        textColor = '#fca5a5';
+      } else if (isWeekend) {
+        bgColor = 'rgba(34, 197, 94, 0.2)'; // Vert semi-transparent
+        textColor = '#86efac';
+      } else {
+        bgColor = 'rgba(255, 255, 255, 0.05)';
+        textColor = 'rgba(255, 255, 255, 0.8)';
+      }
     } else {
-      className += 'bg-gray-50 text-gray-700';
+      if (isFerier) {
+        bgColor = '#fef2f2';
+        textColor = '#991b1b';
+      } else if (isWeekend) {
+        bgColor = '#f0fdf4';
+        textColor = '#166534';
+      } else {
+        bgColor = '#f9fafb';
+        textColor = '#374151';
+      }
     }
     
     const isClickable = typeof onDayHeaderClick === 'function';
-    if (isClickable) {
-      className += ' cursor-pointer hover:bg-blue-100 hover:text-blue-800 transition-colors group';
-    }
     
     return (
       <th 
         key={day} 
-        className={className}
+        className={`${baseClasses} ${isClickable ? 'cursor-pointer group' : ''}`}
+        style={{ 
+          backgroundColor: bgColor, 
+          color: textColor,
+          transition: 'all 0.2s'
+        }}
         onClick={isClickable ? () => onDayHeaderClick(day) : undefined}
         title={isClickable ? `Voir les equipes du ${day}` : undefined}
       >
@@ -210,7 +366,9 @@ const PlanningTable = ({
           <span className="font-bold text-sm">{day}</span>
           {isFerier && <span className="text-xs">Ferie</span>}
           {isClickable && (
-            <Users className="w-3 h-3 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-blue-600" />
+            <Users className={`w-3 h-3 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${
+              isDarkMode ? 'text-[#00f0ff]' : 'text-blue-600'
+            }`} />
           )}
         </div>
       </th>
@@ -297,7 +455,7 @@ const PlanningTable = ({
               </span>
             )}
             {postesSupplementaires.length > 0 && (
-              <div className="border-t border-gray-300 border-dashed mt-1 pt-0.5">
+              <div className={`border-t border-dashed mt-1 pt-0.5 ${isDarkMode ? 'border-gray-500' : 'border-gray-300'}`}>
                 <span 
                   className="text-[9px] italic font-medium"
                   style={{ color: postesColor }}
@@ -310,15 +468,28 @@ const PlanningTable = ({
         );
       }
     } else {
-      // Cellule vide - couleurs de fond selon jour
-      if (isFerier) {
-        cellStyle = { backgroundColor: '#fef2f2' }; // red-50
-      } else if (isWeekend) {
-        cellStyle = { backgroundColor: '#f0fdf4' }; // green-50
+      // Cellule vide - couleurs de fond selon jour et thème
+      if (isDarkMode) {
+        if (isFerier) {
+          cellStyle = { backgroundColor: 'rgba(239, 68, 68, 0.15)' };
+        } else if (isWeekend) {
+          cellStyle = { backgroundColor: 'rgba(34, 197, 94, 0.1)' };
+        } else {
+          cellStyle = { backgroundColor: 'rgba(255, 255, 255, 0.03)' };
+        }
       } else {
-        cellStyle = { backgroundColor: '#ffffff' };
+        if (isFerier) {
+          cellStyle = { backgroundColor: '#fef2f2' }; // red-50
+        } else if (isWeekend) {
+          cellStyle = { backgroundColor: '#f0fdf4' }; // green-50
+        } else {
+          cellStyle = { backgroundColor: '#ffffff' };
+        }
       }
     }
+    
+    // Ajouter la couleur de bordure selon le thème
+    cellStyle.borderColor = isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#e5e7eb';
     
     return (
       <td 
@@ -335,12 +506,22 @@ const PlanningTable = ({
   const scrollContainerStyle = {
     overflowX: 'scroll',
     scrollbarWidth: 'auto',
-    scrollbarColor: '#3b82f6 #e5e7eb',
+    scrollbarColor: isDarkMode ? '#00f0ff #1a1a2e' : '#3b82f6 #e5e7eb',
     paddingBottom: '50px',
   };
 
+  // Styles pour le thème sombre
+  const containerStyle = isDarkMode ? {
+    backgroundColor: NEXAVERSE_THEME.bgPrimary,
+    border: `1px solid ${NEXAVERSE_THEME.borderColor}`,
+    boxShadow: NEXAVERSE_THEME.shadowCard,
+  } : {};
+
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden relative">
+    <div 
+      className={`rounded-lg shadow overflow-hidden relative ${isDarkMode ? '' : 'bg-white'}`}
+      style={containerStyle}
+    >
       {/* Modal personnalisation couleurs */}
       <ModalCouleurs 
         isOpen={showColorModal} 
@@ -357,6 +538,10 @@ const PlanningTable = ({
           onScrollStart={scrollToStart}
           onScrollEnd={scrollToEnd}
           onOpenColors={() => setShowColorModal(true)}
+          isDarkMode={isDarkMode}
+          onToggleTheme={toggleTheme}
+          rememberChoice={rememberChoice}
+          onToggleRemember={setRememberChoice}
         />
       )}
 
@@ -371,16 +556,20 @@ const PlanningTable = ({
             height: 14px;
           }
           .planning-scroll-container::-webkit-scrollbar-track {
-            background: #e5e7eb;
+            background: ${isDarkMode ? '#1a1a2e' : '#e5e7eb'};
             border-radius: 7px;
           }
           .planning-scroll-container::-webkit-scrollbar-thumb {
-            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+            background: ${isDarkMode 
+              ? 'linear-gradient(180deg, #00f0ff 0%, #0066b3 100%)' 
+              : 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)'};
             border-radius: 7px;
-            border: 2px solid #e5e7eb;
+            border: 2px solid ${isDarkMode ? '#1a1a2e' : '#e5e7eb'};
           }
           .planning-scroll-container::-webkit-scrollbar-thumb:hover {
-            background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+            background: ${isDarkMode 
+              ? 'linear-gradient(180deg, #00f0ff 0%, #00c4cc 100%)' 
+              : 'linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%)'};
           }
         `}</style>
         <table className="w-full">
@@ -395,15 +584,23 @@ const PlanningTable = ({
                 <React.Fragment key={groupe}>
                   {agents.length > 0 && (
                     <>
-                      <tr className="bg-blue-50">
+                      <tr style={{ 
+                        backgroundColor: isDarkMode ? 'rgba(0, 240, 255, 0.1)' : '#eff6ff' 
+                      }}>
                         <td colSpan={daysInMonth + 1}>
                           <div className="flex items-center justify-between px-4 py-2">
-                            <span className="font-semibold text-sm text-blue-900">
+                            <span className={`font-semibold text-sm ${
+                              isDarkMode ? 'text-[#00f0ff]' : 'text-blue-900'
+                            }`}>
                               {displayGroupe} ({agents.length} agents)
                             </span>
                             <button
                               onClick={() => toggleGroupCollapse(groupe)}
-                              className="p-1 hover:bg-blue-100 rounded transition-colors"
+                              className={`p-1 rounded transition-colors ${
+                                isDarkMode 
+                                  ? 'hover:bg-[rgba(0,240,255,0.2)] text-[#00f0ff]' 
+                                  : 'hover:bg-blue-100 text-blue-800'
+                              }`}
                               title={isCollapsed ? "Afficher" : "Reduire"}
                             >
                               {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
@@ -414,10 +611,17 @@ const PlanningTable = ({
                       
                       {!isCollapsed && (
                         <>
-                          <tr className="bg-gray-50">
+                          <tr style={{ 
+                            backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : '#f9fafb' 
+                          }}>
                             <th 
-                              className="px-2 py-2 text-left text-xs font-medium text-gray-700 sticky left-0 bg-gray-50 z-10"
-                              style={{ minWidth: '95px', width: '95px' }}
+                              className="px-2 py-2 text-left text-xs font-medium sticky left-0 z-10"
+                              style={{ 
+                                minWidth: '95px', 
+                                width: '95px',
+                                backgroundColor: isDarkMode ? '#1a1a2e' : '#f9fafb',
+                                color: isDarkMode ? 'rgba(255, 255, 255, 0.8)' : '#374151'
+                              }}
                             >
                               Agent
                             </th>
@@ -427,19 +631,37 @@ const PlanningTable = ({
                           {agents.map((agent) => {
                             const fullName = `${agent.nom} ${agent.prenom}`;
                             return (
-                              <tr key={agent.id || `${agent.nom}_${agent.prenom}`} className="hover:bg-gray-50">
+                              <tr 
+                                key={agent.id || `${agent.nom}_${agent.prenom}`} 
+                                className={isDarkMode ? '' : 'hover:bg-gray-50'}
+                                style={{
+                                  backgroundColor: isDarkMode ? 'transparent' : undefined
+                                }}
+                              >
                                 <td 
-                                  className="px-2 py-1 text-gray-900 sticky left-0 bg-white z-10 border-r"
-                                  style={{ minWidth: '95px', width: '95px' }}
+                                  className="px-2 py-1 sticky left-0 z-10 border-r"
+                                  style={{ 
+                                    minWidth: '95px', 
+                                    width: '95px',
+                                    backgroundColor: isDarkMode ? '#1a1a2e' : '#ffffff',
+                                    color: isDarkMode ? '#ffffff' : '#111827',
+                                    borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#e5e7eb'
+                                  }}
                                 >
                                   <button
                                     onClick={() => onAgentClick && onAgentClick(agent)}
-                                    className="text-left hover:text-blue-600 hover:underline transition-colors w-full"
+                                    className={`text-left transition-colors w-full ${
+                                      isDarkMode 
+                                        ? 'hover:text-[#00f0ff]' 
+                                        : 'hover:text-blue-600 hover:underline'
+                                    }`}
                                     title={fullName}
                                   >
                                     <div className="flex flex-col leading-tight">
                                       <span className="font-semibold text-xs">{agent.nom}</span>
-                                      <span className="text-[10px] text-gray-600">{agent.prenom}</span>
+                                      <span className={`text-[10px] ${
+                                        isDarkMode ? 'text-gray-400' : 'text-gray-600'
+                                      }`}>{agent.prenom}</span>
                                     </div>
                                   </button>
                                 </td>
@@ -453,7 +675,9 @@ const PlanningTable = ({
                       )}
                       
                       {groupIndex < Object.entries(agentsData).length - 1 && (
-                        <tr className="h-2 bg-gray-100">
+                        <tr className="h-2" style={{ 
+                          backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : '#f3f4f6' 
+                        }}>
                           <td colSpan={daysInMonth + 1}></td>
                         </tr>
                       )}
@@ -466,110 +690,130 @@ const PlanningTable = ({
         </table>
       </div>
       
-      <div className="p-4 bg-gray-50 border-t">
-        <h4 className="font-semibold text-sm mb-2">Legende des codes</h4>
+      {/* Légende */}
+      <div 
+        className="p-4 border-t"
+        style={{
+          backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : '#f9fafb',
+          borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : '#e5e7eb'
+        }}
+      >
+        <h4 className={`font-semibold text-sm mb-2 ${isDarkMode ? 'text-[#00f0ff]' : 'text-gray-900'}`}>
+          Legende des codes
+        </h4>
         <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-xs">
           <div>
-            <p className="font-medium mb-1">Services :</p>
+            <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>Services :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span 
-                  className="inline-block w-6 h-4 border border-gray-300 rounded text-center text-[10px] font-semibold"
-                  style={getCellColorStyle('-')}
+                  className="inline-block w-6 h-4 border rounded text-center text-[10px] font-semibold"
+                  style={{
+                    ...getCellColorStyle('-'),
+                    borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : '#d1d5db'
+                  }}
                 >-</span>
-                <span>Matin (06h-14h)</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>Matin (06h-14h)</span>
               </div>
               <div className="flex items-center gap-2">
                 <span 
-                  className="inline-block w-6 h-4 border border-gray-300 rounded text-center text-[10px] font-semibold"
-                  style={getCellColorStyle('O')}
+                  className="inline-block w-6 h-4 border rounded text-center text-[10px] font-semibold"
+                  style={{
+                    ...getCellColorStyle('O'),
+                    borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : '#d1d5db'
+                  }}
                 >O</span>
-                <span>Soir (14h-22h)</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>Soir (14h-22h)</span>
               </div>
               <div className="flex items-center gap-2">
                 <span 
-                  className="inline-block w-6 h-4 border border-gray-300 rounded text-center text-[10px] font-semibold"
-                  style={getCellColorStyle('X')}
+                  className="inline-block w-6 h-4 border rounded text-center text-[10px] font-semibold"
+                  style={{
+                    ...getCellColorStyle('X'),
+                    borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : '#d1d5db'
+                  }}
                 >X</span>
-                <span>Nuit (22h-06h)</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>Nuit (22h-06h)</span>
               </div>
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Repos / Conges :</p>
+            <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>Repos / Conges :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span 
                   className="inline-block w-4 h-4 rounded"
                   style={{ backgroundColor: getServiceColor('RP').bg }}
                 ></span>
-                <span>RP = Repos</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>RP = Repos</span>
               </div>
               <div className="flex items-center gap-2">
                 <span 
                   className="inline-block w-4 h-4 rounded"
                   style={{ backgroundColor: getServiceColor('C').bg }}
                 ></span>
-                <span>C = Conges</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>C = Conges</span>
               </div>
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Etats :</p>
+            <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>Etats :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span 
                   className="inline-block w-4 h-4 rounded"
                   style={{ backgroundColor: getServiceColor('D').bg }}
                 ></span>
-                <span>D = Disponible</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>D = Disponible</span>
               </div>
               <div className="flex items-center gap-2">
                 <span 
                   className="inline-block w-4 h-4 rounded"
                   style={{ backgroundColor: getServiceColor('MA').bg }}
                 ></span>
-                <span>MA = Maladie</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>MA = Maladie</span>
               </div>
               <div className="flex items-center gap-2">
                 <span 
                   className="inline-block w-4 h-4 rounded"
                   style={{ backgroundColor: getServiceColor('FO').bg }}
                 ></span>
-                <span>HAB/FO = Formation</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>HAB/FO = Formation</span>
               </div>
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Postes supplementaires :</p>
+            <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>Postes supplementaires :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span 
-                  className="inline-block px-1 border-t border-dashed border-gray-400 text-[8px] italic"
+                  className={`inline-block px-1 border-t border-dashed text-[8px] italic ${
+                    isDarkMode ? 'border-gray-500' : 'border-gray-400'
+                  }`}
                   style={{ color: colors.postesSupp?.text || '#8b5cf6' }}
                 >+ACR +RO</span>
               </div>
-              <p className="text-gray-500 text-xs">En bas de cellule, italique</p>
-              <p className="text-gray-500 text-xs">Selection multiple possible</p>
+              <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>En bas de cellule, italique</p>
+              <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Selection multiple possible</p>
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Notes :</p>
+            <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>Notes :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <StickyNote className="w-4 h-4 text-amber-500" />
-                <span>Note/Commentaire</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>Note/Commentaire</span>
               </div>
-              <p className="text-gray-500 text-xs">Icone en haut a droite</p>
-              <p className="text-gray-500 text-xs">Cliquer pour voir/modifier</p>
+              <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Icone en haut a droite</p>
+              <p className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Cliquer pour voir/modifier</p>
             </div>
           </div>
           <div>
-            <p className="font-medium mb-1">Texte libre :</p>
+            <p className={`font-medium mb-1 ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>Texte libre :</p>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Type className="w-4 h-4 text-purple-500" />
-                <span>Texte personnalise</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>Texte personnalise</span>
               </div>
               <div className="flex items-center gap-2">
                 <span 
@@ -579,10 +823,21 @@ const PlanningTable = ({
                     color: colors.texteLibre?.text || '#92400e'
                   }}
                 >RDV</span>
-                <span>Fond jaune clair</span>
+                <span className={isDarkMode ? 'text-gray-300' : ''}>Fond jaune clair</span>
               </div>
             </div>
           </div>
+        </div>
+        
+        {/* Indicateur du thème actuel */}
+        <div className={`mt-4 pt-3 border-t flex items-center justify-center gap-2 text-xs ${
+          isDarkMode ? 'border-[rgba(255,255,255,0.1)] text-gray-400' : 'border-gray-200 text-gray-500'
+        }`}>
+          {isDarkMode ? <Moon size={14} className="text-[#00f0ff]" /> : <Sun size={14} className="text-amber-500" />}
+          <span>
+            Thème {isDarkMode ? 'Nexaverse (Sombre)' : 'Clair'} 
+            {rememberChoice && ' • Sauvegardé'}
+          </span>
         </div>
       </div>
     </div>

@@ -42,6 +42,10 @@ import ModalCouleurs from './ModalCouleurs';
  *   - Bouton dédié "Effacer note privée" pour suppression
  * 
  * v3.2.1 - Fix visibilité texte dans modales de saisie
+ * 
+ * v3.2.2 - Fix: Permettre sauvegarde quand note privée effacée
+ *   - Track l'état initial de la note privée
+ *   - Bouton Sauvegarder actif si note privée modifiée (y compris effacée)
  */
 
 // Couleurs pour les statuts congé
@@ -123,6 +127,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const [tempNote, setTempNote] = useState('');
   const [tempTexteLibre, setTempTexteLibre] = useState('');
   const [tempNotePrivee, setTempNotePrivee] = useState('');  // v3.2: Note privée
+  const [initialNotePrivee, setInitialNotePrivee] = useState('');  // v3.2.2: État initial pour comparaison
   
   // === ÉTATS RECHERCHE ET ACCORDÉONS ===
   const [searchTerm, setSearchTerm] = useState('');
@@ -289,7 +294,11 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     setTempPoste(existing?.poste_code || '');
     setTempPostesSupplementaires(existing?.postes_supplementaires || []);
     setTempNote(existing?.commentaire || '');
-    setTempNotePrivee(existing?.note_privee || '');  // v3.2: Charger note privée
+    
+    // v3.2: Charger note privée
+    const notePriveeValue = existing?.note_privee || '';
+    setTempNotePrivee(notePriveeValue);
+    setInitialNotePrivee(notePriveeValue);  // v3.2.2: Stocker l'état initial
     
     // Analyser le service stocké
     const storedService = existing?.service_code || '';
@@ -345,7 +354,8 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
     setTempNote('');
     setTempStatutConge('');
     setTempTexteLibre('');
-    setTempNotePrivee('');  // v3.2: Reset note privée
+    setTempNotePrivee('');
+    setInitialNotePrivee('');  // v3.2.2: Reset état initial
     setSearchTerm('');
   };
 
@@ -390,7 +400,7 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
           commentaire: tempNote || null,
           statut_conge: tempStatutConge || null,
           texte_libre: hasTexteLibre ? tempTexteLibre.trim() : null,
-          note_privee: tempNotePrivee || null,  // v3.2: Sauvegarder note privée
+          note_privee: tempNotePrivee || null,  // v3.2: Sauvegarder note privée (null si vide pour effacer)
           updated_at: new Date().toISOString()
         }, { onConflict: 'agent_id,date' });
 
@@ -677,7 +687,10 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
   const previewService = buildFinalService();
   const hasExistingNote = Boolean(tempNote);
   const hasExistingTexteLibre = Boolean(tempTexteLibre && tempTexteLibre.trim() !== '');
-  const hasExistingNotePrivee = Boolean(tempNotePrivee);  // v3.2
+  const hasExistingNotePrivee = Boolean(tempNotePrivee);
+  
+  // v3.2.2: Vérifier si la note privée a été modifiée (y compris effacée)
+  const notePriveeChanged = initialNotePrivee !== tempNotePrivee;
 
   // === RENDU BOUTONS CODE ===
   const renderCodeButtons = (codes, onClick, isSelectedFn, cols = 4) => {
@@ -737,6 +750,10 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
 
   const calendarDays = generateCalendarDays();
   const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+
+  // v3.2.2: Condition pour activer le bouton Sauvegarder
+  // Actif si : quelque chose à sauvegarder OU note privée modifiée (y compris effacée)
+  const canSave = tempService || tempCategorie || tempPoste || tempStatutConge || tempNotePrivee || notePriveeChanged;
 
   return (
     <>
@@ -1288,6 +1305,13 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                     </div>
                   </div>
                 )}
+                
+                {/* v3.2.2: Indicateur de modification de note privée */}
+                {notePriveeChanged && !hasExistingNotePrivee && initialNotePrivee && (
+                  <div style={{ marginTop: '8px', padding: '6px 10px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '11px', color: '#dc2626' }}>
+                    ⚠️ La note privée sera effacée à la sauvegarde
+                  </div>
+                )}
               </div>
 
               {/* === BOUTONS D'ACTION === */}
@@ -1296,8 +1320,9 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
                 <div style={styles.rightActions}>
                   <button style={styles.cancelBtn} onClick={closeEditor}>Annuler</button>
                   <button 
-                    style={{...styles.saveBtn, opacity: (!tempService && !tempCategorie && !tempPoste && !tempStatutConge && !tempNotePrivee) ? 0.5 : 1}}
+                    style={{...styles.saveBtn, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed'}}
                     onClick={saveEdit}
+                    disabled={!canSave}
                   >
                     Sauvegarder
                   </button>
