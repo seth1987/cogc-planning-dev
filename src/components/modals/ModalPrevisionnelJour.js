@@ -6,7 +6,7 @@ import supabaseService from '../../services/supabaseService';
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée, Jour) et par poste
  * 
- * @version 1.6.0 - Ajout catégorie "Jour" + badges statut congé (C, C?, CNA)
+ * @version 1.7.1 - Correction boutons : ACRF matin, SOUF soir uniquement
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -39,6 +39,18 @@ const ModalPrevisionnelJour = ({
   // Codes de service de jour (depuis config.js)
   const SERVICE_JOUR_CODES = useMemo(() => ['VL', 'D', 'DISPO', 'EIA', 'DPX', 'PSE', 'INAC', 'VM'], []);
 
+  // Libellés pour les codes de service de jour
+  const SERVICE_JOUR_LABELS = useMemo(() => ({
+    'D': 'Disponible',
+    'DISPO': 'Disponible',
+    'VL': 'VL',
+    'VM': 'Visite Médicale',
+    'EIA': 'EIA',
+    'DPX': 'DPX',
+    'PSE': 'PSE',
+    'INAC': 'Inactif'
+  }), []);
+
   // Configuration des créneaux
   const CRENEAUX = useMemo(() => ({
     nuitAvant: {
@@ -56,7 +68,7 @@ const ModalPrevisionnelJour = ({
       symbole: '-',
       colonneJour: 'J',
       icon: Sun,
-      postes: ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC'],
+      postes: ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'ACRF'],
       color: 'yellow'
     },
     soir: {
@@ -65,7 +77,7 @@ const ModalPrevisionnelJour = ({
       symbole: 'O',
       colonneJour: 'J',
       icon: Sunset,
-      postes: ['CRC', 'ACR', 'RC', 'RO', 'SOUFF', 'CCU', 'RE', 'CAC'],
+      postes: ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'SOUF'],
       color: 'orange'
     },
     jour: {
@@ -74,7 +86,7 @@ const ModalPrevisionnelJour = ({
       symbole: 'VL/D/...',
       colonneJour: 'J',
       icon: Briefcase,
-      postes: ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC'],
+      postes: [], // Pas de postes pour "Jour", on affiche par service
       color: 'blue'
     },
     nuitApres: {
@@ -217,7 +229,7 @@ const ModalPrevisionnelJour = ({
     if (groupe.includes('RESERVE')) return 'RE';
     
     // 7. Autres groupes spéciaux
-    if (groupe.includes('SOUFF') || groupe.includes('SOUFFLEUR')) return 'SOUFF';
+    if (groupe.includes('SOUFF') || groupe.includes('SOUFFLEUR')) return 'SOUF';
     
     // 8. Fallback
     if (groupe.includes('CRC')) return 'CRC';
@@ -228,12 +240,13 @@ const ModalPrevisionnelJour = ({
   }, []);
 
   /**
-   * Normaliser un code de poste (SOUF → SOUFF)
+   * Normaliser un code de poste (SOUF → SOUF, garder cohérent)
    */
   const normalizePosteCode = useCallback((posteCode) => {
     if (!posteCode) return null;
     const cleaned = posteCode.toUpperCase().replace(/^\+/, '').trim();
-    if (cleaned === 'SOUF') return 'SOUFF';
+    // Normaliser SOUFF en SOUF
+    if (cleaned === 'SOUFF') return 'SOUF';
     return cleaned;
   }, []);
 
@@ -245,7 +258,7 @@ const ModalPrevisionnelJour = ({
     const raw = rawCode.toUpperCase().trim();
     const norm = normalizedPoste.toUpperCase().trim();
     
-    if ((raw === 'SOUF' && norm === 'SOUFF') || (raw === 'SOUFF' && norm === 'SOUFF')) {
+    if ((raw === 'SOUF' && norm === 'SOUF') || (raw === 'SOUFF' && norm === 'SOUF')) {
       return true;
     }
     if (raw === norm) {
@@ -275,15 +288,17 @@ const ModalPrevisionnelJour = ({
       nuitAvant: {},
       matin: {},
       soir: {},
-      jour: {},
+      jour: {}, // Pour "jour", on va grouper par service_code
       nuitApres: {}
     };
 
-    // Initialiser tous les postes avec des tableaux vides
+    // Initialiser tous les postes avec des tableaux vides (sauf jour)
     Object.keys(CRENEAUX).forEach(creneau => {
-      CRENEAUX[creneau].postes.forEach(poste => {
-        result[creneau][poste] = [];
-      });
+      if (creneau !== 'jour') {
+        CRENEAUX[creneau].postes.forEach(poste => {
+          result[creneau][poste] = [];
+        });
+      }
     });
 
     // Parcourir chaque agent
@@ -375,16 +390,13 @@ const ModalPrevisionnelJour = ({
       }
 
       // Jour : codes SERVICE_JOUR (VL, D, DISPO, EIA, DPX, PSE, INAC, VM)
+      // Grouper par service_code au lieu de par poste
       if (isServiceJourCode(serviceCodeJ)) {
-        if (CRENEAUX.jour.postes.includes(posteEffectif)) {
-          result.jour[posteEffectif].push(agentInfo);
+        const serviceKey = serviceCodeJ.toUpperCase().trim();
+        if (!result.jour[serviceKey]) {
+          result.jour[serviceKey] = [];
         }
-        postesSupplementairesJ.forEach(posteSupp => {
-          const posteNorm = normalizePosteCode(posteSupp);
-          if (CRENEAUX.jour.postes.includes(posteNorm) && result.jour[posteNorm]) {
-            result.jour[posteNorm].push({ ...agentInfo, fromPosteSupp: posteSupp });
-          }
-        });
+        result.jour[serviceKey].push(agentInfo);
       }
 
       // Nuit J → J+1 : X dans colonne J+1
@@ -479,11 +491,17 @@ const ModalPrevisionnelJour = ({
       buttonClass += 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-300';
     }
 
+    // Labels spéciaux pour certains boutons
+    let displayLabel = poste;
+    if (poste === 'ACRF') {
+      displayLabel = 'ACRF'; // ACR Figé - temps pour les réguls
+    }
+
     const buttonLabel = status === 'fige' 
-      ? `${poste} FIGÉ` 
+      ? `${displayLabel} FIGÉ` 
       : status === 'rapatrie' 
-        ? `${poste} RAP. PN` 
-        : poste;
+        ? `${displayLabel} RAP. PN` 
+        : displayLabel;
 
     return (
       <div className="relative" key={poste} style={{ zIndex: isDropdownOpen ? 100 : 1 }}>
@@ -494,6 +512,7 @@ const ModalPrevisionnelJour = ({
           }}
           className={buttonClass}
           disabled={isSaving}
+          title={poste === 'ACRF' ? 'ACR Figé - temps pour les réguls' : undefined}
         >
           {isSaving ? (
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -537,7 +556,7 @@ const ModalPrevisionnelJour = ({
     );
   }, [postesStatus, openDropdown, handlePosteClick, handleMenuSelect, POSTES_AVEC_MENU, savingPoste]);
 
-  // Rendu d'un agent dans la liste
+  // Rendu d'un agent dans la liste (pour créneaux classiques)
   const renderAgent = useCallback((agent, creneauId, poste) => {
     const posteStatus = postesStatus[creneauId]?.[poste];
     
@@ -573,16 +592,10 @@ const ModalPrevisionnelJour = ({
       }
     }
 
-    // Ne PAS afficher le badge si c'est juste une normalisation (SOUF → SOUFF)
+    // Ne PAS afficher le badge si c'est juste une normalisation (SOUF → SOUF)
     let additionalInfo = null;
     if (agent.posteCodeRaw && !isNormalizationOf(agent.posteCodeRaw, poste)) {
       additionalInfo = <span className="ml-1 text-xs text-blue-500">({agent.posteCodeRaw})</span>;
-    }
-
-    // Afficher le code service pour le créneau "jour"
-    let serviceCodeInfo = null;
-    if (creneauId === 'jour' && agent.serviceCode) {
-      serviceCodeInfo = <span className="ml-1 text-xs text-blue-600 font-medium">[{agent.serviceCode}]</span>;
     }
 
     // Afficher les postes supplémentaires en italique violet
@@ -610,7 +623,6 @@ const ModalPrevisionnelJour = ({
         <span className={`font-medium ${posteStatus === 'fige' ? 'text-red-700' : posteStatus === 'rapatrie' ? 'text-orange-700' : 'text-gray-800'}`}>
           {agent.nom} {agent.prenom}
         </span>
-        {serviceCodeInfo}
         {additionalInfo}
         {postesSupp}
         {congeBadge}
@@ -619,7 +631,7 @@ const ModalPrevisionnelJour = ({
     );
   }, [postesStatus, isNormalizationOf]);
 
-  // Rendu d'un créneau complet
+  // Rendu d'un créneau classique (Nuit, Matin, Soir)
   const renderCreneau = useCallback((creneauConfig, periodLabel = null) => {
     const { id, label, icon: Icon, postes, color } = creneauConfig;
     const equipes = equipesParCreneau[id] || {};
@@ -633,13 +645,8 @@ const ModalPrevisionnelJour = ({
 
     const colors = colorClasses[color] || colorClasses.indigo;
 
-    // Compter le nombre d'agents dans ce créneau
-    const totalAgents = Object.values(equipes).reduce((sum, arr) => sum + arr.length, 0);
-
-    // Ne pas afficher le créneau s'il n'y a aucun agent (sauf pour les créneaux principaux)
-    if (id === 'jour' && totalAgents === 0) {
-      return null;
-    }
+    // Filtrer les postes spéciaux (ACRF, SOUF) pour l'affichage des agents
+    const postesAffichage = postes.filter(p => !['ACRF', 'SOUF'].includes(p));
 
     return (
       <div className={`rounded-lg border ${colors.border} ${colors.bg}`} style={{ overflow: 'visible' }}>
@@ -649,19 +656,14 @@ const ModalPrevisionnelJour = ({
             <span className="font-semibold text-gray-800">
               {periodLabel || label}
             </span>
-            {id === 'jour' && (
-              <span className="text-xs text-gray-500 ml-2">
-                (VL, D, DISPO, EIA, DPX, PSE, INAC, VM)
-              </span>
-            )}
           </div>
           <div className="text-xs text-gray-500">
-            {id === 'jour' ? 'Service de jour' : `Symbole: ${creneauConfig.symbole}`}
+            Symbole: {creneauConfig.symbole}
           </div>
         </div>
 
         <div className="px-4 py-3 space-y-2">
-          {postes.map(poste => {
+          {postesAffichage.map(poste => {
             const agentsPoste = equipes[poste] || [];
             
             return (
@@ -690,6 +692,77 @@ const ModalPrevisionnelJour = ({
       </div>
     );
   }, [equipesParCreneau, renderAgent, renderPosteButton]);
+
+  // Rendu spécial pour le créneau "Jour" - groupé par service
+  const renderCreneauJour = useCallback(() => {
+    const equipes = equipesParCreneau.jour || {};
+    const serviceKeys = Object.keys(equipes).sort();
+
+    // Si aucun agent en service de jour, ne pas afficher
+    const totalAgents = serviceKeys.reduce((sum, key) => sum + equipes[key].length, 0);
+    if (totalAgents === 0) {
+      return null;
+    }
+
+    return (
+      <div className="rounded-lg border border-blue-200 bg-blue-50" style={{ overflow: 'visible' }}>
+        <div className="bg-blue-100 px-4 py-2.5 flex items-center justify-between rounded-t-lg">
+          <div className="flex items-center gap-2">
+            <Briefcase className="w-5 h-5 text-blue-600" />
+            <span className="font-semibold text-gray-800">
+              💼 Jour
+            </span>
+            <span className="text-xs text-gray-500 ml-2">
+              (Services de jour)
+            </span>
+          </div>
+          <div className="text-xs text-gray-500">
+            {totalAgents} agent{totalAgents > 1 ? 's' : ''}
+          </div>
+        </div>
+
+        <div className="px-4 py-3 space-y-3">
+          {serviceKeys.map(serviceCode => {
+            const agentsService = equipes[serviceCode] || [];
+            if (agentsService.length === 0) return null;
+            
+            const serviceLabel = SERVICE_JOUR_LABELS[serviceCode] || serviceCode;
+            
+            return (
+              <div key={serviceCode} className="flex items-start">
+                <div className="w-20 flex-shrink-0 font-mono text-xs font-bold text-blue-700 pt-0.5 bg-blue-100 px-2 py-1 rounded">
+                  {serviceLabel}
+                </div>
+                <div className="flex-1 pl-3 flex flex-wrap gap-x-3 gap-y-1">
+                  {agentsService.map((agent, idx) => (
+                    <span key={agent.id} className="text-sm text-gray-800">
+                      {agent.nom} {agent.prenom}
+                      {agent.statutConge && (
+                        <span className={`ml-1 text-xs px-1 py-0.5 rounded font-semibold ${
+                          agent.statutConge === 'C' ? 'bg-yellow-400 text-yellow-900' :
+                          agent.statutConge === 'C?' ? 'bg-yellow-200 text-yellow-800' :
+                          agent.statutConge === 'CNA' ? 'bg-red-300 text-red-900' : ''
+                        }`}>
+                          {agent.statutConge}
+                        </span>
+                      )}
+                      {idx < agentsService.length - 1 && <span className="text-gray-400">,</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="bg-blue-100 px-4 py-2 border-t border-blue-200 rounded-b-lg">
+          <div className="text-xs text-gray-500">
+            Codes affichés : D (Dispo), VL, VM (Visite Médicale), EIA, DPX, PSE, INAC
+          </div>
+        </div>
+      </div>
+    );
+  }, [equipesParCreneau, SERVICE_JOUR_LABELS]);
 
   // Stats par créneau
   const statsCreneaux = useMemo(() => {
@@ -800,7 +873,7 @@ const ModalPrevisionnelJour = ({
               {renderCreneau(CRENEAUX.nuitAvant, nuitAvantLabel)}
               {renderCreneau(CRENEAUX.matin, '☀️ Matin')}
               {renderCreneau(CRENEAUX.soir, '🌆 Soirée')}
-              {renderCreneau(CRENEAUX.jour, '💼 Jour')}
+              {renderCreneauJour()}
               {renderCreneau(CRENEAUX.nuitApres, nuitApresLabel)}
             </div>
           )}
