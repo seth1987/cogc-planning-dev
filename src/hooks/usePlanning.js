@@ -7,7 +7,7 @@ import { MONTHS, CURRENT_YEAR } from '../constants/config';
  * Hook personnalisé pour la gestion du planning
  * Centralise le chargement, la mise à jour et la suppression des données de planning
  * 
- * @version 1.4.0 - Support complet texte libre (lecture/écriture)
+ * @version 1.5.0 - Support note_privee dans planning général
  * @param {Object} user - L'utilisateur authentifié
  * @param {string} currentMonth - Le mois actuellement sélectionné
  * @param {number} currentYear - L'année actuellement sélectionnée
@@ -105,7 +105,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       console.log('🔍 DEBUG Résultats Supabase:');
       console.log('   → Nombre total d\'entrées:', planningFromDB?.length || 0);
       
-      // Organiser les données de planning AVEC les notes, postes supplémentaires ET texte libre
+      // Organiser les données de planning AVEC les notes, postes supplémentaires, texte libre ET note privée
       const planningData = {};
       agentsResult.forEach(agent => {
         const agentName = `${agent.nom} ${agent.prenom}`;
@@ -116,6 +116,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       let entriesProcessed = 0;
       let entriesIgnored = 0;
       let texteLibreCount = 0;
+      let notePriveeCount = 0;
       const daysLoaded = new Set();
       const lateDecemberEntries = []; // Jours 25-31
       
@@ -147,7 +148,13 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
               console.log(`📝 Texte libre trouvé: ${agentName} jour ${day} → "${entry.texte_libre}"`);
             }
             
-            // Construire l'objet de données de cellule avec note, postes supplémentaires ET texte libre
+            // 🔍 DEBUG: Log si note privée présente
+            if (entry.note_privee) {
+              notePriveeCount++;
+              console.log(`🔒 Note privée trouvée: ${agentName} jour ${day}`);
+            }
+            
+            // Construire l'objet de données de cellule avec note, postes supplémentaires, texte libre ET note privée
             const cellData = {
               service: entry.service_code,
               ...(entry.poste_code && { poste: entry.poste_code }),
@@ -158,13 +165,15 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
               // ✅ FIX v1.4.0: Inclure texte_libre depuis la DB
               ...(entry.texte_libre && { texteLibre: entry.texte_libre }),
               // ✅ FIX v1.5.0: Inclure statut_conge depuis la DB
-              ...(entry.statut_conge && { statutConge: entry.statut_conge })
+              ...(entry.statut_conge && { statutConge: entry.statut_conge }),
+              // ✅ FIX v1.5.0: Inclure note_privee depuis la DB
+              ...(entry.note_privee && { notePrivee: entry.note_privee })
             };
             
             // Si pas de données supplémentaires, garder le format simple
             if (!entry.poste_code && !entry.commentaire && 
                 (!entry.postes_supplementaires || entry.postes_supplementaires.length === 0) &&
-                !entry.texte_libre && !entry.statut_conge) {
+                !entry.texte_libre && !entry.statut_conge && !entry.note_privee) {
               planningData[agentName][day] = entry.service_code;
             } else {
               planningData[agentName][day] = cellData;
@@ -181,6 +190,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       console.log('   → Entrées traitées:', entriesProcessed);
       console.log('   → Entrées ignorées (agent non trouvé):', entriesIgnored);
       console.log('   → Entrées avec texte libre:', texteLibreCount);
+      console.log('   → Entrées avec note privée:', notePriveeCount);
       console.log('   → Jours uniques chargés:', [...daysLoaded].sort((a,b) => a-b).join(', '));
       console.log('   → Nombre de jours:', daysLoaded.size);
       
@@ -221,10 +231,10 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
 
   /**
    * Récupère les données d'une cellule spécifique
-   * @version 1.4.0 - Support texteLibre
+   * @version 1.5.0 - Support notePrivee
    * @param {string} agentName - Nom complet de l'agent
    * @param {number} day - Jour du mois
-   * @returns {Object|null} Données de la cellule {service, poste, note, postesSupplementaires, texteLibre} ou null
+   * @returns {Object|null} Données de la cellule {service, poste, note, postesSupplementaires, texteLibre, notePrivee} ou null
    */
   const getCellData = useCallback((agentName, day) => {
     const cellValue = planning[agentName]?.[day];
@@ -232,7 +242,7 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
     if (!cellValue) return null;
     
     if (typeof cellValue === 'string') {
-      return { service: cellValue, poste: null, note: null, postesSupplementaires: null, texteLibre: null, statutConge: null };
+      return { service: cellValue, poste: null, note: null, postesSupplementaires: null, texteLibre: null, statutConge: null, notePrivee: null };
     }
     
     return {
@@ -243,16 +253,18 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
       // ✅ FIX v1.4.0: Inclure texteLibre
       texteLibre: cellValue.texteLibre || null,
       // ✅ FIX v1.5.0: Inclure statutConge
-      statutConge: cellValue.statutConge || null
+      statutConge: cellValue.statutConge || null,
+      // ✅ FIX v1.5.0: Inclure notePrivee
+      notePrivee: cellValue.notePrivee || null
     };
   }, [planning]);
 
   /**
-   * Met à jour une cellule du planning avec support des notes, postes supplémentaires et texte libre
-   * @version 1.4.0 - Support texteLibre
+   * Met à jour une cellule du planning avec support des notes, postes supplémentaires, texte libre et note privée
+   * @version 1.5.0 - Support notePrivee
    * @param {string} agentName - Nom complet de l'agent
    * @param {number} day - Jour du mois
-   * @param {string|Object} value - Valeur: string (service simple), object {service, poste?, note?, postesSupplementaires?, texteLibre?}, ou '' pour supprimer
+   * @param {string|Object} value - Valeur: string (service simple), object {service, poste?, note?, postesSupplementaires?, texteLibre?, note_privee?}, ou '' pour supprimer
    */
   const updateCell = useCallback(async (agentName, day, value) => {
     try {
@@ -283,15 +295,17 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
         const texteLibre = typeof value === 'object' ? (value.texteLibre || null) : null;
         // ✅ FIX v1.6.0: Extraire statut_conge
         const statutConge = typeof value === 'object' ? (value.statut_conge || null) : null;
+        // ✅ FIX v1.5.0: Extraire note_privee (supporte les deux formats)
+        const notePrivee = typeof value === 'object' ? (value.note_privee || value.notePrivee || null) : null;
         
-        console.log(`📝 Sauvegarde avec texteLibre: "${texteLibre}", statutConge: "${statutConge}"`);
+        console.log(`📝 Sauvegarde avec texteLibre: "${texteLibre}", statutConge: "${statutConge}", notePrivee: "${notePrivee ? '***' : 'null'}"`);
         
-        // Sauvegarde avec note, postes supplémentaires, texteLibre ET statutConge
-        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires, texteLibre, statutConge);
+        // Sauvegarde avec note, postes supplémentaires, texteLibre, statutConge ET notePrivee
+        await supabaseService.savePlanning(agent.id, date, serviceCode, posteCode, note, postesSupplementaires, texteLibre, statutConge, notePrivee);
       }
       
       // Mise à jour optimiste du state local
-      // ✅ FIX v1.7.0: Normaliser le format pour affichage immédiat (statut_conge → statutConge)
+      // ✅ FIX v1.7.0: Normaliser le format pour affichage immédiat (statut_conge → statutConge, note_privee → notePrivee)
       let normalizedValue = value;
       if (typeof value === 'object' && value !== null) {
         normalizedValue = {
@@ -301,7 +315,9 @@ export function usePlanning(user, currentMonth, currentYear = CURRENT_YEAR) {
           ...(value.postesSupplementaires && { postesSupplementaires: value.postesSupplementaires }),
           ...(value.texteLibre && { texteLibre: value.texteLibre }),
           // Normaliser statut_conge → statutConge pour l'affichage
-          ...((value.statut_conge || value.statutConge) && { statutConge: value.statut_conge || value.statutConge })
+          ...((value.statut_conge || value.statutConge) && { statutConge: value.statut_conge || value.statutConge }),
+          // Normaliser note_privee → notePrivee pour l'affichage
+          ...((value.note_privee || value.notePrivee) && { notePrivee: value.note_privee || value.notePrivee })
         };
       }
       
