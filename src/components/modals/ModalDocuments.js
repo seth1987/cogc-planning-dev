@@ -22,7 +22,7 @@ import MesDocuments from './MesDocuments';
  */
 const ModalDocuments = ({ isOpen, onClose }) => {
   // États principaux
-  const [activeTab, setActiveTab] = useState('generate'); // 'library', 'generate', 'myaccount'
+  const [activeTab, setActiveTab] = useState('library'); // 'library', 'generate', 'myaccount'
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -58,10 +58,10 @@ const ModalDocuments = ({ isOpen, onClose }) => {
   
   const fileInputRef = useRef(null);
 
-  // Configuration des onglets
+  // Configuration des onglets - Bibliothèque en premier
   const tabs = [
-    { id: 'generate', name: 'Générer', icon: FileSignature },
     { id: 'library', name: 'Bibliothèque', icon: Library },
+    { id: 'generate', name: 'Générer', icon: FileSignature },
     { id: 'myaccount', name: 'Mon compte', icon: User }
   ];
 
@@ -618,191 +618,6 @@ const ModalDocuments = ({ isOpen, onClose }) => {
           })}
         </div>
 
-        {/* ==================== ONGLET GÉNÉRER ==================== */}
-        {activeTab === 'generate' && (
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Générer un document pré-rempli</h3>
-              <p className="text-gray-400 text-sm">
-                Sélectionnez un formulaire ci-dessous. Vos informations personnelles seront automatiquement intégrées.
-              </p>
-            </div>
-
-            {loadingAgent ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                <span className="ml-3 text-gray-400">Chargement du profil...</span>
-              </div>
-            ) : !currentAgent ? (
-              <div className="text-center py-10 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
-                <AlertCircle className="w-12 h-12 mx-auto mb-3 text-yellow-400" />
-                <p className="text-yellow-300 font-medium">Profil agent non trouvé</p>
-                <p className="text-gray-400 text-sm mt-1">
-                  Votre email ne correspond à aucun agent enregistré.<br />
-                  Contactez l'administrateur.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Info agent */}
-                <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
-                  <div className="flex items-center gap-3 text-sm">
-                    <User className="w-5 h-5 text-cyan-400" />
-                    <span className="text-gray-400">Connecté en tant que :</span>
-                    <span className="text-white font-medium">
-                      {currentAgent.prenom} {currentAgent.nom}
-                    </span>
-                    {currentAgent.signature_url ? (
-                      <span className="ml-auto flex items-center gap-1 text-green-400 text-xs">
-                        <CheckCircle className="w-4 h-4" />
-                        Signature OK
-                      </span>
-                    ) : (
-                      <span className="ml-auto flex items-center gap-1 text-yellow-400 text-xs">
-                        <AlertCircle className="w-4 h-4" />
-                        Pas de signature
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Section : Créer un nouveau document */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
-                    <Plus className="w-4 h-4" />
-                    Créer un nouveau document
-                  </h4>
-                  <div className="grid gap-4">
-                    {generableDocuments.map(doc => {
-                      const IconComponent = doc.icon;
-                      return (
-                        <button
-                          key={doc.id}
-                          onClick={handleOpenD2I}
-                          className="w-full text-left p-5 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg border border-gray-700/50 hover:border-cyan-500/50 transition-all group"
-                        >
-                          <div className="flex items-start gap-4">
-                            <div className={`p-3 rounded-lg ${doc.bgColor} group-hover:scale-110 transition-transform`}>
-                              <IconComponent className={`w-6 h-6 ${doc.color}`} />
-                            </div>
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-white group-hover:text-cyan-300 transition-colors">
-                                {doc.name}
-                              </h4>
-                              <p className="text-sm text-gray-400 mt-1">{doc.description}</p>
-                            </div>
-                            <div className="text-cyan-400 group-hover:translate-x-1 transition-transform">
-                              →
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Section : Modèles de la bibliothèque */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-medium text-gray-400 flex items-center gap-2">
-                      <Library className="w-4 h-4" />
-                      Modèles enregistrés ({bibliothequeModeles.length})
-                    </h4>
-                    <button
-                      onClick={loadBibliothequeModeles}
-                      className="p-1 hover:bg-gray-700 rounded transition-colors"
-                      title="Actualiser"
-                    >
-                      <RefreshCw className={`w-4 h-4 text-gray-500 ${loadingBiblio ? 'animate-spin' : ''}`} />
-                    </button>
-                  </div>
-
-                  {loadingBiblio ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
-                    </div>
-                  ) : bibliothequeModeles.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-800/30 rounded-lg border border-gray-700/50">
-                      <Library className="w-10 h-10 mx-auto mb-2 text-gray-600" />
-                      <p className="text-gray-500 text-sm">Aucun modèle enregistré</p>
-                      <p className="text-gray-600 text-xs mt-1">
-                        Générez un D2I et sauvegardez-le dans la Bibliothèque
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {bibliothequeModeles.map((modele) => (
-                        <div 
-                          key={modele.name}
-                          className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-orange-500/30 transition-colors group"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className={`p-2 rounded-lg ${modele.isHtml ? 'bg-orange-500/20' : 'bg-red-500/20'}`}>
-                              <FileText className={`w-5 h-5 ${modele.isHtml ? 'text-orange-400' : 'text-red-400'}`} />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-white font-medium truncate">{modele.name}</p>
-                              <div className="flex items-center gap-3 text-xs text-gray-500">
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {formatDate(modele.created_at)}
-                                </span>
-                                <span>{formatFileSize(modele.metadata?.size)}</span>
-                                {modele.isHtml && (
-                                  <span className="text-orange-400">Modifiable</span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              onClick={() => handleViewModele(modele.url)}
-                              className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                              title="Voir"
-                            >
-                              <ExternalLink className="w-4 h-4 text-gray-400" />
-                            </button>
-                            {modele.isHtml && (
-                              <button
-                                onClick={() => handleEditModele(modele)}
-                                className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
-                                title="Modifier"
-                              >
-                                <Edit3 className="w-4 h-4 text-orange-400" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleDeleteModele(modele)}
-                              className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-400" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Info supplémentaire */}
-                <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <PenTool className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm">
-                      <p className="text-blue-300 font-medium">Astuce</p>
-                      <p className="text-blue-200/80 mt-1">
-                        Importez votre signature dans l'onglet "Mon compte" pour qu'elle soit automatiquement ajoutée à vos documents.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* ==================== ONGLET BIBLIOTHÈQUE ==================== */}
         {activeTab === 'library' && (
           <>
@@ -1049,6 +864,191 @@ const ModalDocuments = ({ isOpen, onClose }) => {
               )}
             </div>
           </>
+        )}
+
+        {/* ==================== ONGLET GÉNÉRER ==================== */}
+        {activeTab === 'generate' && (
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-white mb-2">Générer un document pré-rempli</h3>
+              <p className="text-gray-400 text-sm">
+                Sélectionnez un formulaire ci-dessous. Vos informations personnelles seront automatiquement intégrées.
+              </p>
+            </div>
+
+            {loadingAgent ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+                <span className="ml-3 text-gray-400">Chargement du profil...</span>
+              </div>
+            ) : !currentAgent ? (
+              <div className="text-center py-10 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
+                <AlertCircle className="w-12 h-12 mx-auto mb-3 text-yellow-400" />
+                <p className="text-yellow-300 font-medium">Profil agent non trouvé</p>
+                <p className="text-gray-400 text-sm mt-1">
+                  Votre email ne correspond à aucun agent enregistré.<br />
+                  Contactez l'administrateur.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Info agent */}
+                <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
+                  <div className="flex items-center gap-3 text-sm">
+                    <User className="w-5 h-5 text-cyan-400" />
+                    <span className="text-gray-400">Connecté en tant que :</span>
+                    <span className="text-white font-medium">
+                      {currentAgent.prenom} {currentAgent.nom}
+                    </span>
+                    {currentAgent.signature_url ? (
+                      <span className="ml-auto flex items-center gap-1 text-green-400 text-xs">
+                        <CheckCircle className="w-4 h-4" />
+                        Signature OK
+                      </span>
+                    ) : (
+                      <span className="ml-auto flex items-center gap-1 text-yellow-400 text-xs">
+                        <AlertCircle className="w-4 h-4" />
+                        Pas de signature
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Section : Créer un nouveau document */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+                    <Plus className="w-4 h-4" />
+                    Créer un nouveau document
+                  </h4>
+                  <div className="grid gap-4">
+                    {generableDocuments.map(doc => {
+                      const IconComponent = doc.icon;
+                      return (
+                        <button
+                          key={doc.id}
+                          onClick={handleOpenD2I}
+                          className="w-full text-left p-5 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg border border-gray-700/50 hover:border-cyan-500/50 transition-all group"
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className={`p-3 rounded-lg ${doc.bgColor} group-hover:scale-110 transition-transform`}>
+                              <IconComponent className={`w-6 h-6 ${doc.color}`} />
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-white group-hover:text-cyan-300 transition-colors">
+                                {doc.name}
+                              </h4>
+                              <p className="text-sm text-gray-400 mt-1">{doc.description}</p>
+                            </div>
+                            <div className="text-cyan-400 group-hover:translate-x-1 transition-transform">
+                              →
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Section : Modèles de la bibliothèque */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-medium text-gray-400 flex items-center gap-2">
+                      <Library className="w-4 h-4" />
+                      Modèles enregistrés ({bibliothequeModeles.length})
+                    </h4>
+                    <button
+                      onClick={loadBibliothequeModeles}
+                      className="p-1 hover:bg-gray-700 rounded transition-colors"
+                      title="Actualiser"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-gray-500 ${loadingBiblio ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+
+                  {loadingBiblio ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+                    </div>
+                  ) : bibliothequeModeles.length === 0 ? (
+                    <div className="text-center py-8 bg-gray-800/30 rounded-lg border border-gray-700/50">
+                      <Library className="w-10 h-10 mx-auto mb-2 text-gray-600" />
+                      <p className="text-gray-500 text-sm">Aucun modèle enregistré</p>
+                      <p className="text-gray-600 text-xs mt-1">
+                        Générez un D2I et sauvegardez-le dans la Bibliothèque
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {bibliothequeModeles.map((modele) => (
+                        <div 
+                          key={modele.name}
+                          className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-orange-500/30 transition-colors group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`p-2 rounded-lg ${modele.isHtml ? 'bg-orange-500/20' : 'bg-red-500/20'}`}>
+                              <FileText className={`w-5 h-5 ${modele.isHtml ? 'text-orange-400' : 'text-red-400'}`} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-white font-medium truncate">{modele.name}</p>
+                              <div className="flex items-center gap-3 text-xs text-gray-500">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {formatDate(modele.created_at)}
+                                </span>
+                                <span>{formatFileSize(modele.metadata?.size)}</span>
+                                {modele.isHtml && (
+                                  <span className="text-orange-400">Modifiable</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => handleViewModele(modele.url)}
+                              className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                              title="Voir"
+                            >
+                              <ExternalLink className="w-4 h-4 text-gray-400" />
+                            </button>
+                            {modele.isHtml && (
+                              <button
+                                onClick={() => handleEditModele(modele)}
+                                className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
+                                title="Modifier"
+                              >
+                                <Edit3 className="w-4 h-4 text-orange-400" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteModele(modele)}
+                              className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-400" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Info supplémentaire */}
+                <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <PenTool className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="text-blue-300 font-medium">Astuce</p>
+                      <p className="text-blue-200/80 mt-1">
+                        Importez votre signature dans l'onglet "Mon compte" pour qu'elle soit automatiquement ajoutée à vos documents.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* ==================== ONGLET MON COMPTE ==================== */}
