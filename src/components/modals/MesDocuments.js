@@ -774,25 +774,27 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
         </div>
       </div>
 
-      {/* Infos agent */}
-      <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
+      {/* Infos agent - avec overflow géré */}
+      <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50 overflow-hidden">
         <h4 className="text-sm font-medium text-gray-400 mb-3">Informations pré-remplies</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="min-w-0">
             <span className="text-gray-500 block">Nom</span>
             <span className="text-white font-medium">{agent?.nom || '-'}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-gray-500 block">Prénom</span>
             <span className="text-white font-medium">{agent?.prenom || '-'}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-gray-500 block">CP</span>
             <span className="text-white font-medium">{agent?.cp || <span className="text-yellow-400">Non renseigné</span>}</span>
           </div>
-          <div>
+          <div className="min-w-0 overflow-hidden">
             <span className="text-gray-500 block">Email</span>
-            <span className="text-white font-medium text-xs">{agent?.email || '-'}</span>
+            <span className="text-white font-medium text-xs truncate block" title={agent?.email}>
+              {agent?.email || '-'}
+            </span>
           </div>
         </div>
         
