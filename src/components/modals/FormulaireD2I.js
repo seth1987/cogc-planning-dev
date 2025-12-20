@@ -15,14 +15,19 @@ import html2pdf from 'html2pdf.js';
  * 
  * @param {object} agent - Infos de l'agent connecté {id, nom, prenom, cp, signature_url}
  * @param {function} onClose - Callback de fermeture
+ * @param {object} initialData - Données initiales pour pré-remplir le formulaire (mode modification)
+ * @param {string} editingFileName - Nom du fichier en cours de modification (pour la sauvegarde)
  */
-const FormulaireD2I = ({ agent, onClose }) => {
+const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = null }) => {
+  // Mode modification ?
+  const isEditMode = !!initialData;
+  
   // États des cases à cocher pour activer/désactiver les cadres
-  const [cadre1Actif, setCadre1Actif] = useState(false);
-  const [cadre2Actif, setCadre2Actif] = useState(false);
+  const [cadre1Actif, setCadre1Actif] = useState(initialData?.cadre1Actif || false);
+  const [cadre2Actif, setCadre2Actif] = useState(initialData?.cadre2Actif || false);
   
   // État du formulaire
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(initialData?.formData || {
     // Mouvement social (toujours actif)
     num_dii: '',
     etablissement_ms: 'EIC Paris Nord',
@@ -62,16 +67,18 @@ const FormulaireD2I = ({ agent, onClose }) => {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(null);
 
-  // Mettre à jour les dates de signature quand les cadres sont activés
+  // Mettre à jour les dates de signature quand les cadres sont activés (seulement en mode création)
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    if (cadre1Actif) {
-      setFormData(prev => ({ ...prev, date_sign_1: today }));
+    if (!isEditMode) {
+      const today = new Date().toISOString().split('T')[0];
+      if (cadre1Actif) {
+        setFormData(prev => ({ ...prev, date_sign_1: today }));
+      }
+      if (cadre2Actif) {
+        setFormData(prev => ({ ...prev, date_sign_2: today }));
+      }
     }
-    if (cadre2Actif) {
-      setFormData(prev => ({ ...prev, date_sign_2: today }));
-    }
-  }, [cadre1Actif, cadre2Actif]);
+  }, [cadre1Actif, cadre2Actif, isEditMode]);
 
   // Mettre à jour les infos agent dans le cadre 2 quand le cadre 1 change
   useEffect(() => {
@@ -167,6 +174,10 @@ const FormulaireD2I = ({ agent, onClose }) => {
 
   // Générer le nom du fichier
   const generateFileName = () => {
+    // En mode édition, utiliser le même nom de base
+    if (editingFileName) {
+      return editingFileName.replace('.html', '').replace('.json', '');
+    }
     if (!formData.preavis_date_debut) return 'preavis_document';
     const date = new Date(formData.preavis_date_debut);
     const day = String(date.getDate()).padStart(2, '0');
@@ -474,24 +485,46 @@ const FormulaireD2I = ({ agent, onClose }) => {
     setSaving(false);
   };
 
-  // Uploader dans "Bibliothèque" (HTML modifiable)
+  // Uploader dans "Bibliothèque" (HTML + JSON pour modification)
   const handleUploadBibliotheque = async () => {
     setSaving(true);
     try {
       const htmlContent = generateFullHTML();
       const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
       
-      const fileName = `${generateFileName()}.html`;
+      // Créer aussi un fichier JSON avec les données du formulaire
+      const jsonData = {
+        formData,
+        cadre1Actif,
+        cadre2Actif,
+        agentId: agent?.id,
+        createdAt: new Date().toISOString()
+      };
+      const jsonBlob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
       
-      // Upload vers Supabase Storage
-      const { error } = await supabase.storage
+      const baseName = generateFileName();
+      const htmlFileName = `${baseName}.html`;
+      const jsonFileName = `${baseName}.json`;
+      
+      // Upload HTML
+      const { error: htmlError } = await supabase.storage
         .from('bibliotheque')
-        .upload(fileName, htmlBlob, {
+        .upload(htmlFileName, htmlBlob, {
           contentType: 'text/html',
           upsert: true
         });
       
-      if (error) throw error;
+      if (htmlError) throw htmlError;
+      
+      // Upload JSON (pour permettre la modification)
+      const { error: jsonError } = await supabase.storage
+        .from('bibliotheque')
+        .upload(jsonFileName, jsonBlob, {
+          contentType: 'application/json',
+          upsert: true
+        });
+      
+      if (jsonError) throw jsonError;
       
       setSaveSuccess('bibliotheque');
       setTimeout(() => setSaveSuccess(null), 3000);
@@ -760,7 +793,7 @@ const FormulaireD2I = ({ agent, onClose }) => {
         <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700 flex-wrap gap-3">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <Eye className="w-5 h-5" />
-            Aperçu du document D2I
+            {isEditMode ? 'Modifier le document D2I' : 'Aperçu du document D2I'}
           </h3>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Bouton Télécharger */}
@@ -808,7 +841,7 @@ const FormulaireD2I = ({ agent, onClose }) => {
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 
                saveSuccess === 'bibliotheque' ? <Check className="w-4 h-4" /> : 
                <Library className="w-4 h-4" />}
-              <span className="hidden sm:inline">Bibliothèque</span>
+              <span className="hidden sm:inline">{isEditMode ? 'Enregistrer' : 'Bibliothèque'}</span>
             </button>
             
             {/* Bouton Imprimer */}
@@ -835,7 +868,7 @@ const FormulaireD2I = ({ agent, onClose }) => {
           <div className="bg-green-600 text-white px-4 py-2 text-center text-sm">
             {saveSuccess === 'download' && '✓ PDF téléchargé avec succès'}
             {saveSuccess === 'mes-documents' && '✓ Document enregistré dans "Mes documents"'}
-            {saveSuccess === 'bibliotheque' && '✓ Document ajouté à la bibliothèque (modifiable par tous)'}
+            {saveSuccess === 'bibliotheque' && `✓ Document ${isEditMode ? 'modifié' : 'ajouté à la bibliothèque'} (modifiable)`}
           </div>
         )}
         
@@ -857,7 +890,7 @@ const FormulaireD2I = ({ agent, onClose }) => {
         <div className="flex items-center justify-between p-4 border-b border-gray-700 shrink-0">
           <h2 className="text-xl font-bold text-white flex items-center gap-3">
             <FileText className="w-6 h-6 text-cyan-400" />
-            Déclaration Individuelle d'Intention (D2I)
+            {isEditMode ? 'Modifier le D2I' : 'Déclaration Individuelle d\'Intention (D2I)'}
           </h2>
           <button
             onClick={onClose}
@@ -870,12 +903,13 @@ const FormulaireD2I = ({ agent, onClose }) => {
         {/* Contenu scrollable */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {/* Info */}
-          <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-4">
+          <div className={`border rounded-lg p-4 ${isEditMode ? 'bg-orange-500/20 border-orange-500/50' : 'bg-blue-500/20 border-blue-500/50'}`}>
             <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
-              <p className="text-sm text-blue-200/80">
-                Formulaire pour déclarer votre participation à un mouvement social.
-                Remplissez le mouvement social, puis cochez le(s) cadre(s) à compléter.
+              <AlertCircle className={`w-5 h-5 mt-0.5 shrink-0 ${isEditMode ? 'text-orange-400' : 'text-blue-400'}`} />
+              <p className={`text-sm ${isEditMode ? 'text-orange-200/80' : 'text-blue-200/80'}`}>
+                {isEditMode 
+                  ? 'Vous modifiez un document existant. Les changements seront enregistrés dans la bibliothèque.'
+                  : 'Formulaire pour déclarer votre participation à un mouvement social. Remplissez le mouvement social, puis cochez le(s) cadre(s) à compléter.'}
               </p>
             </div>
           </div>
