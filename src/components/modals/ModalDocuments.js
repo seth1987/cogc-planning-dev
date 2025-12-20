@@ -36,17 +36,14 @@ const ModalDocuments = ({ isOpen, onClose }) => {
   const [currentAgent, setCurrentAgent] = useState(null);
   const [loadingAgent, setLoadingAgent] = useState(true);
   
-  // État formulaire D2I
+  // État formulaire D2I (création et édition)
   const [showD2IForm, setShowD2IForm] = useState(false);
+  const [d2iInitialData, setD2iInitialData] = useState(null);
+  const [d2iEditingFileName, setD2iEditingFileName] = useState(null);
   
   // États pour la bibliothèque de modèles
   const [bibliothequeModeles, setBibliothequeModeles] = useState([]);
   const [loadingBiblio, setLoadingBiblio] = useState(true);
-  
-  // État pour l'éditeur de modèle
-  const [editingModele, setEditingModele] = useState(null);
-  const [editContent, setEditContent] = useState('');
-  const [savingEdit, setSavingEdit] = useState(false);
   
   // Upload form state
   const [uploadData, setUploadData] = useState({
@@ -187,7 +184,7 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     }
   }, [showNotification]);
 
-  // Charger les modèles de la bibliothèque
+  // Charger les modèles de la bibliothèque (uniquement les .html)
   const loadBibliothequeModeles = useCallback(async () => {
     try {
       setLoadingBiblio(true);
@@ -199,13 +196,19 @@ const ModalDocuments = ({ isOpen, onClose }) => {
       
       if (error) throw error;
       
-      // Ajouter les URLs publiques et filtrer les fichiers HTML
-      const modeles = (data || []).map(file => ({
-        ...file,
-        url: supabase.storage.from('bibliotheque').getPublicUrl(file.name).data.publicUrl,
-        path: file.name,
-        isHtml: file.name.endsWith('.html')
-      }));
+      // Filtrer uniquement les fichiers HTML et ajouter les URLs
+      const modeles = (data || [])
+        .filter(file => file.name.endsWith('.html'))
+        .map(file => {
+          const baseName = file.name.replace('.html', '');
+          return {
+            ...file,
+            url: supabase.storage.from('bibliotheque').getPublicUrl(file.name).data.publicUrl,
+            path: file.name,
+            jsonPath: `${baseName}.json`,
+            isHtml: true
+          };
+        });
       
       setBibliothequeModeles(modeles);
     } catch (error) {
@@ -371,16 +374,22 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     }
   };
 
-  // Supprimer un modèle de la bibliothèque
+  // Supprimer un modèle de la bibliothèque (HTML + JSON)
   const handleDeleteModele = async (modele) => {
     if (!window.confirm(`Supprimer le modèle "${modele.name}" ?`)) return;
     
     try {
-      const { error } = await supabase.storage
+      // Supprimer le HTML
+      const { error: htmlError } = await supabase.storage
         .from('bibliotheque')
         .remove([modele.path]);
       
-      if (error) throw error;
+      if (htmlError) throw htmlError;
+      
+      // Supprimer le JSON associé (si existe)
+      await supabase.storage
+        .from('bibliotheque')
+        .remove([modele.jsonPath]);
       
       showNotification('success', 'Modèle supprimé');
       loadBibliothequeModeles();
@@ -390,46 +399,32 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     }
   };
 
-  // Ouvrir l'éditeur pour un modèle de la bibliothèque
+  // Ouvrir le formulaire D2I pour éditer un modèle existant
   const handleEditModele = async (modele) => {
     try {
-      const response = await fetch(modele.url);
-      const content = await response.text();
-      setEditContent(content);
-      setEditingModele(modele);
+      // Charger le fichier JSON associé
+      const jsonUrl = supabase.storage.from('bibliotheque').getPublicUrl(modele.jsonPath).data.publicUrl;
+      const response = await fetch(jsonUrl);
+      
+      if (!response.ok) {
+        showNotification('error', 'Fichier de données non trouvé. Ce modèle ne peut pas être modifié.');
+        return;
+      }
+      
+      const jsonData = await response.json();
+      
+      // Ouvrir le formulaire D2I avec les données pré-remplies
+      setD2iInitialData({
+        formData: jsonData.formData || {},
+        cadre1Actif: jsonData.cadre1Actif || false,
+        cadre2Actif: jsonData.cadre2Actif || false
+      });
+      setD2iEditingFileName(modele.name.replace('.html', ''));
+      setShowD2IForm(true);
+      
     } catch (error) {
       console.error('Erreur chargement modèle:', error);
-      showNotification('error', 'Erreur lors du chargement');
-    }
-  };
-
-  // Sauvegarder les modifications d'un modèle
-  const handleSaveModele = async () => {
-    if (!editingModele) return;
-    
-    try {
-      setSavingEdit(true);
-      
-      const htmlBlob = new Blob([editContent], { type: 'text/html' });
-      
-      const { error } = await supabase.storage
-        .from('bibliotheque')
-        .upload(editingModele.path, htmlBlob, {
-          contentType: 'text/html',
-          upsert: true
-        });
-      
-      if (error) throw error;
-      
-      showNotification('success', 'Modèle modifié avec succès');
-      setEditingModele(null);
-      setEditContent('');
-      loadBibliothequeModeles();
-    } catch (error) {
-      console.error('Erreur sauvegarde:', error);
-      showNotification('error', 'Erreur lors de la sauvegarde');
-    } finally {
-      setSavingEdit(false);
+      showNotification('error', 'Erreur lors du chargement du modèle');
     }
   };
 
@@ -467,13 +462,25 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     return grouped;
   };
 
-  // Handler ouverture formulaire D2I
+  // Handler ouverture formulaire D2I (création)
   const handleOpenD2I = () => {
     if (!currentAgent) {
       showNotification('error', 'Vous devez être connecté pour générer un document');
       return;
     }
+    // Mode création : pas de données initiales
+    setD2iInitialData(null);
+    setD2iEditingFileName(null);
     setShowD2IForm(true);
+  };
+
+  // Fermeture du formulaire D2I
+  const handleCloseD2I = () => {
+    setShowD2IForm(false);
+    setD2iInitialData(null);
+    setD2iEditingFileName(null);
+    // Rafraîchir la liste des modèles
+    loadBibliothequeModeles();
   };
 
   if (!isOpen) return null;
@@ -483,67 +490,10 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     return (
       <FormulaireD2I 
         agent={currentAgent}
-        onClose={() => setShowD2IForm(false)}
+        onClose={handleCloseD2I}
+        initialData={d2iInitialData}
+        editingFileName={d2iEditingFileName}
       />
-    );
-  }
-
-  // Si l'éditeur de modèle est ouvert
-  if (editingModele) {
-    return (
-      <div className="fixed inset-0 bg-black/90 flex flex-col z-[80]">
-        {/* Header éditeur */}
-        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            <Edit3 className="w-5 h-5 text-orange-400" />
-            Modifier : {editingModele.name}
-          </h3>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleSaveModele}
-              disabled={savingEdit}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg"
-            >
-              {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-              Enregistrer
-            </button>
-            <button
-              onClick={() => { setEditingModele(null); setEditContent(''); }}
-              className="p-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-        
-        {/* Éditeur */}
-        <div className="flex-1 flex">
-          {/* Code HTML */}
-          <div className="w-1/2 flex flex-col border-r border-gray-700">
-            <div className="bg-gray-800 px-4 py-2 text-sm text-gray-400 border-b border-gray-700">
-              Code HTML
-            </div>
-            <textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="flex-1 p-4 bg-gray-950 text-gray-200 font-mono text-sm resize-none focus:outline-none"
-              spellCheck={false}
-            />
-          </div>
-          
-          {/* Aperçu */}
-          <div className="w-1/2 flex flex-col">
-            <div className="bg-gray-800 px-4 py-2 text-sm text-gray-400 border-b border-gray-700">
-              Aperçu
-            </div>
-            <iframe
-              srcDoc={editContent}
-              className="flex-1 bg-white"
-              title="Aperçu document"
-            />
-          </div>
-        </div>
-      </div>
     );
   }
 
@@ -985,8 +935,8 @@ const ModalDocuments = ({ isOpen, onClose }) => {
                           className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-orange-500/30 transition-colors group"
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className={`p-2 rounded-lg ${modele.isHtml ? 'bg-orange-500/20' : 'bg-red-500/20'}`}>
-                              <FileText className={`w-5 h-5 ${modele.isHtml ? 'text-orange-400' : 'text-red-400'}`} />
+                            <div className="p-2 rounded-lg bg-orange-500/20">
+                              <FileText className="w-5 h-5 text-orange-400" />
                             </div>
                             <div className="min-w-0">
                               <p className="text-white font-medium truncate">{modele.name}</p>
@@ -996,9 +946,7 @@ const ModalDocuments = ({ isOpen, onClose }) => {
                                   {formatDate(modele.created_at)}
                                 </span>
                                 <span>{formatFileSize(modele.metadata?.size)}</span>
-                                {modele.isHtml && (
-                                  <span className="text-orange-400">Modifiable</span>
-                                )}
+                                <span className="text-orange-400">Modifiable</span>
                               </div>
                             </div>
                           </div>
@@ -1011,15 +959,13 @@ const ModalDocuments = ({ isOpen, onClose }) => {
                             >
                               <ExternalLink className="w-4 h-4 text-gray-400" />
                             </button>
-                            {modele.isHtml && (
-                              <button
-                                onClick={() => handleEditModele(modele)}
-                                className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
-                                title="Modifier"
-                              >
-                                <Edit3 className="w-4 h-4 text-orange-400" />
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handleEditModele(modele)}
+                              className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
+                              title="Modifier"
+                            >
+                              <Edit3 className="w-4 h-4 text-orange-400" />
+                            </button>
                             <button
                               onClick={() => handleDeleteModele(modele)}
                               className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
