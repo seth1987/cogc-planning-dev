@@ -237,11 +237,10 @@ const FormulaireD2I = ({ agent, onClose }) => {
         <span className="border-b border-dotted border-black px-2">{formatDate(formData.preavis_date_debut)}</span>
         <span> à </span>
         <span className="border-b border-dotted border-black px-2">{formData.preavis_heure_debut}</span>
-        <span>h au </span>
+        <span> au </span>
         <span className="border-b border-dotted border-black px-2">{formatDate(formData.preavis_date_fin)}</span>
         <span> à </span>
         <span className="border-b border-dotted border-black px-2">{formData.preavis_heure_fin}</span>
-        <span>h</span>
       </div>
       
       {/* Cadre réservé à l'agent */}
@@ -271,7 +270,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
           <span className="border-b border-dotted border-black px-2">{cadre1Actif ? formatDate(formData.date_greve) : ''}</span>
           <span> à </span>
           <span className="border-b border-dotted border-black px-2">{cadre1Actif ? formData.heure_greve : ''}</span>
-          <span>h</span>
           <sup>(1)</sup>
         </div>
         
@@ -320,15 +318,21 @@ const FormulaireD2I = ({ agent, onClose }) => {
           <sup>(2)</sup>
           
           <div className="border border-black inline-block p-2 ml-4">
-            <div className={formData.choix_renonciation === 'reprendre' ? 'line-through' : ''}>
-              renoncer à participer à la grève <sup>(3)</sup>
+            <div>
+              <span className={formData.choix_renonciation === 'reprendre' ? 'line-through' : ''}>
+                renoncer à participer à la grève
+              </span>
+              <sup>(3)</sup>
             </div>
-            <div className={formData.choix_renonciation === 'renoncer' ? 'line-through' : ''}>
-              reprendre le travail, à compter du 
+            <div>
+              <span className={formData.choix_renonciation === 'renoncer' ? 'line-through' : ''}>
+                reprendre le travail
+              </span>
+              <span>, à compter du </span>
               <span className="border-b border-dotted border-black px-2 mx-1">{cadre2Actif ? formatDate(formData.date_reprise) : ''}</span>
-              à 
+              <span> à </span>
               <span className="border-b border-dotted border-black px-2 mx-1">{cadre2Actif ? formData.heure_reprise : ''}</span>
-              h<sup>(4)</sup>
+              <sup>(4)</sup>
             </div>
           </div>
         </div>
