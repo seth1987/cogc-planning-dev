@@ -774,25 +774,29 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
         </div>
       </div>
 
-      {/* Infos agent - avec overflow géré */}
+      {/* Infos agent - Layout responsive avec email sur ligne complète sur mobile */}
       <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50 overflow-hidden">
         <h4 className="text-sm font-medium text-gray-400 mb-3">Informations pré-remplies</h4>
-        <div className="grid grid-cols-2 gap-4 text-sm">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
           <div className="min-w-0">
-            <span className="text-gray-500 block">Nom</span>
+            <span className="text-gray-500 block text-xs">Nom</span>
             <span className="text-white font-medium">{agent?.nom || '-'}</span>
           </div>
           <div className="min-w-0">
-            <span className="text-gray-500 block">Prénom</span>
+            <span className="text-gray-500 block text-xs">Prénom</span>
             <span className="text-white font-medium">{agent?.prenom || '-'}</span>
           </div>
           <div className="min-w-0">
-            <span className="text-gray-500 block">CP</span>
-            <span className="text-white font-medium">{agent?.cp || <span className="text-yellow-400">Non renseigné</span>}</span>
+            <span className="text-gray-500 block text-xs">CP</span>
+            <span className="text-white font-medium">{agent?.cp || <span className="text-yellow-400 text-xs">Non renseigné</span>}</span>
           </div>
-          <div className="min-w-0 overflow-hidden">
-            <span className="text-gray-500 block">Email</span>
-            <span className="text-white font-medium text-xs truncate block" title={agent?.email}>
+          {/* Email sur toute la largeur sur mobile */}
+          <div className="min-w-0 col-span-2 sm:col-span-1 overflow-hidden">
+            <span className="text-gray-500 block text-xs">Email</span>
+            <span 
+              className="text-white font-medium text-xs block break-all" 
+              title={agent?.email}
+            >
               {agent?.email || '-'}
             </span>
           </div>
@@ -800,8 +804,8 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
         
         {!agent?.cp && (
           <p className="text-xs text-yellow-400 mt-3 flex items-center gap-1">
-            <AlertCircle className="w-4 h-4" />
-            Le Code Personnel (CP) n'est pas renseigné. Contactez l'administrateur.
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>Le Code Personnel (CP) n'est pas renseigné. Contactez l'administrateur.</span>
           </p>
         )}
       </div>
