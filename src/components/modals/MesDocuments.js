@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Upload, Trash2, Image, CheckCircle, AlertCircle, Loader2,
   PenTool, RefreshCw, FileText, Download, Eye, Library, 
-  FolderOpen, Calendar, ExternalLink, Edit3, X
+  FolderOpen, Calendar, ExternalLink, Edit3, X, Plus
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -11,6 +11,7 @@ import { supabase } from '../../lib/supabaseClient';
  * 
  * Fonctionnalités :
  * - Upload/modification de la signature
+ * - Upload de documents personnels
  * - Liste des documents personnels (bucket documents/{agent_id}/)
  * - Liste des documents partagés (bucket bibliotheque/)
  * - Consultation et téléchargement
@@ -21,6 +22,7 @@ import { supabase } from '../../lib/supabaseClient';
  */
 const MesDocuments = ({ agent, onAgentUpdate }) => {
   const [uploading, setUploading] = useState(false);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [notification, setNotification] = useState(null);
   const [dragActive, setDragActive] = useState(false);
@@ -37,6 +39,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
   const [savingEdit, setSavingEdit] = useState(false);
   
   const fileInputRef = useRef(null);
+  const docInputRef = useRef(null);
 
   // Afficher une notification temporaire
   const showNotification = useCallback((type, message) => {
@@ -106,6 +109,50 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
     loadMesDocuments();
     loadBibliotheque();
   }, [loadMesDocuments, loadBibliotheque]);
+
+  // Upload d'un document personnel
+  const handleDocumentUpload = async (file) => {
+    if (!file || !agent?.id) return;
+
+    // Vérifier la taille (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      showNotification('error', 'Fichier trop volumineux (max 10 Mo)');
+      return;
+    }
+
+    try {
+      setUploadingDoc(true);
+
+      const filePath = `${agent.id}/${file.name}`;
+
+      // Upload vers Supabase Storage
+      const { error } = await supabase.storage
+        .from('documents')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (error) throw error;
+
+      showNotification('success', `Document "${file.name}" uploadé avec succès !`);
+      loadMesDocuments();
+
+    } catch (error) {
+      console.error('Erreur upload document:', error);
+      showNotification('error', error.message || 'Erreur lors de l\'upload');
+    } finally {
+      setUploadingDoc(false);
+      if (docInputRef.current) docInputRef.current.value = '';
+    }
+  };
+
+  // Handler pour le changement de fichier document
+  const handleDocFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleDocumentUpload(e.target.files[0]);
+    }
+  };
 
   // Supprimer un document personnel
   const handleDeleteDocument = async (path, bucket = 'documents') => {
@@ -529,17 +576,42 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
             </div>
             <div>
               <h3 className="text-lg font-semibold text-white">Mes documents</h3>
-              <p className="text-sm text-gray-400">Documents personnels (PDF)</p>
+              <p className="text-sm text-gray-400">Documents personnels</p>
             </div>
           </div>
-          <button
-            onClick={loadMesDocuments}
-            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-            title="Actualiser"
-          >
-            <RefreshCw className={`w-4 h-4 text-gray-400 ${loadingDocs ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Bouton + pour ajouter un document */}
+            <button
+              onClick={() => docInputRef.current?.click()}
+              disabled={uploadingDoc}
+              className="flex items-center gap-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 text-white rounded-lg transition-colors"
+              title="Ajouter un document"
+            >
+              {uploadingDoc ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
+              <span className="hidden sm:inline text-sm">Ajouter</span>
+            </button>
+            <button
+              onClick={loadMesDocuments}
+              className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+              title="Actualiser"
+            >
+              <RefreshCw className={`w-4 h-4 text-gray-400 ${loadingDocs ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
+
+        {/* Input file caché pour upload de documents */}
+        <input
+          ref={docInputRef}
+          type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg"
+          onChange={handleDocFileChange}
+          className="hidden"
+        />
 
         {loadingDocs ? (
           <div className="flex items-center justify-center py-8">
@@ -549,7 +621,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
           <div className="text-center py-8 text-gray-500">
             <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>Aucun document</p>
-            <p className="text-xs mt-1">Les documents générés apparaîtront ici</p>
+            <p className="text-xs mt-1">Cliquez sur + pour ajouter un document</p>
           </div>
         ) : (
           <div className="space-y-2">
