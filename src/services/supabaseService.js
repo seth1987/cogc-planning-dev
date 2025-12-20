@@ -27,7 +27,7 @@ const extractGroupeCode = (groupeComplet) => {
 
 /**
  * Service Supabase pour COGC Planning
- * @version 2.6.0 - Support note_privee dans planning général
+ * @version 2.7.0 - Fix sauvegarde CP dans updateAgent
  */
 class SupabaseService {
   // Exposer le client Supabase pour accès direct si nécessaire
@@ -93,6 +93,7 @@ class SupabaseService {
   /**
    * Met à jour un agent existant
    * v2.1: Calcule automatiquement groupe_travail pour synchronisation annuaire
+   * v2.7: Inclut le champ CP
    */
   async updateAgent(agentId, agentData) {
     // Nettoyer les données avant l'envoi
@@ -124,6 +125,11 @@ class SupabaseService {
     }
     if (agentData.telephone !== undefined) {
       cleanData.telephone = agentData.telephone || null;
+    }
+
+    // Ajouter CP (v2.7)
+    if (agentData.cp !== undefined) {
+      cleanData.cp = agentData.cp || null;
     }
 
     console.log('📝 Mise à jour agent:', agentId, cleanData);
@@ -162,6 +168,7 @@ class SupabaseService {
   /**
    * Crée un nouvel agent
    * v2.1: Calcule automatiquement groupe_travail pour synchronisation annuaire
+   * v2.7: Inclut le champ CP
    * @returns {Object} L'agent créé avec son ID
    */
   async createAgent(agentData) {
@@ -198,6 +205,11 @@ class SupabaseService {
     }
     if (agentData.telephone) {
       cleanData.telephone = agentData.telephone;
+    }
+
+    // Ajouter CP (v2.7)
+    if (agentData.cp) {
+      cleanData.cp = agentData.cp;
     }
 
     console.log('✨ Création agent avec données:', cleanData);
