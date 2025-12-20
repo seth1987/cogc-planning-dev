@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, Calendar, Clock, MapPin, User, Building, Hash,
-  CheckSquare, Square, AlertCircle, Printer, Download, Eye, X
+  CheckSquare, Square, AlertCircle, Printer, Download, Eye, X,
+  Upload, FolderOpen, Library, Check, Loader2
 } from 'lucide-react';
+import { supabase } from '../../supabaseClient';
+import html2pdf from 'html2pdf.js';
 
 /**
  * FormulaireD2I - Formulaire de Déclaration Individuelle d'Intention
@@ -10,7 +13,7 @@ import {
  * Génère le formulaire D2I pour les mouvements sociaux (grèves)
  * avec pré-remplissage automatique des infos agent
  * 
- * @param {object} agent - Infos de l'agent connecté {nom, prenom, cp, signature_url}
+ * @param {object} agent - Infos de l'agent connecté {id, nom, prenom, cp, signature_url}
  * @param {function} onClose - Callback de fermeture
  */
 const FormulaireD2I = ({ agent, onClose }) => {
@@ -53,9 +56,11 @@ const FormulaireD2I = ({ agent, onClose }) => {
     date_sign_2: new Date().toISOString().split('T')[0],
   });
 
-  // États pour la validation
+  // États pour la validation et l'UI
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(null);
 
   // Mettre à jour les dates de signature quand les cadres sont activés
   useEffect(() => {
@@ -94,7 +99,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
   // Handler de changement générique
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    // Effacer l'erreur du champ modifié
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: null }));
     }
@@ -146,7 +150,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
       if (!formData.prenom_2.trim()) newErrors.prenom_2 = 'Prénom requis';
       if (!formData.choix_renonciation) newErrors.choix_renonciation = 'Choix requis';
       
-      // Date/heure obligatoires UNIQUEMENT si "reprendre le travail" est sélectionné
       if (formData.choix_renonciation === 'reprendre') {
         if (!formData.date_reprise) newErrors.date_reprise = 'Date requise';
         if (!formData.heure_reprise) newErrors.heure_reprise = 'Heure requise';
@@ -162,11 +165,14 @@ const FormulaireD2I = ({ agent, onClose }) => {
     return Object.keys(newErrors).length === 0;
   };
 
-  // Générer le PDF (aperçu puis impression)
-  const handleGenerate = () => {
-    if (validateForm()) {
-      setShowPreview(true);
-    }
+  // Générer le nom du fichier
+  const generateFileName = () => {
+    if (!formData.preavis_date_debut) return 'preavis_document';
+    const date = new Date(formData.preavis_date_debut);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `preavis_${day}-${month}-${year}`;
   };
 
   // Formater la date en français
@@ -176,20 +182,18 @@ const FormulaireD2I = ({ agent, onClose }) => {
     return date.toLocaleDateString('fr-FR');
   };
 
-  // Générer le HTML pour impression dans une nouvelle fenêtre
-  const generatePrintHTML = () => {
+  // Générer le HTML complet du document
+  const generateFullHTML = () => {
     const etablissementMS = formData.etablissement_ms === 'Texte libre' ? formData.etablissement_ms_libre : formData.etablissement_ms;
     const etablissement1 = formData.etablissement_1 === 'Texte libre' ? formData.etablissement_1_libre : formData.etablissement_1;
     const lieu1 = formData.lieu_1 === 'Texte libre' ? formData.lieu_1_libre : formData.lieu_1;
     const lieu2 = formData.lieu_2 === 'Texte libre' ? formData.lieu_2_libre : formData.lieu_2;
     
-    // Génération du bloc cadre 2 avec logique conditionnelle
     const cadre2DateHeure = formData.choix_renonciation === 'reprendre' 
       ? `, à compter du <span class="underline-field">${formatDate(formData.date_reprise)}</span> à <span class="underline-field">${formData.heure_reprise}</span>`
       : '<span class="strike">, à compter du _______ à _______</span>';
 
-    return `
-<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -273,7 +277,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
   <div class="subtitle">Lois du 21 août 2007 et du 19 mars 2012</div>
   <div class="subtitle">Informations à réceptionner par le service concerné</div>
   
-  <!-- Encadré Mouvement Social -->
   <div class="box">
     <span class="box-title">Mouvement social :</span>
     <span>Etablissement : </span>
@@ -288,10 +291,8 @@ const FormulaireD2I = ({ agent, onClose }) => {
     <span class="underline-field">${formData.preavis_heure_fin}</span>
   </div>
   
-  <!-- Cadre réservé à l'agent -->
   <div class="section-title">Cadre réservé à l'agent</div>
   
-  <!-- Cadre 1 -->
   <div class="${!cadre1Actif ? 'opacity-40' : ''}">
     <div class="field-row">
       <span class="numero-cercle">1</span>
@@ -334,10 +335,8 @@ const FormulaireD2I = ({ agent, onClose }) => {
     </div>
   </div>
   
-  <!-- Trait pointillé ciseaux -->
   <div class="scissors"></div>
   
-  <!-- Cadre 2 -->
   <div class="${!cadre2Actif ? 'opacity-40' : ''}">
     <div class="field-row">
       <span class="numero-cercle">2</span>
@@ -385,7 +384,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
     </div>
   </div>
   
-  <!-- Notes -->
   <div class="notes">
     <p>(1) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de participer à la grève au plus tard 48 heures avant la participation à la grève</p>
     <p>(2) Rayer les mentions inutiles</p>
@@ -393,26 +391,133 @@ const FormulaireD2I = ({ agent, onClose }) => {
     <p>(4) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de reprendre le travail après avoir participé à la grève au plus tard 24 heures avant l'heure de reprise souhaitée, sauf lorsque la reprise du service est consécutive à la fin de la grève</p>
   </div>
   
-  <!-- Footer -->
   <div class="footer">
     <span class="footer-badge">INTERNE SNCF RESEAU</span>
     <div class="version">EIC PN RH00008- Version 01 du 26-10-2017</div>
   </div>
 </body>
-</html>
-    `;
+</html>`;
   };
 
-  // Ouvrir dans une nouvelle fenêtre et imprimer
+  // Télécharger en PDF
+  const handleDownloadPDF = async () => {
+    setSaving(true);
+    try {
+      const htmlContent = generateFullHTML();
+      const container = document.createElement('div');
+      container.innerHTML = htmlContent;
+      document.body.appendChild(container);
+      
+      const opt = {
+        margin: 10,
+        filename: `${generateFileName()}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      
+      await html2pdf().set(opt).from(container).save();
+      document.body.removeChild(container);
+      setSaveSuccess('download');
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (error) {
+      console.error('Erreur téléchargement PDF:', error);
+      alert('Erreur lors du téléchargement');
+    }
+    setSaving(false);
+  };
+
+  // Uploader dans "Mes documents" (PDF)
+  const handleUploadMesDocuments = async () => {
+    if (!agent?.id) {
+      alert('Erreur: agent non identifié');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const htmlContent = generateFullHTML();
+      const container = document.createElement('div');
+      container.innerHTML = htmlContent;
+      document.body.appendChild(container);
+      
+      const opt = {
+        margin: 10,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      
+      // Générer le blob PDF
+      const pdfBlob = await html2pdf().set(opt).from(container).outputPdf('blob');
+      document.body.removeChild(container);
+      
+      const fileName = `${generateFileName()}.pdf`;
+      const filePath = `${agent.id}/${fileName}`;
+      
+      // Upload vers Supabase Storage
+      const { error } = await supabase.storage
+        .from('documents')
+        .upload(filePath, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: true
+        });
+      
+      if (error) throw error;
+      
+      setSaveSuccess('mes-documents');
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (error) {
+      console.error('Erreur upload mes documents:', error);
+      alert('Erreur lors de l\'enregistrement: ' + error.message);
+    }
+    setSaving(false);
+  };
+
+  // Uploader dans "Bibliothèque" (HTML modifiable)
+  const handleUploadBibliotheque = async () => {
+    setSaving(true);
+    try {
+      const htmlContent = generateFullHTML();
+      const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+      
+      const fileName = `${generateFileName()}.html`;
+      
+      // Upload vers Supabase Storage
+      const { error } = await supabase.storage
+        .from('bibliotheque')
+        .upload(fileName, htmlBlob, {
+          contentType: 'text/html',
+          upsert: true
+        });
+      
+      if (error) throw error;
+      
+      setSaveSuccess('bibliotheque');
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch (error) {
+      console.error('Erreur upload bibliothèque:', error);
+      alert('Erreur lors de l\'enregistrement: ' + error.message);
+    }
+    setSaving(false);
+  };
+
+  // Ouvrir dans une nouvelle fenêtre pour impression
   const handlePrint = () => {
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     if (printWindow) {
-      printWindow.document.write(generatePrintHTML());
+      printWindow.document.write(generateFullHTML());
       printWindow.document.close();
-      // Attendre le chargement puis imprimer
       printWindow.onload = () => {
         printWindow.print();
       };
+    }
+  };
+
+  // Générer le PDF (aperçu puis impression)
+  const handleGenerate = () => {
+    if (validateForm()) {
+      setShowPreview(true);
     }
   };
 
@@ -583,7 +688,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
                 <span className={formData.choix_renonciation === 'renoncer' ? 'line-through' : ''}>
                   reprendre le travail
                 </span>
-                {/* Date/heure affichées UNIQUEMENT si "reprendre" est sélectionné */}
                 {formData.choix_renonciation === 'reprendre' ? (
                   <>
                     <span>, à compter du </span>
@@ -648,24 +752,75 @@ const FormulaireD2I = ({ agent, onClose }) => {
     );
   };
 
-  // Modal d'aperçu
+  // Modal d'aperçu avec options d'enregistrement
   if (showPreview) {
     return (
       <div className="fixed inset-0 bg-black/90 flex flex-col z-[70]">
         {/* Header aperçu */}
-        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
+        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700 flex-wrap gap-3">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <Eye className="w-5 h-5" />
             Aperçu du document D2I
           </h3>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Bouton Télécharger */}
+            <button
+              onClick={handleDownloadPDF}
+              disabled={saving}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                saveSuccess === 'download' 
+                  ? 'bg-green-600 text-white' 
+                  : 'bg-blue-600 hover:bg-blue-500 text-white'
+              }`}
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 
+               saveSuccess === 'download' ? <Check className="w-4 h-4" /> : 
+               <Download className="w-4 h-4" />}
+              <span className="hidden sm:inline">Télécharger PDF</span>
+            </button>
+            
+            {/* Bouton Mes documents */}
+            <button
+              onClick={handleUploadMesDocuments}
+              disabled={saving}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                saveSuccess === 'mes-documents' 
+                  ? 'bg-green-600 text-white' 
+                  : 'bg-purple-600 hover:bg-purple-500 text-white'
+              }`}
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 
+               saveSuccess === 'mes-documents' ? <Check className="w-4 h-4" /> : 
+               <FolderOpen className="w-4 h-4" />}
+              <span className="hidden sm:inline">Mes documents</span>
+            </button>
+            
+            {/* Bouton Bibliothèque */}
+            <button
+              onClick={handleUploadBibliotheque}
+              disabled={saving}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                saveSuccess === 'bibliotheque' 
+                  ? 'bg-green-600 text-white' 
+                  : 'bg-orange-600 hover:bg-orange-500 text-white'
+              }`}
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 
+               saveSuccess === 'bibliotheque' ? <Check className="w-4 h-4" /> : 
+               <Library className="w-4 h-4" />}
+              <span className="hidden sm:inline">Bibliothèque</span>
+            </button>
+            
+            {/* Bouton Imprimer */}
             <button
               onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg"
+              className="flex items-center gap-2 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg"
             >
               <Printer className="w-4 h-4" />
-              Imprimer / PDF
+              <span className="hidden sm:inline">Imprimer</span>
             </button>
+            
+            {/* Fermer */}
             <button
               onClick={() => setShowPreview(false)}
               className="p-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
@@ -674,6 +829,15 @@ const FormulaireD2I = ({ agent, onClose }) => {
             </button>
           </div>
         </div>
+        
+        {/* Message de succès */}
+        {saveSuccess && (
+          <div className="bg-green-600 text-white px-4 py-2 text-center text-sm">
+            {saveSuccess === 'download' && '✓ PDF téléchargé avec succès'}
+            {saveSuccess === 'mes-documents' && '✓ Document enregistré dans "Mes documents"'}
+            {saveSuccess === 'bibliotheque' && '✓ Document ajouté à la bibliothèque (modifiable par tous)'}
+          </div>
+        )}
         
         {/* Contenu aperçu */}
         <div className="flex-1 overflow-auto p-4 bg-gray-600">
@@ -857,7 +1021,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* NOM */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">NOM</label>
                 <input
@@ -865,16 +1028,9 @@ const FormulaireD2I = ({ agent, onClose }) => {
                   value={formData.nom_1}
                   onChange={(e) => handleChange('nom_1', e.target.value)}
                   disabled={!cadre1Actif}
-                  className={`
-                    w-full px-3 py-2 rounded-lg border transition-colors
-                    ${!cadre1Actif 
-                      ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                      : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                  `}
+                  className={`w-full px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
                 />
               </div>
-              
-              {/* PRÉNOM */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
                 <input
@@ -882,16 +1038,9 @@ const FormulaireD2I = ({ agent, onClose }) => {
                   value={formData.prenom_1}
                   onChange={(e) => handleChange('prenom_1', e.target.value)}
                   disabled={!cadre1Actif}
-                  className={`
-                    w-full px-3 py-2 rounded-lg border transition-colors
-                    ${!cadre1Actif 
-                      ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                      : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                  `}
+                  className={`w-full px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
                 />
               </div>
-              
-              {/* CP */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">CP</label>
                 <input
@@ -900,16 +1049,9 @@ const FormulaireD2I = ({ agent, onClose }) => {
                   onChange={(e) => handleChange('cp_1', e.target.value)}
                   disabled={!cadre1Actif}
                   placeholder="Code Personnel"
-                  className={`
-                    w-full px-3 py-2 rounded-lg border transition-colors
-                    ${!cadre1Actif 
-                      ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                      : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                  `}
+                  className={`w-full px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
                 />
               </div>
-              
-              {/* Établissement */}
               <div className="md:col-span-3">
                 <label className="block text-sm font-medium text-gray-300 mb-1">ÉTABLISSEMENT</label>
                 <SelectWithFreeText
@@ -921,8 +1063,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
                   disabled={!cadre1Actif}
                 />
               </div>
-              
-              {/* Date grève */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Date participation</label>
                 <div className="flex items-center gap-2">
@@ -932,18 +1072,10 @@ const FormulaireD2I = ({ agent, onClose }) => {
                     value={formData.date_greve}
                     onChange={(e) => handleChange('date_greve', e.target.value)}
                     disabled={!cadre1Actif}
-                    className={`
-                      flex-1 px-3 py-2 rounded-lg border transition-colors
-                      ${!cadre1Actif 
-                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                      ${errors.date_greve ? 'border-red-500' : ''}
-                    `}
+                    className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.date_greve ? 'border-red-500' : ''}`}
                   />
                 </div>
               </div>
-              
-              {/* Heure */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Heure</label>
                 <div className="flex items-center gap-2">
@@ -953,18 +1085,10 @@ const FormulaireD2I = ({ agent, onClose }) => {
                     value={formData.heure_greve}
                     onChange={(e) => handleChange('heure_greve', e.target.value)}
                     disabled={!cadre1Actif}
-                    className={`
-                      flex-1 px-3 py-2 rounded-lg border transition-colors
-                      ${!cadre1Actif 
-                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                      ${errors.heure_greve ? 'border-red-500' : ''}
-                    `}
+                    className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.heure_greve ? 'border-red-500' : ''}`}
                   />
                 </div>
               </div>
-              
-              {/* Lieu */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Lieu</label>
                 <SelectWithFreeText
@@ -976,8 +1100,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
                   disabled={!cadre1Actif}
                 />
               </div>
-              
-              {/* Date signature */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Date signature</label>
                 <div className="flex items-center gap-2">
@@ -987,17 +1109,10 @@ const FormulaireD2I = ({ agent, onClose }) => {
                     value={formData.date_sign_1}
                     onChange={(e) => handleChange('date_sign_1', e.target.value)}
                     disabled={!cadre1Actif}
-                    className={`
-                      flex-1 px-3 py-2 rounded-lg border transition-colors
-                      ${!cadre1Actif 
-                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                    `}
+                    className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
                   />
                 </div>
               </div>
-              
-              {/* Signature */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-300 mb-1">Signature</label>
                 {agent?.signature_url ? (
@@ -1008,9 +1123,7 @@ const FormulaireD2I = ({ agent, onClose }) => {
                 ) : (
                   <div className="flex items-center gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
                     <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0" />
-                    <span className="text-yellow-300 text-sm">
-                      Pas de signature enregistrée. Ajoutez-la dans "Mon compte".
-                    </span>
+                    <span className="text-yellow-300 text-sm">Pas de signature enregistrée. Ajoutez-la dans "Mon compte".</span>
                   </div>
                 )}
               </div>
@@ -1018,22 +1131,10 @@ const FormulaireD2I = ({ agent, onClose }) => {
           </div>
 
           {/* Cadre 2 - Renonciation/Reprise */}
-          <div className={`
-            rounded-lg p-4 border transition-all
-            ${cadre2Actif 
-              ? 'bg-orange-500/10 border-orange-500/50' 
-              : 'bg-gray-800/30 border-gray-700 opacity-60'}
-          `}>
+          <div className={`rounded-lg p-4 border transition-all ${cadre2Actif ? 'bg-orange-500/10 border-orange-500/50' : 'bg-gray-800/30 border-gray-700 opacity-60'}`}>
             <div className="flex items-center gap-3 mb-4">
-              <button
-                onClick={() => setCadre2Actif(!cadre2Actif)}
-                className="flex items-center gap-2"
-              >
-                {cadre2Actif ? (
-                  <CheckSquare className="w-6 h-6 text-orange-400" />
-                ) : (
-                  <Square className="w-6 h-6 text-gray-500" />
-                )}
+              <button onClick={() => setCadre2Actif(!cadre2Actif)} className="flex items-center gap-2">
+                {cadre2Actif ? <CheckSquare className="w-6 h-6 text-orange-400" /> : <Square className="w-6 h-6 text-gray-500" />}
               </button>
               <div className="flex items-center gap-2">
                 <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-sm font-bold text-orange-400">2</span>
@@ -1042,168 +1143,65 @@ const FormulaireD2I = ({ agent, onClose }) => {
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* NOM */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">NOM</label>
-                <input
-                  type="text"
-                  value={formData.nom_2}
-                  disabled={true}
-                  className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed"
-                />
+                <input type="text" value={formData.nom_2} disabled={true} className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed" />
               </div>
-              
-              {/* PRÉNOM */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
-                <input
-                  type="text"
-                  value={formData.prenom_2}
-                  disabled={true}
-                  className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed"
-                />
+                <input type="text" value={formData.prenom_2} disabled={true} className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed" />
               </div>
-              
-              {/* CP */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">CP</label>
-                <input
-                  type="text"
-                  value={formData.cp_2}
-                  disabled={true}
-                  className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed"
-                />
+                <input type="text" value={formData.cp_2} disabled={true} className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed" />
               </div>
               
-              {/* Choix Renoncer / Reprendre */}
               <div className="md:col-span-3">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Je déclare <span className="text-red-400">*</span>
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Je déclare <span className="text-red-400">*</span></label>
                 <div className="flex flex-wrap gap-4">
-                  <label className={`
-                    flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all
-                    ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''}
-                    ${formData.choix_renonciation === 'renoncer' 
-                      ? 'bg-orange-500/20 border-orange-500' 
-                      : 'bg-gray-800 border-gray-600 hover:border-gray-500'}
-                  `}>
-                    <input
-                      type="radio"
-                      name="choix_renonciation"
-                      value="renoncer"
-                      checked={formData.choix_renonciation === 'renoncer'}
-                      onChange={(e) => handleChange('choix_renonciation', e.target.value)}
-                      disabled={!cadre2Actif}
-                      className="w-4 h-4 text-orange-500"
-                    />
+                  <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''} ${formData.choix_renonciation === 'renoncer' ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-600 hover:border-gray-500'}`}>
+                    <input type="radio" name="choix_renonciation" value="renoncer" checked={formData.choix_renonciation === 'renoncer'} onChange={(e) => handleChange('choix_renonciation', e.target.value)} disabled={!cadre2Actif} className="w-4 h-4 text-orange-500" />
                     <span className="text-white">Renoncer à participer à la grève</span>
                   </label>
-                  
-                  <label className={`
-                    flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all
-                    ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''}
-                    ${formData.choix_renonciation === 'reprendre' 
-                      ? 'bg-orange-500/20 border-orange-500' 
-                      : 'bg-gray-800 border-gray-600 hover:border-gray-500'}
-                  `}>
-                    <input
-                      type="radio"
-                      name="choix_renonciation"
-                      value="reprendre"
-                      checked={formData.choix_renonciation === 'reprendre'}
-                      onChange={(e) => handleChange('choix_renonciation', e.target.value)}
-                      disabled={!cadre2Actif}
-                      className="w-4 h-4 text-orange-500"
-                    />
+                  <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''} ${formData.choix_renonciation === 'reprendre' ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-600 hover:border-gray-500'}`}>
+                    <input type="radio" name="choix_renonciation" value="reprendre" checked={formData.choix_renonciation === 'reprendre'} onChange={(e) => handleChange('choix_renonciation', e.target.value)} disabled={!cadre2Actif} className="w-4 h-4 text-orange-500" />
                     <span className="text-white">Reprendre le travail</span>
                   </label>
                 </div>
                 {errors.choix_renonciation && <p className="text-red-400 text-xs mt-1">{errors.choix_renonciation}</p>}
               </div>
               
-              {/* Date reprise - Visible uniquement si "reprendre" sélectionné */}
               <div className={formData.choix_renonciation !== 'reprendre' ? 'opacity-40' : ''}>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  À compter du {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">À compter du {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}</label>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
-                  <input
-                    type="date"
-                    value={formData.date_reprise}
-                    onChange={(e) => handleChange('date_reprise', e.target.value)}
-                    disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'}
-                    className={`
-                      flex-1 px-3 py-2 rounded-lg border transition-colors
-                      ${!cadre2Actif || formData.choix_renonciation !== 'reprendre'
-                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                      ${errors.date_reprise ? 'border-red-500' : ''}
-                    `}
-                  />
+                  <input type="date" value={formData.date_reprise} onChange={(e) => handleChange('date_reprise', e.target.value)} disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'} className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre2Actif || formData.choix_renonciation !== 'reprendre' ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.date_reprise ? 'border-red-500' : ''}`} />
                 </div>
                 {errors.date_reprise && <p className="text-red-400 text-xs mt-1">{errors.date_reprise}</p>}
               </div>
               
-              {/* Heure reprise - Visible uniquement si "reprendre" sélectionné */}
               <div className={formData.choix_renonciation !== 'reprendre' ? 'opacity-40' : ''}>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Heure {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Heure {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}</label>
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-gray-500 shrink-0" />
-                  <input
-                    type="time"
-                    value={formData.heure_reprise}
-                    onChange={(e) => handleChange('heure_reprise', e.target.value)}
-                    disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'}
-                    className={`
-                      flex-1 px-3 py-2 rounded-lg border transition-colors
-                      ${!cadre2Actif || formData.choix_renonciation !== 'reprendre'
-                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                      ${errors.heure_reprise ? 'border-red-500' : ''}
-                    `}
-                  />
+                  <input type="time" value={formData.heure_reprise} onChange={(e) => handleChange('heure_reprise', e.target.value)} disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'} className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre2Actif || formData.choix_renonciation !== 'reprendre' ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.heure_reprise ? 'border-red-500' : ''}`} />
                 </div>
                 {errors.heure_reprise && <p className="text-red-400 text-xs mt-1">{errors.heure_reprise}</p>}
               </div>
               
-              {/* Lieu */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Lieu</label>
-                <SelectWithFreeText
-                  value={formData.lieu_2}
-                  freeTextValue={formData.lieu_2_libre}
-                  onChange={(v) => handleChange('lieu_2', v)}
-                  onFreeTextChange={(v) => handleChange('lieu_2_libre', v)}
-                  options={['Paris']}
-                  disabled={!cadre2Actif}
-                />
+                <SelectWithFreeText value={formData.lieu_2} freeTextValue={formData.lieu_2_libre} onChange={(v) => handleChange('lieu_2', v)} onFreeTextChange={(v) => handleChange('lieu_2_libre', v)} options={['Paris']} disabled={!cadre2Actif} />
               </div>
               
-              {/* Date signature */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">Date signature</label>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
-                  <input
-                    type="date"
-                    value={formData.date_sign_2}
-                    onChange={(e) => handleChange('date_sign_2', e.target.value)}
-                    disabled={!cadre2Actif}
-                    className={`
-                      flex-1 px-3 py-2 rounded-lg border transition-colors
-                      ${!cadre2Actif 
-                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                    `}
-                  />
+                  <input type="date" value={formData.date_sign_2} onChange={(e) => handleChange('date_sign_2', e.target.value)} disabled={!cadre2Actif} className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre2Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`} />
                 </div>
               </div>
               
-              {/* Signature */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-300 mb-1">Signature</label>
                 {agent?.signature_url ? (
@@ -1214,9 +1212,7 @@ const FormulaireD2I = ({ agent, onClose }) => {
                 ) : (
                   <div className="flex items-center gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
                     <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0" />
-                    <span className="text-yellow-300 text-sm">
-                      Pas de signature enregistrée.
-                    </span>
+                    <span className="text-yellow-300 text-sm">Pas de signature enregistrée.</span>
                   </div>
                 )}
               </div>
@@ -1224,20 +1220,12 @@ const FormulaireD2I = ({ agent, onClose }) => {
           </div>
         </div>
 
-        {/* Footer avec boutons - toujours visible */}
+        {/* Footer avec boutons */}
         <div className="flex justify-end gap-3 p-4 border-t border-gray-700 shrink-0 bg-gray-900">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-          >
-            Annuler
-          </button>
-          <button
-            onClick={handleGenerate}
-            className="flex items-center gap-2 px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors"
-          >
+          <button onClick={onClose} className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">Annuler</button>
+          <button onClick={handleGenerate} className="flex items-center gap-2 px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors">
             <Eye className="w-4 h-4" />
-            Aperçu & Impression
+            Aperçu & Options
           </button>
         </div>
       </div>
