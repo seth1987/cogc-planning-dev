@@ -229,6 +229,7 @@ const FormulaireD2I = ({ agent, onClose }) => {
   // Composant aperçu/impression du formulaire
   const D2IPreview = () => (
     <div 
+      id="d2i-print-content"
       ref={printRef}
       className="bg-white text-black p-8 max-w-[210mm] mx-auto"
       style={{ fontFamily: 'Arial, sans-serif', fontSize: '11px', lineHeight: '1.4' }}
@@ -413,9 +414,9 @@ const FormulaireD2I = ({ agent, onClose }) => {
   // Modal d'aperçu
   if (showPreview) {
     return (
-      <div className="fixed inset-0 bg-black/90 flex flex-col z-[70]">
-        {/* Header aperçu */}
-        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
+      <div className="fixed inset-0 bg-black/90 flex flex-col z-[70]" id="d2i-preview-modal">
+        {/* Header aperçu - masqué à l'impression */}
+        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700 print:hidden">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <Eye className="w-5 h-5" />
             Aperçu du document D2I
@@ -438,8 +439,8 @@ const FormulaireD2I = ({ agent, onClose }) => {
         </div>
         
         {/* Contenu aperçu */}
-        <div className="flex-1 overflow-auto p-4 bg-gray-600">
-          <div className="shadow-2xl">
+        <div className="flex-1 overflow-auto p-4 bg-gray-600 print:p-0 print:bg-white print:overflow-visible">
+          <div className="shadow-2xl print:shadow-none">
             <D2IPreview />
           </div>
         </div>
@@ -447,15 +448,38 @@ const FormulaireD2I = ({ agent, onClose }) => {
         {/* Style impression */}
         <style>{`
           @media print {
-            body * { visibility: hidden; }
-            .fixed { position: absolute; }
-            [ref="printRef"], [ref="printRef"] * { visibility: visible; }
-            [ref="printRef"] { 
-              position: absolute; 
-              left: 0; 
-              top: 0;
-              width: 100%;
+            /* Masquer tout sauf le contenu à imprimer */
+            body > *:not(#root) { display: none !important; }
+            
+            #d2i-preview-modal {
+              position: absolute !important;
+              inset: 0 !important;
+              background: white !important;
+              display: block !important;
             }
+            
+            #d2i-preview-modal > *:not(:last-child):not(:nth-child(2)) {
+              display: none !important;
+            }
+            
+            #d2i-print-content {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              padding: 10mm !important;
+              background: white !important;
+              color: black !important;
+              font-size: 11px !important;
+            }
+            
+            #d2i-print-content * {
+              color: black !important;
+              -webkit-print-color-adjust: exact !important;
+              print-color-adjust: exact !important;
+            }
+            
+            .print\\:hidden { display: none !important; }
           }
         `}</style>
       </div>
