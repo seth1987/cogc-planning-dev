@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   X, FileText, Download, FolderOpen, Search, AlertTriangle, 
   Clock, Euro, Flag, Upload, Trash2, Plus, Loader2, CheckCircle,
-  AlertCircle, FolderPlus, FileSignature, User, Library, PenTool
+  AlertCircle, FolderPlus, FileSignature, User, Library, PenTool,
+  RefreshCw, Edit3, ExternalLink, Calendar
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import FormulaireD2I from './FormulaireD2I';
@@ -13,15 +14,15 @@ import MesDocuments from './MesDocuments';
  * 
  * Fonctionnalités :
  * - Onglet Bibliothèque : Documents par catégorie, upload, recherche
- * - Onglet Générer : Formulaires pré-remplis (D2I, etc.)
- * - Onglet Mon compte : Gestion signature personnelle
+ * - Onglet Générer : Formulaires pré-remplis (D2I, etc.) + modèles de la bibliothèque
+ * - Onglet Mon compte : Gestion signature personnelle + mes documents
  * 
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {function} onClose - Callback de fermeture
  */
 const ModalDocuments = ({ isOpen, onClose }) => {
   // États principaux
-  const [activeTab, setActiveTab] = useState('library'); // 'library', 'generate', 'myaccount'
+  const [activeTab, setActiveTab] = useState('generate'); // 'library', 'generate', 'myaccount'
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -38,6 +39,15 @@ const ModalDocuments = ({ isOpen, onClose }) => {
   // État formulaire D2I
   const [showD2IForm, setShowD2IForm] = useState(false);
   
+  // États pour la bibliothèque de modèles
+  const [bibliothequeModeles, setBibliothequeModeles] = useState([]);
+  const [loadingBiblio, setLoadingBiblio] = useState(true);
+  
+  // État pour l'éditeur de modèle
+  const [editingModele, setEditingModele] = useState(null);
+  const [editContent, setEditContent] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  
   // Upload form state
   const [uploadData, setUploadData] = useState({
     name: '',
@@ -50,8 +60,8 @@ const ModalDocuments = ({ isOpen, onClose }) => {
 
   // Configuration des onglets
   const tabs = [
-    { id: 'library', name: 'Bibliothèque', icon: Library },
     { id: 'generate', name: 'Générer', icon: FileSignature },
+    { id: 'library', name: 'Bibliothèque', icon: Library },
     { id: 'myaccount', name: 'Mon compte', icon: User }
   ];
 
@@ -104,7 +114,7 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     {
       id: 'd2i',
       name: 'D2I - Déclaration Individuelle d\'Intention',
-      description: 'Formulaire de grève (participation, renonciation, reprise)',
+      description: 'Créer un nouveau formulaire de grève (participation, renonciation, reprise)',
       icon: Flag,
       color: 'text-orange-400',
       bgColor: 'bg-orange-500/20'
@@ -177,13 +187,42 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     }
   }, [showNotification]);
 
+  // Charger les modèles de la bibliothèque
+  const loadBibliothequeModeles = useCallback(async () => {
+    try {
+      setLoadingBiblio(true);
+      const { data, error } = await supabase.storage
+        .from('bibliotheque')
+        .list('', {
+          sortBy: { column: 'created_at', order: 'desc' }
+        });
+      
+      if (error) throw error;
+      
+      // Ajouter les URLs publiques et filtrer les fichiers HTML
+      const modeles = (data || []).map(file => ({
+        ...file,
+        url: supabase.storage.from('bibliotheque').getPublicUrl(file.name).data.publicUrl,
+        path: file.name,
+        isHtml: file.name.endsWith('.html')
+      }));
+      
+      setBibliothequeModeles(modeles);
+    } catch (error) {
+      console.error('Erreur chargement bibliothèque:', error);
+    } finally {
+      setLoadingBiblio(false);
+    }
+  }, []);
+
   // Charger au montage
   useEffect(() => {
     if (isOpen) {
       loadDocuments();
       loadCurrentAgent();
+      loadBibliothequeModeles();
     }
-  }, [isOpen, loadDocuments, loadCurrentAgent]);
+  }, [isOpen, loadDocuments, loadCurrentAgent, loadBibliothequeModeles]);
 
   // Callback mise à jour agent (après upload signature)
   const handleAgentUpdate = (updatedAgent) => {
@@ -193,9 +232,22 @@ const ModalDocuments = ({ isOpen, onClose }) => {
 
   // Formater la taille du fichier
   const formatFileSize = (bytes) => {
+    if (!bytes) return '-';
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' Ko';
     return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+  };
+
+  // Formater la date
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   // Handler d'upload
@@ -319,6 +371,73 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     }
   };
 
+  // Supprimer un modèle de la bibliothèque
+  const handleDeleteModele = async (modele) => {
+    if (!window.confirm(`Supprimer le modèle "${modele.name}" ?`)) return;
+    
+    try {
+      const { error } = await supabase.storage
+        .from('bibliotheque')
+        .remove([modele.path]);
+      
+      if (error) throw error;
+      
+      showNotification('success', 'Modèle supprimé');
+      loadBibliothequeModeles();
+    } catch (error) {
+      console.error('Erreur suppression modèle:', error);
+      showNotification('error', 'Erreur lors de la suppression');
+    }
+  };
+
+  // Ouvrir l'éditeur pour un modèle de la bibliothèque
+  const handleEditModele = async (modele) => {
+    try {
+      const response = await fetch(modele.url);
+      const content = await response.text();
+      setEditContent(content);
+      setEditingModele(modele);
+    } catch (error) {
+      console.error('Erreur chargement modèle:', error);
+      showNotification('error', 'Erreur lors du chargement');
+    }
+  };
+
+  // Sauvegarder les modifications d'un modèle
+  const handleSaveModele = async () => {
+    if (!editingModele) return;
+    
+    try {
+      setSavingEdit(true);
+      
+      const htmlBlob = new Blob([editContent], { type: 'text/html' });
+      
+      const { error } = await supabase.storage
+        .from('bibliotheque')
+        .upload(editingModele.path, htmlBlob, {
+          contentType: 'text/html',
+          upsert: true
+        });
+      
+      if (error) throw error;
+      
+      showNotification('success', 'Modèle modifié avec succès');
+      setEditingModele(null);
+      setEditContent('');
+      loadBibliothequeModeles();
+    } catch (error) {
+      console.error('Erreur sauvegarde:', error);
+      showNotification('error', 'Erreur lors de la sauvegarde');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Ouvrir un modèle en lecture
+  const handleViewModele = (url) => {
+    window.open(url, '_blank');
+  };
+
   // Filtrer les documents par catégorie et recherche
   const getFilteredDocuments = () => {
     return documents.filter(doc => {
@@ -369,6 +488,65 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     );
   }
 
+  // Si l'éditeur de modèle est ouvert
+  if (editingModele) {
+    return (
+      <div className="fixed inset-0 bg-black/90 flex flex-col z-[80]">
+        {/* Header éditeur */}
+        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Edit3 className="w-5 h-5 text-orange-400" />
+            Modifier : {editingModele.name}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSaveModele}
+              disabled={savingEdit}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg"
+            >
+              {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              Enregistrer
+            </button>
+            <button
+              onClick={() => { setEditingModele(null); setEditContent(''); }}
+              className="p-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        
+        {/* Éditeur */}
+        <div className="flex-1 flex">
+          {/* Code HTML */}
+          <div className="w-1/2 flex flex-col border-r border-gray-700">
+            <div className="bg-gray-800 px-4 py-2 text-sm text-gray-400 border-b border-gray-700">
+              Code HTML
+            </div>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="flex-1 p-4 bg-gray-950 text-gray-200 font-mono text-sm resize-none focus:outline-none"
+              spellCheck={false}
+            />
+          </div>
+          
+          {/* Aperçu */}
+          <div className="w-1/2 flex flex-col">
+            <div className="bg-gray-800 px-4 py-2 text-sm text-gray-400 border-b border-gray-700">
+              Aperçu
+            </div>
+            <iframe
+              srcDoc={editContent}
+              className="flex-1 bg-white"
+              title="Aperçu document"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const groupedDocs = getGroupedDocuments();
   const totalDocs = documents.length;
 
@@ -406,7 +584,7 @@ const ModalDocuments = ({ isOpen, onClose }) => {
               <p className="text-sm text-gray-400">
                 {activeTab === 'library' && `${totalDocs} document${totalDocs !== 1 ? 's' : ''} • Formulaires et procédures`}
                 {activeTab === 'generate' && 'Générer un document pré-rempli'}
-                {activeTab === 'myaccount' && 'Gérer votre signature et profil'}
+                {activeTab === 'myaccount' && 'Gérer votre signature et documents'}
               </p>
             </div>
           </div>
@@ -439,6 +617,191 @@ const ModalDocuments = ({ isOpen, onClose }) => {
             );
           })}
         </div>
+
+        {/* ==================== ONGLET GÉNÉRER ==================== */}
+        {activeTab === 'generate' && (
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-white mb-2">Générer un document pré-rempli</h3>
+              <p className="text-gray-400 text-sm">
+                Sélectionnez un formulaire ci-dessous. Vos informations personnelles seront automatiquement intégrées.
+              </p>
+            </div>
+
+            {loadingAgent ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+                <span className="ml-3 text-gray-400">Chargement du profil...</span>
+              </div>
+            ) : !currentAgent ? (
+              <div className="text-center py-10 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
+                <AlertCircle className="w-12 h-12 mx-auto mb-3 text-yellow-400" />
+                <p className="text-yellow-300 font-medium">Profil agent non trouvé</p>
+                <p className="text-gray-400 text-sm mt-1">
+                  Votre email ne correspond à aucun agent enregistré.<br />
+                  Contactez l'administrateur.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Info agent */}
+                <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
+                  <div className="flex items-center gap-3 text-sm">
+                    <User className="w-5 h-5 text-cyan-400" />
+                    <span className="text-gray-400">Connecté en tant que :</span>
+                    <span className="text-white font-medium">
+                      {currentAgent.prenom} {currentAgent.nom}
+                    </span>
+                    {currentAgent.signature_url ? (
+                      <span className="ml-auto flex items-center gap-1 text-green-400 text-xs">
+                        <CheckCircle className="w-4 h-4" />
+                        Signature OK
+                      </span>
+                    ) : (
+                      <span className="ml-auto flex items-center gap-1 text-yellow-400 text-xs">
+                        <AlertCircle className="w-4 h-4" />
+                        Pas de signature
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Section : Créer un nouveau document */}
+                <div>
+                  <h4 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+                    <Plus className="w-4 h-4" />
+                    Créer un nouveau document
+                  </h4>
+                  <div className="grid gap-4">
+                    {generableDocuments.map(doc => {
+                      const IconComponent = doc.icon;
+                      return (
+                        <button
+                          key={doc.id}
+                          onClick={handleOpenD2I}
+                          className="w-full text-left p-5 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg border border-gray-700/50 hover:border-cyan-500/50 transition-all group"
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className={`p-3 rounded-lg ${doc.bgColor} group-hover:scale-110 transition-transform`}>
+                              <IconComponent className={`w-6 h-6 ${doc.color}`} />
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-white group-hover:text-cyan-300 transition-colors">
+                                {doc.name}
+                              </h4>
+                              <p className="text-sm text-gray-400 mt-1">{doc.description}</p>
+                            </div>
+                            <div className="text-cyan-400 group-hover:translate-x-1 transition-transform">
+                              →
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Section : Modèles de la bibliothèque */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-medium text-gray-400 flex items-center gap-2">
+                      <Library className="w-4 h-4" />
+                      Modèles enregistrés ({bibliothequeModeles.length})
+                    </h4>
+                    <button
+                      onClick={loadBibliothequeModeles}
+                      className="p-1 hover:bg-gray-700 rounded transition-colors"
+                      title="Actualiser"
+                    >
+                      <RefreshCw className={`w-4 h-4 text-gray-500 ${loadingBiblio ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
+
+                  {loadingBiblio ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+                    </div>
+                  ) : bibliothequeModeles.length === 0 ? (
+                    <div className="text-center py-8 bg-gray-800/30 rounded-lg border border-gray-700/50">
+                      <Library className="w-10 h-10 mx-auto mb-2 text-gray-600" />
+                      <p className="text-gray-500 text-sm">Aucun modèle enregistré</p>
+                      <p className="text-gray-600 text-xs mt-1">
+                        Générez un D2I et sauvegardez-le dans la Bibliothèque
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {bibliothequeModeles.map((modele) => (
+                        <div 
+                          key={modele.name}
+                          className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-orange-500/30 transition-colors group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`p-2 rounded-lg ${modele.isHtml ? 'bg-orange-500/20' : 'bg-red-500/20'}`}>
+                              <FileText className={`w-5 h-5 ${modele.isHtml ? 'text-orange-400' : 'text-red-400'}`} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-white font-medium truncate">{modele.name}</p>
+                              <div className="flex items-center gap-3 text-xs text-gray-500">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {formatDate(modele.created_at)}
+                                </span>
+                                <span>{formatFileSize(modele.metadata?.size)}</span>
+                                {modele.isHtml && (
+                                  <span className="text-orange-400">Modifiable</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              onClick={() => handleViewModele(modele.url)}
+                              className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                              title="Voir"
+                            >
+                              <ExternalLink className="w-4 h-4 text-gray-400" />
+                            </button>
+                            {modele.isHtml && (
+                              <button
+                                onClick={() => handleEditModele(modele)}
+                                className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
+                                title="Modifier"
+                              >
+                                <Edit3 className="w-4 h-4 text-orange-400" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteModele(modele)}
+                              className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-400" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Info supplémentaire */}
+                <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <PenTool className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="text-blue-300 font-medium">Astuce</p>
+                      <p className="text-blue-200/80 mt-1">
+                        Importez votre signature dans l'onglet "Mon compte" pour qu'elle soit automatiquement ajoutée à vos documents.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ==================== ONGLET BIBLIOTHÈQUE ==================== */}
         {activeTab === 'library' && (
@@ -686,100 +1049,6 @@ const ModalDocuments = ({ isOpen, onClose }) => {
               )}
             </div>
           </>
-        )}
-
-        {/* ==================== ONGLET GÉNÉRER ==================== */}
-        {activeTab === 'generate' && (
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Générer un document pré-rempli</h3>
-              <p className="text-gray-400 text-sm">
-                Sélectionnez un formulaire ci-dessous. Vos informations personnelles seront automatiquement intégrées.
-              </p>
-            </div>
-
-            {loadingAgent ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                <span className="ml-3 text-gray-400">Chargement du profil...</span>
-              </div>
-            ) : !currentAgent ? (
-              <div className="text-center py-10 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
-                <AlertCircle className="w-12 h-12 mx-auto mb-3 text-yellow-400" />
-                <p className="text-yellow-300 font-medium">Profil agent non trouvé</p>
-                <p className="text-gray-400 text-sm mt-1">
-                  Votre email ne correspond à aucun agent enregistré.<br />
-                  Contactez l'administrateur.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {/* Info agent */}
-                <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50 mb-6">
-                  <div className="flex items-center gap-3 text-sm">
-                    <User className="w-5 h-5 text-cyan-400" />
-                    <span className="text-gray-400">Connecté en tant que :</span>
-                    <span className="text-white font-medium">
-                      {currentAgent.prenom} {currentAgent.nom}
-                    </span>
-                    {currentAgent.signature_url ? (
-                      <span className="ml-auto flex items-center gap-1 text-green-400 text-xs">
-                        <CheckCircle className="w-4 h-4" />
-                        Signature OK
-                      </span>
-                    ) : (
-                      <span className="ml-auto flex items-center gap-1 text-yellow-400 text-xs">
-                        <AlertCircle className="w-4 h-4" />
-                        Pas de signature
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Liste des documents générables */}
-                <div className="grid gap-4">
-                  {generableDocuments.map(doc => {
-                    const IconComponent = doc.icon;
-                    return (
-                      <button
-                        key={doc.id}
-                        onClick={handleOpenD2I}
-                        className="w-full text-left p-5 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg border border-gray-700/50 hover:border-cyan-500/50 transition-all group"
-                      >
-                        <div className="flex items-start gap-4">
-                          <div className={`p-3 rounded-lg ${doc.bgColor} group-hover:scale-110 transition-transform`}>
-                            <IconComponent className={`w-6 h-6 ${doc.color}`} />
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-white group-hover:text-cyan-300 transition-colors">
-                              {doc.name}
-                            </h4>
-                            <p className="text-sm text-gray-400 mt-1">{doc.description}</p>
-                          </div>
-                          <div className="text-cyan-400 group-hover:translate-x-1 transition-transform">
-                            →
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Info supplémentaire */}
-                <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <PenTool className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm">
-                      <p className="text-blue-300 font-medium">Astuce</p>
-                      <p className="text-blue-200/80 mt-1">
-                        Importez votre signature dans l'onglet "Mon compte" pour qu'elle soit automatiquement ajoutée à vos documents.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
         )}
 
         {/* ==================== ONGLET MON COMPTE ==================== */}
