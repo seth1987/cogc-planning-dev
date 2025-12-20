@@ -56,8 +56,6 @@ const FormulaireD2I = ({ agent, onClose }) => {
   // États pour la validation
   const [errors, setErrors] = useState({});
   const [showPreview, setShowPreview] = useState(false);
-  
-  const printRef = useRef();
 
   // Mettre à jour les dates de signature quand les cadres sont activés
   useEffect(() => {
@@ -178,6 +176,246 @@ const FormulaireD2I = ({ agent, onClose }) => {
     return date.toLocaleDateString('fr-FR');
   };
 
+  // Générer le HTML pour impression dans une nouvelle fenêtre
+  const generatePrintHTML = () => {
+    const etablissementMS = formData.etablissement_ms === 'Texte libre' ? formData.etablissement_ms_libre : formData.etablissement_ms;
+    const etablissement1 = formData.etablissement_1 === 'Texte libre' ? formData.etablissement_1_libre : formData.etablissement_1;
+    const lieu1 = formData.lieu_1 === 'Texte libre' ? formData.lieu_1_libre : formData.lieu_1;
+    const lieu2 = formData.lieu_2 === 'Texte libre' ? formData.lieu_2_libre : formData.lieu_2;
+    
+    // Génération du bloc cadre 2 avec logique conditionnelle
+    const cadre2DateHeure = formData.choix_renonciation === 'reprendre' 
+      ? `, à compter du <span class="underline-field">${formatDate(formData.date_reprise)}</span> à <span class="underline-field">${formData.heure_reprise}</span>`
+      : '<span class="strike">, à compter du _______ à _______</span>';
+
+    return `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>D2I - ${formData.nom_1 || 'Document'}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { size: A4 portrait; margin: 10mm; }
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      line-height: 1.4;
+      padding: 15px 25px;
+      max-width: 210mm;
+      margin: 0 auto;
+      background: white;
+      color: black;
+    }
+    .header-service { font-size: 9px; font-style: italic; margin-bottom: 15px; }
+    .title { text-align: center; font-size: 14px; font-weight: bold; margin-bottom: 5px; }
+    .subtitle { text-align: center; font-size: 9px; margin-bottom: 3px; }
+    .box { border: 1px solid black; padding: 8px; margin: 10px 0; }
+    .box-title { font-weight: bold; text-decoration: underline; margin-right: 15px; }
+    .section-title { font-size: 9px; font-style: italic; margin: 15px 0 8px 0; }
+    .field-row { margin: 8px 0; }
+    .underline-field {
+      border-bottom: 1px dotted #333;
+      padding: 0 8px;
+      min-width: 60px;
+      display: inline-block;
+    }
+    .numero-cercle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border: 1px solid black;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: bold;
+      margin-right: 5px;
+    }
+    .scissors {
+      text-align: center;
+      margin: 10px 0;
+      border-top: 1px dashed #999;
+      position: relative;
+    }
+    .scissors::before {
+      content: "✂";
+      position: absolute;
+      top: -10px;
+      left: 10px;
+      background: white;
+      padding: 0 5px;
+    }
+    .signature-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin: 10px 0;
+    }
+    .signature-block { display: flex; align-items: center; gap: 5px; }
+    .signature-line { width: 100px; height: 25px; border-bottom: 1px dotted #333; }
+    .signature-img { height: 30px; max-width: 100px; }
+    .notes { font-size: 8px; margin: 15px 0; padding-left: 15px; }
+    .notes p { margin: 3px 0; text-indent: -15px; }
+    .footer { text-align: center; margin-top: 20px; padding-top: 10px; border-top: 1px solid black; }
+    .footer-badge { border: 1px solid black; padding: 3px 15px; display: inline-block; font-weight: bold; font-size: 10px; }
+    .version { font-size: 8px; margin-top: 5px; }
+    .encadre-options { border: 1px solid black; padding: 5px 10px; margin: 5px 0; display: inline-block; }
+    .opacity-40 { opacity: 0.4; }
+    .strike { text-decoration: line-through; }
+    sup { font-size: 8px; }
+  </style>
+</head>
+<body>
+  <div class="header-service">Continuité de service à l'EIC Paris Nord</div>
+  
+  <div class="title">DECLARATION INDIVIDUELLE D'INTENTION N°${formData.num_dii || '______'}</div>
+  <div class="subtitle">Lois du 21 août 2007 et du 19 mars 2012</div>
+  <div class="subtitle">Informations à réceptionner par le service concerné</div>
+  
+  <!-- Encadré Mouvement Social -->
+  <div class="box">
+    <span class="box-title">Mouvement social :</span>
+    <span>Etablissement : </span>
+    <span class="underline-field">${etablissementMS}</span>
+    <span style="margin-left: 20px;">Préavis : du </span>
+    <span class="underline-field">${formatDate(formData.preavis_date_debut)}</span>
+    <span> à </span>
+    <span class="underline-field">${formData.preavis_heure_debut}</span>
+    <span> au </span>
+    <span class="underline-field">${formatDate(formData.preavis_date_fin)}</span>
+    <span> à </span>
+    <span class="underline-field">${formData.preavis_heure_fin}</span>
+  </div>
+  
+  <!-- Cadre réservé à l'agent -->
+  <div class="section-title">Cadre réservé à l'agent</div>
+  
+  <!-- Cadre 1 -->
+  <div class="${!cadre1Actif ? 'opacity-40' : ''}">
+    <div class="field-row">
+      <span class="numero-cercle">1</span>
+      <span>NOM de L'AGENT : </span>
+      <span class="underline-field" style="min-width: 120px;">${cadre1Actif ? formData.nom_1 : ''}</span>
+      <span style="margin-left: 15px;">PRENOM : </span>
+      <span class="underline-field" style="min-width: 100px;">${cadre1Actif ? formData.prenom_1 : ''}</span>
+      <span style="margin-left: 15px;">CP : </span>
+      <span class="underline-field" style="min-width: 50px;">${cadre1Actif ? formData.cp_1 : ''}</span>
+    </div>
+    
+    <div class="field-row">
+      <span>ETABLISSEMENT/ ENTITE : </span>
+      <span class="underline-field" style="min-width: 250px;">${cadre1Actif ? etablissement1 : ''}</span>
+    </div>
+    
+    <div class="field-row">
+      <span>Déclare avoir l'intention de participer à la grève, à compter du </span>
+      <span class="underline-field">${cadre1Actif ? formatDate(formData.date_greve) : ''}</span>
+      <span> à </span>
+      <span class="underline-field">${cadre1Actif ? formData.heure_greve : ''}</span>
+      <sup>(1)</sup>
+    </div>
+    
+    <div class="signature-row">
+      <div class="signature-block">
+        <span>A </span>
+        <span class="underline-field">${cadre1Actif ? lieu1 : ''}</span>
+      </div>
+      <div class="signature-block">
+        <span>Date : </span>
+        <span class="underline-field">${cadre1Actif ? formatDate(formData.date_sign_1) : ''}</span>
+      </div>
+      <div class="signature-block">
+        <span>Signature : </span>
+        ${cadre1Actif && agent?.signature_url 
+          ? `<img src="${agent.signature_url}" class="signature-img" alt="Signature" />`
+          : '<span class="signature-line"></span>'}
+      </div>
+    </div>
+  </div>
+  
+  <!-- Trait pointillé ciseaux -->
+  <div class="scissors"></div>
+  
+  <!-- Cadre 2 -->
+  <div class="${!cadre2Actif ? 'opacity-40' : ''}">
+    <div class="field-row">
+      <span class="numero-cercle">2</span>
+      <span>NOM de L'AGENT : </span>
+      <span class="underline-field" style="min-width: 120px;">${cadre2Actif ? formData.nom_2 : ''}</span>
+      <span style="margin-left: 15px;">PRENOM : </span>
+      <span class="underline-field" style="min-width: 100px;">${cadre2Actif ? formData.prenom_2 : ''}</span>
+      <span style="margin-left: 15px;">CP : </span>
+      <span class="underline-field" style="min-width: 50px;">${cadre2Actif ? formData.cp_2 : ''}</span>
+    </div>
+    
+    <div class="field-row">
+      <span>Déclare, suite à la DII n°</span>
+      <span class="underline-field">${cadre2Actif ? formData.num_dii : ''}</span>
+      <sup>(2)</sup>
+      
+      <div class="encadre-options" style="margin-left: 15px;">
+        <div>
+          <span class="${formData.choix_renonciation === 'reprendre' ? 'strike' : ''}">renoncer à participer à la grève</span>
+          <sup>(3)</sup>
+        </div>
+        <div>
+          <span class="${formData.choix_renonciation === 'renoncer' ? 'strike' : ''}">reprendre le travail</span>
+          ${cadre2Actif ? cadre2DateHeure : ''}
+          <sup>(4)</sup>
+        </div>
+      </div>
+    </div>
+    
+    <div class="signature-row">
+      <div class="signature-block">
+        <span>A </span>
+        <span class="underline-field">${cadre2Actif ? lieu2 : ''}</span>
+      </div>
+      <div class="signature-block">
+        <span>Date : </span>
+        <span class="underline-field">${cadre2Actif ? formatDate(formData.date_sign_2) : ''}</span>
+      </div>
+      <div class="signature-block">
+        <span>Signature : </span>
+        ${cadre2Actif && agent?.signature_url 
+          ? `<img src="${agent.signature_url}" class="signature-img" alt="Signature" />`
+          : '<span class="signature-line"></span>'}
+      </div>
+    </div>
+  </div>
+  
+  <!-- Notes -->
+  <div class="notes">
+    <p>(1) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de participer à la grève au plus tard 48 heures avant la participation à la grève</p>
+    <p>(2) Rayer les mentions inutiles</p>
+    <p>(3) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de renoncer à participer à la grève au plus tard 24 heures avant l'heure de participation prévue, sauf lorsque la grève n'a pas lieu ou lorsque la prise du service est consécutive à la fin de la grève</p>
+    <p>(4) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de reprendre le travail après avoir participé à la grève au plus tard 24 heures avant l'heure de reprise souhaitée, sauf lorsque la reprise du service est consécutive à la fin de la grève</p>
+  </div>
+  
+  <!-- Footer -->
+  <div class="footer">
+    <span class="footer-badge">INTERNE SNCF RESEAU</span>
+    <div class="version">EIC PN RH00008- Version 01 du 26-10-2017</div>
+  </div>
+</body>
+</html>
+    `;
+  };
+
+  // Ouvrir dans une nouvelle fenêtre et imprimer
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (printWindow) {
+      printWindow.document.write(generatePrintHTML());
+      printWindow.document.close();
+      // Attendre le chargement puis imprimer
+      printWindow.onload = () => {
+        printWindow.print();
+      };
+    }
+  };
+
   // Composant pour les menus déroulants avec option "Texte libre"
   const SelectWithFreeText = ({ 
     value, 
@@ -226,204 +464,203 @@ const FormulaireD2I = ({ agent, onClose }) => {
     </div>
   );
 
-  // Composant aperçu/impression du formulaire
-  const D2IPreview = () => (
-    <div 
-      id="d2i-print-content"
-      ref={printRef}
-      className="bg-white text-black p-8 max-w-[210mm] mx-auto"
-      style={{ fontFamily: 'Arial, sans-serif', fontSize: '11px', lineHeight: '1.4' }}
-    >
-      {/* En-tête */}
-      <div className="text-xs italic mb-4">Continuité de service à l'EIC Paris Nord</div>
-      
-      <h1 className="text-center text-lg font-bold mb-1">
-        DECLARATION INDIVIDUELLE D'INTENTION N°{formData.num_dii || '______'}
-      </h1>
-      <p className="text-center text-xs mb-1">Lois du 21 août 2007 et du 19 mars 2012</p>
-      <p className="text-center text-xs mb-4">Informations à réceptionner par le service concerné</p>
-      
-      {/* Encadré Mouvement Social */}
-      <div className="border border-black p-3 mb-4">
-        <span className="font-bold underline mr-4">Mouvement social :</span>
-        <span>Etablissement : </span>
-        <span className="border-b border-dotted border-black px-2">
-          {formData.etablissement_ms === 'Texte libre' ? formData.etablissement_ms_libre : formData.etablissement_ms}
-        </span>
-        <span className="ml-6">Préavis : du </span>
-        <span className="border-b border-dotted border-black px-2">{formatDate(formData.preavis_date_debut)}</span>
-        <span> à </span>
-        <span className="border-b border-dotted border-black px-2">{formData.preavis_heure_debut}</span>
-        <span> au </span>
-        <span className="border-b border-dotted border-black px-2">{formatDate(formData.preavis_date_fin)}</span>
-        <span> à </span>
-        <span className="border-b border-dotted border-black px-2">{formData.preavis_heure_fin}</span>
-      </div>
-      
-      {/* Cadre réservé à l'agent */}
-      <div className="text-xs italic mb-2">Cadre réservé à l'agent</div>
-      
-      {/* Cadre 1 */}
-      <div className={`mb-4 ${!cadre1Actif ? 'opacity-40' : ''}`}>
-        <div className="flex items-start gap-2 mb-2">
-          <span className="inline-flex items-center justify-center w-5 h-5 border border-black rounded-full text-xs font-bold">1</span>
-          <span>NOM de L'AGENT : </span>
-          <span className="border-b border-dotted border-black px-2 min-w-[150px]">{cadre1Actif ? formData.nom_1 : ''}</span>
-          <span className="ml-4">PRENOM : </span>
-          <span className="border-b border-dotted border-black px-2 min-w-[100px]">{cadre1Actif ? formData.prenom_1 : ''}</span>
-          <span className="ml-4">CP : </span>
-          <span className="border-b border-dotted border-black px-2 min-w-[60px]">{cadre1Actif ? formData.cp_1 : ''}</span>
-        </div>
+  // Composant aperçu du formulaire (affichage interne)
+  const D2IPreview = () => {
+    const etablissementMS = formData.etablissement_ms === 'Texte libre' ? formData.etablissement_ms_libre : formData.etablissement_ms;
+    const etablissement1 = formData.etablissement_1 === 'Texte libre' ? formData.etablissement_1_libre : formData.etablissement_1;
+    const lieu1 = formData.lieu_1 === 'Texte libre' ? formData.lieu_1_libre : formData.lieu_1;
+    const lieu2 = formData.lieu_2 === 'Texte libre' ? formData.lieu_2_libre : formData.lieu_2;
+
+    return (
+      <div 
+        className="bg-white text-black p-8 max-w-[210mm] mx-auto"
+        style={{ fontFamily: 'Arial, sans-serif', fontSize: '11px', lineHeight: '1.4' }}
+      >
+        {/* En-tête */}
+        <div className="text-xs italic mb-4">Continuité de service à l'EIC Paris Nord</div>
         
-        <div className="mb-2">
-          <span>ETABLISSEMENT/ ENTITE : </span>
-          <span className="border-b border-dotted border-black px-2 min-w-[300px]">
-            {cadre1Actif ? (formData.etablissement_1 === 'Texte libre' ? formData.etablissement_1_libre : formData.etablissement_1) : ''}
-          </span>
-        </div>
+        <h1 className="text-center text-lg font-bold mb-1">
+          DECLARATION INDIVIDUELLE D'INTENTION N°{formData.num_dii || '______'}
+        </h1>
+        <p className="text-center text-xs mb-1">Lois du 21 août 2007 et du 19 mars 2012</p>
+        <p className="text-center text-xs mb-4">Informations à réceptionner par le service concerné</p>
         
-        <div className="mb-2">
-          <span>Déclare avoir l'intention de participer à la grève, à compter du </span>
-          <span className="border-b border-dotted border-black px-2">{cadre1Actif ? formatDate(formData.date_greve) : ''}</span>
+        {/* Encadré Mouvement Social */}
+        <div className="border border-black p-3 mb-4">
+          <span className="font-bold underline mr-4">Mouvement social :</span>
+          <span>Etablissement : </span>
+          <span className="border-b border-dotted border-black px-2">{etablissementMS}</span>
+          <span className="ml-6">Préavis : du </span>
+          <span className="border-b border-dotted border-black px-2">{formatDate(formData.preavis_date_debut)}</span>
           <span> à </span>
-          <span className="border-b border-dotted border-black px-2">{cadre1Actif ? formData.heure_greve : ''}</span>
-          <sup>(1)</sup>
+          <span className="border-b border-dotted border-black px-2">{formData.preavis_heure_debut}</span>
+          <span> au </span>
+          <span className="border-b border-dotted border-black px-2">{formatDate(formData.preavis_date_fin)}</span>
+          <span> à </span>
+          <span className="border-b border-dotted border-black px-2">{formData.preavis_heure_fin}</span>
         </div>
         
-        <div className="flex justify-between items-end mt-3">
-          <div>
-            <span>A </span>
-            <span className="border-b border-dotted border-black px-2 min-w-[100px]">
-              {cadre1Actif ? (formData.lieu_1 === 'Texte libre' ? formData.lieu_1_libre : formData.lieu_1) : ''}
-            </span>
-          </div>
-          <div>
-            <span>Date : </span>
-            <span className="border-b border-dotted border-black px-2">{cadre1Actif ? formatDate(formData.date_sign_1) : ''}</span>
-          </div>
-          <div className="flex items-end gap-2">
-            <span>Signature : </span>
-            {cadre1Actif && agent?.signature_url ? (
-              <img src={agent.signature_url} alt="Signature" className="h-8 max-w-[100px]" />
-            ) : (
-              <span className="border-b border-dotted border-black w-[100px] h-6"></span>
-            )}
-          </div>
-        </div>
-      </div>
-      
-      {/* Trait pointillé ciseaux */}
-      <div className="border-t border-dashed border-gray-400 my-3 relative">
-        <span className="absolute -top-3 left-2 bg-white px-1">✂</span>
-      </div>
-      
-      {/* Cadre 2 */}
-      <div className={`mb-4 ${!cadre2Actif ? 'opacity-40' : ''}`}>
-        <div className="flex items-start gap-2 mb-2">
-          <span className="inline-flex items-center justify-center w-5 h-5 border border-black rounded-full text-xs font-bold">2</span>
-          <span>NOM de L'AGENT : </span>
-          <span className="border-b border-dotted border-black px-2 min-w-[150px]">{cadre2Actif ? formData.nom_2 : ''}</span>
-          <span className="ml-4">PRENOM : </span>
-          <span className="border-b border-dotted border-black px-2 min-w-[100px]">{cadre2Actif ? formData.prenom_2 : ''}</span>
-          <span className="ml-4">CP : </span>
-          <span className="border-b border-dotted border-black px-2 min-w-[60px]">{cadre2Actif ? formData.cp_2 : ''}</span>
-        </div>
+        {/* Cadre réservé à l'agent */}
+        <div className="text-xs italic mb-2">Cadre réservé à l'agent</div>
         
-        <div className="mb-2">
-          <span>Déclare, suite à la DII n°</span>
-          <span className="border-b border-dotted border-black px-2 mx-1">{cadre2Actif ? formData.num_dii : ''}</span>
-          <sup>(2)</sup>
+        {/* Cadre 1 */}
+        <div className={`mb-4 ${!cadre1Actif ? 'opacity-40' : ''}`}>
+          <div className="flex items-start gap-2 mb-2 flex-wrap">
+            <span className="inline-flex items-center justify-center w-5 h-5 border border-black rounded-full text-xs font-bold shrink-0">1</span>
+            <span>NOM de L'AGENT : </span>
+            <span className="border-b border-dotted border-black px-2 min-w-[120px]">{cadre1Actif ? formData.nom_1 : ''}</span>
+            <span className="ml-4">PRENOM : </span>
+            <span className="border-b border-dotted border-black px-2 min-w-[100px]">{cadre1Actif ? formData.prenom_1 : ''}</span>
+            <span className="ml-4">CP : </span>
+            <span className="border-b border-dotted border-black px-2 min-w-[60px]">{cadre1Actif ? formData.cp_1 : ''}</span>
+          </div>
           
-          <div className="border border-black inline-block p-2 ml-4">
+          <div className="mb-2">
+            <span>ETABLISSEMENT/ ENTITE : </span>
+            <span className="border-b border-dotted border-black px-2 min-w-[250px]">
+              {cadre1Actif ? etablissement1 : ''}
+            </span>
+          </div>
+          
+          <div className="mb-2">
+            <span>Déclare avoir l'intention de participer à la grève, à compter du </span>
+            <span className="border-b border-dotted border-black px-2">{cadre1Actif ? formatDate(formData.date_greve) : ''}</span>
+            <span> à </span>
+            <span className="border-b border-dotted border-black px-2">{cadre1Actif ? formData.heure_greve : ''}</span>
+            <sup className="text-[8px]">(1)</sup>
+          </div>
+          
+          <div className="flex justify-between items-end mt-3 flex-wrap gap-2">
             <div>
-              <span className={formData.choix_renonciation === 'reprendre' ? 'line-through' : ''}>
-                renoncer à participer à la grève
-              </span>
-              <sup>(3)</sup>
+              <span>A </span>
+              <span className="border-b border-dotted border-black px-2 min-w-[80px]">{cadre1Actif ? lieu1 : ''}</span>
             </div>
             <div>
-              <span className={formData.choix_renonciation === 'renoncer' ? 'line-through' : ''}>
-                reprendre le travail
-              </span>
-              {/* Date/heure affichées UNIQUEMENT si "reprendre" est sélectionné */}
-              {formData.choix_renonciation === 'reprendre' ? (
-                <>
-                  <span>, à compter du </span>
-                  <span className="border-b border-dotted border-black px-2 mx-1">
-                    {cadre2Actif ? formatDate(formData.date_reprise) : ''}
-                  </span>
-                  <span> à </span>
-                  <span className="border-b border-dotted border-black px-2 mx-1">
-                    {cadre2Actif ? formData.heure_reprise : ''}
-                  </span>
-                </>
+              <span>Date : </span>
+              <span className="border-b border-dotted border-black px-2">{cadre1Actif ? formatDate(formData.date_sign_1) : ''}</span>
+            </div>
+            <div className="flex items-end gap-2">
+              <span>Signature : </span>
+              {cadre1Actif && agent?.signature_url ? (
+                <img src={agent.signature_url} alt="Signature" className="h-8 max-w-[100px]" />
               ) : (
-                <span className={formData.choix_renonciation === 'renoncer' ? 'line-through' : ''}>
-                  , à compter du _______ à _______
-                </span>
+                <span className="border-b border-dotted border-black w-[100px] h-6 inline-block"></span>
               )}
-              <sup>(4)</sup>
             </div>
           </div>
         </div>
         
-        <div className="flex justify-between items-end mt-3">
-          <div>
-            <span>A </span>
-            <span className="border-b border-dotted border-black px-2 min-w-[100px]">
-              {cadre2Actif ? (formData.lieu_2 === 'Texte libre' ? formData.lieu_2_libre : formData.lieu_2) : ''}
-            </span>
+        {/* Trait pointillé ciseaux */}
+        <div className="border-t border-dashed border-gray-400 my-3 relative">
+          <span className="absolute -top-3 left-2 bg-white px-1">✂</span>
+        </div>
+        
+        {/* Cadre 2 */}
+        <div className={`mb-4 ${!cadre2Actif ? 'opacity-40' : ''}`}>
+          <div className="flex items-start gap-2 mb-2 flex-wrap">
+            <span className="inline-flex items-center justify-center w-5 h-5 border border-black rounded-full text-xs font-bold shrink-0">2</span>
+            <span>NOM de L'AGENT : </span>
+            <span className="border-b border-dotted border-black px-2 min-w-[120px]">{cadre2Actif ? formData.nom_2 : ''}</span>
+            <span className="ml-4">PRENOM : </span>
+            <span className="border-b border-dotted border-black px-2 min-w-[100px]">{cadre2Actif ? formData.prenom_2 : ''}</span>
+            <span className="ml-4">CP : </span>
+            <span className="border-b border-dotted border-black px-2 min-w-[60px]">{cadre2Actif ? formData.cp_2 : ''}</span>
           </div>
-          <div>
-            <span>Date : </span>
-            <span className="border-b border-dotted border-black px-2">{cadre2Actif ? formatDate(formData.date_sign_2) : ''}</span>
+          
+          <div className="mb-2">
+            <span>Déclare, suite à la DII n°</span>
+            <span className="border-b border-dotted border-black px-2 mx-1">{cadre2Actif ? formData.num_dii : ''}</span>
+            <sup className="text-[8px]">(2)</sup>
+            
+            <div className="border border-black inline-block p-2 ml-4">
+              <div>
+                <span className={formData.choix_renonciation === 'reprendre' ? 'line-through' : ''}>
+                  renoncer à participer à la grève
+                </span>
+                <sup className="text-[8px]">(3)</sup>
+              </div>
+              <div>
+                <span className={formData.choix_renonciation === 'renoncer' ? 'line-through' : ''}>
+                  reprendre le travail
+                </span>
+                {/* Date/heure affichées UNIQUEMENT si "reprendre" est sélectionné */}
+                {formData.choix_renonciation === 'reprendre' ? (
+                  <>
+                    <span>, à compter du </span>
+                    <span className="border-b border-dotted border-black px-2 mx-1">
+                      {cadre2Actif ? formatDate(formData.date_reprise) : ''}
+                    </span>
+                    <span> à </span>
+                    <span className="border-b border-dotted border-black px-2 mx-1">
+                      {cadre2Actif ? formData.heure_reprise : ''}
+                    </span>
+                  </>
+                ) : (
+                  <span className={formData.choix_renonciation === 'renoncer' ? 'line-through' : ''}>
+                    , à compter du _______ à _______
+                  </span>
+                )}
+                <sup className="text-[8px]">(4)</sup>
+              </div>
+            </div>
           </div>
-          <div className="flex items-end gap-2">
-            <span>Signature : </span>
-            {cadre2Actif && agent?.signature_url ? (
-              <img src={agent.signature_url} alt="Signature" className="h-8 max-w-[100px]" />
-            ) : (
-              <span className="border-b border-dotted border-black w-[100px] h-6"></span>
-            )}
+          
+          <div className="flex justify-between items-end mt-3 flex-wrap gap-2">
+            <div>
+              <span>A </span>
+              <span className="border-b border-dotted border-black px-2 min-w-[80px]">{cadre2Actif ? lieu2 : ''}</span>
+            </div>
+            <div>
+              <span>Date : </span>
+              <span className="border-b border-dotted border-black px-2">{cadre2Actif ? formatDate(formData.date_sign_2) : ''}</span>
+            </div>
+            <div className="flex items-end gap-2">
+              <span>Signature : </span>
+              {cadre2Actif && agent?.signature_url ? (
+                <img src={agent.signature_url} alt="Signature" className="h-8 max-w-[100px]" />
+              ) : (
+                <span className="border-b border-dotted border-black w-[100px] h-6 inline-block"></span>
+              )}
+            </div>
           </div>
         </div>
+        
+        {/* Notes */}
+        <div className="text-[8px] mt-4 pl-4">
+          <p className="mb-1" style={{ textIndent: '-15px' }}>
+            (1) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de participer à la grève au plus tard 48 heures avant la participation à la grève
+          </p>
+          <p className="mb-1" style={{ textIndent: '-15px' }}>(2) Rayer les mentions inutiles</p>
+          <p className="mb-1" style={{ textIndent: '-15px' }}>
+            (3) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de renoncer à participer à la grève au plus tard 24 heures avant l'heure de participation prévue, sauf lorsque la grève n'a pas lieu ou lorsque la prise du service est consécutive à la fin de la grève
+          </p>
+          <p style={{ textIndent: '-15px' }}>
+            (4) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de reprendre le travail après avoir participé à la grève au plus tard 24 heures avant l'heure de reprise souhaitée, sauf lorsque la reprise du service est consécutive à la fin de la grève
+          </p>
+        </div>
+        
+        {/* Footer */}
+        <div className="text-center mt-6 pt-3 border-t border-black">
+          <span className="border border-black px-4 py-1 font-bold text-xs">INTERNE SNCF RESEAU</span>
+          <p className="text-[8px] mt-1">EIC PN RH00008- Version 01 du 26-10-2017</p>
+        </div>
       </div>
-      
-      {/* Notes */}
-      <div className="text-[8px] mt-4 pl-4">
-        <p className="mb-1" style={{ textIndent: '-15px' }}>
-          (1) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de participer à la grève au plus tard 48 heures avant la participation à la grève
-        </p>
-        <p className="mb-1" style={{ textIndent: '-15px' }}>(2) Rayer les mentions inutiles</p>
-        <p className="mb-1" style={{ textIndent: '-15px' }}>
-          (3) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de renoncer à participer à la grève au plus tard 24 heures avant l'heure de participation prévue, sauf lorsque la grève n'a pas lieu ou lorsque la prise du service est consécutive à la fin de la grève
-        </p>
-        <p style={{ textIndent: '-15px' }}>
-          (4) Est passible d'une sanction disciplinaire le salarié qui n'a pas informé son employeur de son intention de reprendre le travail après avoir participé à la grève au plus tard 24 heures avant l'heure de reprise souhaitée, sauf lorsque la reprise du service est consécutive à la fin de la grève
-        </p>
-      </div>
-      
-      {/* Footer */}
-      <div className="text-center mt-6 pt-3 border-t border-black">
-        <span className="border border-black px-4 py-1 font-bold text-xs">INTERNE SNCF RESEAU</span>
-        <p className="text-[8px] mt-1">EIC PN RH00008- Version 01 du 26-10-2017</p>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // Modal d'aperçu
   if (showPreview) {
     return (
-      <div className="fixed inset-0 bg-black/90 flex flex-col z-[70]" id="d2i-preview-modal">
-        {/* Header aperçu - masqué à l'impression */}
-        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700 print:hidden">
+      <div className="fixed inset-0 bg-black/90 flex flex-col z-[70]">
+        {/* Header aperçu */}
+        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <Eye className="w-5 h-5" />
             Aperçu du document D2I
           </h3>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => window.print()}
+              onClick={handlePrint}
               className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg"
             >
               <Printer className="w-4 h-4" />
@@ -439,49 +676,11 @@ const FormulaireD2I = ({ agent, onClose }) => {
         </div>
         
         {/* Contenu aperçu */}
-        <div className="flex-1 overflow-auto p-4 bg-gray-600 print:p-0 print:bg-white print:overflow-visible">
-          <div className="shadow-2xl print:shadow-none">
+        <div className="flex-1 overflow-auto p-4 bg-gray-600">
+          <div className="shadow-2xl">
             <D2IPreview />
           </div>
         </div>
-        
-        {/* Style impression */}
-        <style>{`
-          @media print {
-            /* Masquer tout sauf le contenu à imprimer */
-            body > *:not(#root) { display: none !important; }
-            
-            #d2i-preview-modal {
-              position: absolute !important;
-              inset: 0 !important;
-              background: white !important;
-              display: block !important;
-            }
-            
-            #d2i-preview-modal > *:not(:last-child):not(:nth-child(2)) {
-              display: none !important;
-            }
-            
-            #d2i-print-content {
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 100% !important;
-              padding: 10mm !important;
-              background: white !important;
-              color: black !important;
-              font-size: 11px !important;
-            }
-            
-            #d2i-print-content * {
-              color: black !important;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-            
-            .print\\:hidden { display: none !important; }
-          }
-        `}</style>
       </div>
     );
   }
