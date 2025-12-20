@@ -565,13 +565,13 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
     error,
     freeTextError 
   }) => (
-    <div className="flex gap-2 flex-1">
+    <div className="flex flex-col sm:flex-row gap-2 flex-1">
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         className={`
-          px-3 py-2 rounded-lg border transition-colors
+          px-3 py-2 rounded-lg border transition-colors text-sm
           ${disabled 
             ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
             : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
@@ -591,7 +591,7 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
           disabled={disabled}
           placeholder="Saisir..."
           className={`
-            flex-1 px-3 py-2 rounded-lg border transition-colors
+            flex-1 px-3 py-2 rounded-lg border transition-colors text-sm
             ${disabled 
               ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
               : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
@@ -884,29 +884,29 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
 
   // Modal principale du formulaire
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
-      <div className="bg-gray-900 rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl border border-gray-700">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-2 sm:p-4">
+      <div className="bg-gray-900 rounded-xl w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] flex flex-col shadow-2xl border border-gray-700">
         {/* Header avec croix de fermeture */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-700 shrink-0">
-          <h2 className="text-xl font-bold text-white flex items-center gap-3">
-            <FileText className="w-6 h-6 text-cyan-400" />
-            {isEditMode ? 'Modifier le D2I' : 'Déclaration Individuelle d\'Intention (D2I)'}
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-700 shrink-0">
+          <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2 sm:gap-3">
+            <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
+            <span className="truncate">{isEditMode ? 'Modifier le D2I' : 'Déclaration Individuelle d\'Intention (D2I)'}</span>
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-gray-700 rounded-lg transition-colors text-gray-400 hover:text-white"
+            className="p-2 hover:bg-gray-700 rounded-lg transition-colors text-gray-400 hover:text-white shrink-0"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
         {/* Contenu scrollable */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4 sm:space-y-6 min-h-0">
           {/* Info */}
-          <div className={`border rounded-lg p-4 ${isEditMode ? 'bg-orange-500/20 border-orange-500/50' : 'bg-blue-500/20 border-blue-500/50'}`}>
-            <div className="flex items-start gap-3">
-              <AlertCircle className={`w-5 h-5 mt-0.5 shrink-0 ${isEditMode ? 'text-orange-400' : 'text-blue-400'}`} />
-              <p className={`text-sm ${isEditMode ? 'text-orange-200/80' : 'text-blue-200/80'}`}>
+          <div className={`border rounded-lg p-3 sm:p-4 ${isEditMode ? 'bg-orange-500/20 border-orange-500/50' : 'bg-blue-500/20 border-blue-500/50'}`}>
+            <div className="flex items-start gap-2 sm:gap-3">
+              <AlertCircle className={`w-4 h-4 sm:w-5 sm:h-5 mt-0.5 shrink-0 ${isEditMode ? 'text-orange-400' : 'text-blue-400'}`} />
+              <p className={`text-xs sm:text-sm ${isEditMode ? 'text-orange-200/80' : 'text-blue-200/80'}`}>
                 {isEditMode 
                   ? 'Vous modifiez un document existant. Les changements seront enregistrés dans la bibliothèque.'
                   : 'Formulaire pour déclarer votre participation à un mouvement social. Remplissez le mouvement social, puis cochez le(s) cadre(s) à compléter.'}
@@ -915,27 +915,27 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
           </div>
 
           {/* Section Mouvement Social - Toujours active */}
-          <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <Building className="w-5 h-5 text-cyan-400" />
+          <div className="bg-gray-800/50 rounded-lg p-3 sm:p-4 border border-gray-700">
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center gap-2">
+              <Building className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
               Mouvement social
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               {/* N° DII */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">
                   N° DII {cadre2Actif && <span className="text-red-400">*</span>}
                 </label>
                 <div className="flex items-center gap-2">
-                  <Hash className="w-4 h-4 text-gray-500" />
+                  <Hash className="w-4 h-4 text-gray-500 shrink-0" />
                   <input
                     type="text"
                     value={formData.num_dii}
                     onChange={(e) => handleChange('num_dii', e.target.value)}
                     placeholder="Numéro (si connu)"
                     className={`
-                      flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                      flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white text-sm
                       ${errors.num_dii ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
                     `}
                   />
@@ -945,7 +945,7 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
               
               {/* Établissement */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">
                   Établissement <span className="text-red-400">*</span>
                 </label>
                 <SelectWithFreeText
@@ -960,12 +960,12 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                 />
               </div>
               
-              {/* Préavis début */}
+              {/* Préavis début - Layout responsive empilé sur mobile */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">
                   Préavis du <span className="text-red-400">*</span>
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1 flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
                     <input
@@ -973,7 +973,7 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                       value={formData.preavis_date_debut}
                       onChange={(e) => handleChange('preavis_date_debut', e.target.value)}
                       className={`
-                        flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                        flex-1 min-w-0 px-2 sm:px-3 py-2 bg-gray-800 border rounded-lg text-white text-sm
                         ${errors.preavis_date_debut ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
                       `}
                     />
@@ -985,7 +985,7 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                       value={formData.preavis_heure_debut}
                       onChange={(e) => handleChange('preavis_heure_debut', e.target.value)}
                       className={`
-                        w-24 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                        flex-1 sm:flex-none sm:w-28 min-w-0 px-2 sm:px-3 py-2 bg-gray-800 border rounded-lg text-white text-sm
                         ${errors.preavis_heure_debut ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
                       `}
                     />
@@ -993,12 +993,12 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                 </div>
               </div>
               
-              {/* Préavis fin */}
+              {/* Préavis fin - Layout responsive empilé sur mobile */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">
                   Au <span className="text-red-400">*</span>
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1 flex items-center gap-2">
                     <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
                     <input
@@ -1007,7 +1007,7 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                       onChange={(e) => handleChange('preavis_date_fin', e.target.value)}
                       min={formData.preavis_date_debut}
                       className={`
-                        flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                        flex-1 min-w-0 px-2 sm:px-3 py-2 bg-gray-800 border rounded-lg text-white text-sm
                         ${errors.preavis_date_fin ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
                       `}
                     />
@@ -1019,7 +1019,7 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                       value={formData.preavis_heure_fin}
                       onChange={(e) => handleChange('preavis_heure_fin', e.target.value)}
                       className={`
-                        w-24 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                        flex-1 sm:flex-none sm:w-28 min-w-0 px-2 sm:px-3 py-2 bg-gray-800 border rounded-lg text-white text-sm
                         ${errors.preavis_heure_fin ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
                       `}
                     />
@@ -1032,62 +1032,62 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
 
           {/* Cadre 1 - Participation */}
           <div className={`
-            rounded-lg p-4 border transition-all
+            rounded-lg p-3 sm:p-4 border transition-all
             ${cadre1Actif 
               ? 'bg-green-500/10 border-green-500/50' 
               : 'bg-gray-800/30 border-gray-700 opacity-60'}
           `}>
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
               <button
                 onClick={() => setCadre1Actif(!cadre1Actif)}
                 className="flex items-center gap-2"
               >
                 {cadre1Actif ? (
-                  <CheckSquare className="w-6 h-6 text-green-400" />
+                  <CheckSquare className="w-5 h-5 sm:w-6 sm:h-6 text-green-400" />
                 ) : (
-                  <Square className="w-6 h-6 text-gray-500" />
+                  <Square className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500" />
                 )}
               </button>
               <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-sm font-bold text-green-400">1</span>
-                <h3 className="text-lg font-semibold text-white">Participation à la grève</h3>
+                <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 border-current flex items-center justify-center text-xs sm:text-sm font-bold text-green-400">1</span>
+                <h3 className="text-base sm:text-lg font-semibold text-white">Participation à la grève</h3>
               </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">NOM</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">NOM</label>
                 <input
                   type="text"
                   value={formData.nom_1}
                   onChange={(e) => handleChange('nom_1', e.target.value)}
                   disabled={!cadre1Actif}
-                  className={`w-full px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
+                  className={`w-full px-3 py-2 rounded-lg border transition-colors text-sm ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
                 <input
                   type="text"
                   value={formData.prenom_1}
                   onChange={(e) => handleChange('prenom_1', e.target.value)}
                   disabled={!cadre1Actif}
-                  className={`w-full px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
+                  className={`w-full px-3 py-2 rounded-lg border transition-colors text-sm ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">CP</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">CP</label>
                 <input
                   type="text"
                   value={formData.cp_1}
                   onChange={(e) => handleChange('cp_1', e.target.value)}
                   disabled={!cadre1Actif}
                   placeholder="Code Personnel"
-                  className={`w-full px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
+                  className={`w-full px-3 py-2 rounded-lg border transition-colors text-sm ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
                 />
               </div>
-              <div className="md:col-span-3">
-                <label className="block text-sm font-medium text-gray-300 mb-1">ÉTABLISSEMENT</label>
+              <div className="sm:col-span-2 md:col-span-3">
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">ÉTABLISSEMENT</label>
                 <SelectWithFreeText
                   value={formData.etablissement_1}
                   freeTextValue={formData.etablissement_1_libre}
@@ -1097,8 +1097,10 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                   disabled={!cadre1Actif}
                 />
               </div>
+              
+              {/* Date et Heure participation - responsive */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Date participation</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Date participation</label>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
                   <input
@@ -1106,12 +1108,12 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                     value={formData.date_greve}
                     onChange={(e) => handleChange('date_greve', e.target.value)}
                     disabled={!cadre1Actif}
-                    className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.date_greve ? 'border-red-500' : ''}`}
+                    className={`flex-1 min-w-0 px-2 sm:px-3 py-2 rounded-lg border transition-colors text-sm ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.date_greve ? 'border-red-500' : ''}`}
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Heure</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Heure</label>
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-gray-500 shrink-0" />
                   <input
@@ -1119,12 +1121,12 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                     value={formData.heure_greve}
                     onChange={(e) => handleChange('heure_greve', e.target.value)}
                     disabled={!cadre1Actif}
-                    className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.heure_greve ? 'border-red-500' : ''}`}
+                    className={`flex-1 min-w-0 px-2 sm:px-3 py-2 rounded-lg border transition-colors text-sm ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.heure_greve ? 'border-red-500' : ''}`}
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Lieu</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Lieu</label>
                 <SelectWithFreeText
                   value={formData.lieu_1}
                   freeTextValue={formData.lieu_1_libre}
@@ -1135,7 +1137,7 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Date signature</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Date signature</label>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
                   <input
@@ -1143,21 +1145,21 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
                     value={formData.date_sign_1}
                     onChange={(e) => handleChange('date_sign_1', e.target.value)}
                     disabled={!cadre1Actif}
-                    className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
+                    className={`flex-1 min-w-0 px-2 sm:px-3 py-2 rounded-lg border transition-colors text-sm ${!cadre1Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`}
                   />
                 </div>
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-300 mb-1">Signature</label>
+              <div className="sm:col-span-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Signature</label>
                 {agent?.signature_url ? (
                   <div className="flex items-center gap-3 p-2 bg-gray-800 rounded-lg border border-gray-600">
-                    <img src={agent.signature_url} alt="Votre signature" className="h-10 max-w-[150px]" />
-                    <span className="text-green-400 text-sm">✓ Signature chargée</span>
+                    <img src={agent.signature_url} alt="Votre signature" className="h-8 sm:h-10 max-w-[100px] sm:max-w-[150px]" />
+                    <span className="text-green-400 text-xs sm:text-sm">✓ Signature chargée</span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
-                    <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0" />
-                    <span className="text-yellow-300 text-sm">Pas de signature enregistrée. Ajoutez-la dans "Mon compte".</span>
+                  <div className="flex items-center gap-2 sm:gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
+                    <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400 shrink-0" />
+                    <span className="text-yellow-300 text-xs sm:text-sm">Pas de signature enregistrée. Ajoutez-la dans "Mon compte".</span>
                   </div>
                 )}
               </div>
@@ -1165,88 +1167,88 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
           </div>
 
           {/* Cadre 2 - Renonciation/Reprise */}
-          <div className={`rounded-lg p-4 border transition-all ${cadre2Actif ? 'bg-orange-500/10 border-orange-500/50' : 'bg-gray-800/30 border-gray-700 opacity-60'}`}>
-            <div className="flex items-center gap-3 mb-4">
+          <div className={`rounded-lg p-3 sm:p-4 border transition-all ${cadre2Actif ? 'bg-orange-500/10 border-orange-500/50' : 'bg-gray-800/30 border-gray-700 opacity-60'}`}>
+            <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
               <button onClick={() => setCadre2Actif(!cadre2Actif)} className="flex items-center gap-2">
-                {cadre2Actif ? <CheckSquare className="w-6 h-6 text-orange-400" /> : <Square className="w-6 h-6 text-gray-500" />}
+                {cadre2Actif ? <CheckSquare className="w-5 h-5 sm:w-6 sm:h-6 text-orange-400" /> : <Square className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500" />}
               </button>
               <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-sm font-bold text-orange-400">2</span>
-                <h3 className="text-lg font-semibold text-white">Renonciation / Reprise du travail</h3>
+                <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 border-current flex items-center justify-center text-xs sm:text-sm font-bold text-orange-400">2</span>
+                <h3 className="text-base sm:text-lg font-semibold text-white">Renonciation / Reprise du travail</h3>
               </div>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">NOM</label>
-                <input type="text" value={formData.nom_2} disabled={true} className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed" />
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">NOM</label>
+                <input type="text" value={formData.nom_2} disabled={true} className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed text-sm" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
-                <input type="text" value={formData.prenom_2} disabled={true} className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed" />
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
+                <input type="text" value={formData.prenom_2} disabled={true} className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed text-sm" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">CP</label>
-                <input type="text" value={formData.cp_2} disabled={true} className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed" />
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">CP</label>
+                <input type="text" value={formData.cp_2} disabled={true} className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed text-sm" />
               </div>
               
-              <div className="md:col-span-3">
-                <label className="block text-sm font-medium text-gray-300 mb-2">Je déclare <span className="text-red-400">*</span></label>
-                <div className="flex flex-wrap gap-4">
-                  <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''} ${formData.choix_renonciation === 'renoncer' ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-600 hover:border-gray-500'}`}>
+              <div className="sm:col-span-2 md:col-span-3">
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-2">Je déclare <span className="text-red-400">*</span></label>
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+                  <label className={`flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border cursor-pointer transition-all ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''} ${formData.choix_renonciation === 'renoncer' ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-600 hover:border-gray-500'}`}>
                     <input type="radio" name="choix_renonciation" value="renoncer" checked={formData.choix_renonciation === 'renoncer'} onChange={(e) => handleChange('choix_renonciation', e.target.value)} disabled={!cadre2Actif} className="w-4 h-4 text-orange-500" />
-                    <span className="text-white">Renoncer à participer à la grève</span>
+                    <span className="text-white text-xs sm:text-sm">Renoncer à participer à la grève</span>
                   </label>
-                  <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''} ${formData.choix_renonciation === 'reprendre' ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-600 hover:border-gray-500'}`}>
+                  <label className={`flex items-center gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg border cursor-pointer transition-all ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''} ${formData.choix_renonciation === 'reprendre' ? 'bg-orange-500/20 border-orange-500' : 'bg-gray-800 border-gray-600 hover:border-gray-500'}`}>
                     <input type="radio" name="choix_renonciation" value="reprendre" checked={formData.choix_renonciation === 'reprendre'} onChange={(e) => handleChange('choix_renonciation', e.target.value)} disabled={!cadre2Actif} className="w-4 h-4 text-orange-500" />
-                    <span className="text-white">Reprendre le travail</span>
+                    <span className="text-white text-xs sm:text-sm">Reprendre le travail</span>
                   </label>
                 </div>
                 {errors.choix_renonciation && <p className="text-red-400 text-xs mt-1">{errors.choix_renonciation}</p>}
               </div>
               
               <div className={formData.choix_renonciation !== 'reprendre' ? 'opacity-40' : ''}>
-                <label className="block text-sm font-medium text-gray-300 mb-1">À compter du {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">À compter du {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}</label>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
-                  <input type="date" value={formData.date_reprise} onChange={(e) => handleChange('date_reprise', e.target.value)} disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'} className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre2Actif || formData.choix_renonciation !== 'reprendre' ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.date_reprise ? 'border-red-500' : ''}`} />
+                  <input type="date" value={formData.date_reprise} onChange={(e) => handleChange('date_reprise', e.target.value)} disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'} className={`flex-1 min-w-0 px-2 sm:px-3 py-2 rounded-lg border transition-colors text-sm ${!cadre2Actif || formData.choix_renonciation !== 'reprendre' ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.date_reprise ? 'border-red-500' : ''}`} />
                 </div>
                 {errors.date_reprise && <p className="text-red-400 text-xs mt-1">{errors.date_reprise}</p>}
               </div>
               
               <div className={formData.choix_renonciation !== 'reprendre' ? 'opacity-40' : ''}>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Heure {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Heure {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}</label>
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-gray-500 shrink-0" />
-                  <input type="time" value={formData.heure_reprise} onChange={(e) => handleChange('heure_reprise', e.target.value)} disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'} className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre2Actif || formData.choix_renonciation !== 'reprendre' ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.heure_reprise ? 'border-red-500' : ''}`} />
+                  <input type="time" value={formData.heure_reprise} onChange={(e) => handleChange('heure_reprise', e.target.value)} disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'} className={`flex-1 min-w-0 px-2 sm:px-3 py-2 rounded-lg border transition-colors text-sm ${!cadre2Actif || formData.choix_renonciation !== 'reprendre' ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'} ${errors.heure_reprise ? 'border-red-500' : ''}`} />
                 </div>
                 {errors.heure_reprise && <p className="text-red-400 text-xs mt-1">{errors.heure_reprise}</p>}
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Lieu</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Lieu</label>
                 <SelectWithFreeText value={formData.lieu_2} freeTextValue={formData.lieu_2_libre} onChange={(v) => handleChange('lieu_2', v)} onFreeTextChange={(v) => handleChange('lieu_2_libre', v)} options={['Paris']} disabled={!cadre2Actif} />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Date signature</label>
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Date signature</label>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
-                  <input type="date" value={formData.date_sign_2} onChange={(e) => handleChange('date_sign_2', e.target.value)} disabled={!cadre2Actif} className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${!cadre2Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`} />
+                  <input type="date" value={formData.date_sign_2} onChange={(e) => handleChange('date_sign_2', e.target.value)} disabled={!cadre2Actif} className={`flex-1 min-w-0 px-2 sm:px-3 py-2 rounded-lg border transition-colors text-sm ${!cadre2Actif ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}`} />
                 </div>
               </div>
               
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-300 mb-1">Signature</label>
+              <div className="sm:col-span-2">
+                <label className="block text-xs sm:text-sm font-medium text-gray-300 mb-1">Signature</label>
                 {agent?.signature_url ? (
                   <div className="flex items-center gap-3 p-2 bg-gray-800 rounded-lg border border-gray-600">
-                    <img src={agent.signature_url} alt="Votre signature" className="h-10 max-w-[150px]" />
-                    <span className="text-green-400 text-sm">✓ Signature chargée</span>
+                    <img src={agent.signature_url} alt="Votre signature" className="h-8 sm:h-10 max-w-[100px] sm:max-w-[150px]" />
+                    <span className="text-green-400 text-xs sm:text-sm">✓ Signature chargée</span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
-                    <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0" />
-                    <span className="text-yellow-300 text-sm">Pas de signature enregistrée.</span>
+                  <div className="flex items-center gap-2 sm:gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
+                    <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400 shrink-0" />
+                    <span className="text-yellow-300 text-xs sm:text-sm">Pas de signature enregistrée.</span>
                   </div>
                 )}
               </div>
@@ -1255,11 +1257,11 @@ const FormulaireD2I = ({ agent, onClose, initialData = null, editingFileName = n
         </div>
 
         {/* Footer avec boutons */}
-        <div className="flex justify-end gap-3 p-4 border-t border-gray-700 shrink-0 bg-gray-900">
-          <button onClick={onClose} className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">Annuler</button>
-          <button onClick={handleGenerate} className="flex items-center gap-2 px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors">
+        <div className="flex justify-end gap-2 sm:gap-3 p-3 sm:p-4 border-t border-gray-700 shrink-0 bg-gray-900">
+          <button onClick={onClose} className="px-4 sm:px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors text-sm">Annuler</button>
+          <button onClick={handleGenerate} className="flex items-center gap-2 px-4 sm:px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors text-sm">
             <Eye className="w-4 h-4" />
-            Aperçu & Options
+            <span>Aperçu & Options</span>
           </button>
         </div>
       </div>
