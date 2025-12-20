@@ -4,7 +4,7 @@ import {
   CheckSquare, Square, AlertCircle, Printer, Download, Eye, X,
   Upload, FolderOpen, Library, Check, Loader2
 } from 'lucide-react';
-import { supabase } from '../../supabaseClient';
+import { supabase } from '../../lib/supabaseClient';
 import html2pdf from 'html2pdf.js';
 
 /**
