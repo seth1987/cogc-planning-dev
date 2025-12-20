@@ -82,6 +82,17 @@ const FormulaireD2I = ({ agent, onClose }) => {
     }
   }, [cadre2Actif, formData.nom_1, formData.prenom_1, formData.cp_1]);
 
+  // Effacer date/heure reprise si on choisit "renoncer"
+  useEffect(() => {
+    if (formData.choix_renonciation === 'renoncer') {
+      setFormData(prev => ({
+        ...prev,
+        date_reprise: '',
+        heure_reprise: '',
+      }));
+    }
+  }, [formData.choix_renonciation]);
+
   // Handler de changement générique
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -131,13 +142,18 @@ const FormulaireD2I = ({ agent, onClose }) => {
       if (!formData.date_sign_1) newErrors.date_sign_1 = 'Date requise';
     }
     
-    // Cadre 2 - si actif, tous champs obligatoires
+    // Cadre 2 - si actif
     if (cadre2Actif) {
       if (!formData.nom_2.trim()) newErrors.nom_2 = 'Nom requis';
       if (!formData.prenom_2.trim()) newErrors.prenom_2 = 'Prénom requis';
       if (!formData.choix_renonciation) newErrors.choix_renonciation = 'Choix requis';
-      if (!formData.date_reprise) newErrors.date_reprise = 'Date requise';
-      if (!formData.heure_reprise) newErrors.heure_reprise = 'Heure requise';
+      
+      // Date/heure obligatoires UNIQUEMENT si "reprendre le travail" est sélectionné
+      if (formData.choix_renonciation === 'reprendre') {
+        if (!formData.date_reprise) newErrors.date_reprise = 'Date requise';
+        if (!formData.heure_reprise) newErrors.heure_reprise = 'Heure requise';
+      }
+      
       if (formData.lieu_2 === 'Texte libre' && !formData.lieu_2_libre.trim()) {
         newErrors.lieu_2_libre = 'Lieu requis';
       }
@@ -328,10 +344,23 @@ const FormulaireD2I = ({ agent, onClose }) => {
               <span className={formData.choix_renonciation === 'renoncer' ? 'line-through' : ''}>
                 reprendre le travail
               </span>
-              <span>, à compter du </span>
-              <span className="border-b border-dotted border-black px-2 mx-1">{cadre2Actif ? formatDate(formData.date_reprise) : ''}</span>
-              <span> à </span>
-              <span className="border-b border-dotted border-black px-2 mx-1">{cadre2Actif ? formData.heure_reprise : ''}</span>
+              {/* Date/heure affichées UNIQUEMENT si "reprendre" est sélectionné */}
+              {formData.choix_renonciation === 'reprendre' ? (
+                <>
+                  <span>, à compter du </span>
+                  <span className="border-b border-dotted border-black px-2 mx-1">
+                    {cadre2Actif ? formatDate(formData.date_reprise) : ''}
+                  </span>
+                  <span> à </span>
+                  <span className="border-b border-dotted border-black px-2 mx-1">
+                    {cadre2Actif ? formData.heure_reprise : ''}
+                  </span>
+                </>
+              ) : (
+                <span className={formData.choix_renonciation === 'renoncer' ? 'line-through' : ''}>
+                  , à compter du _______ à _______
+                </span>
+              )}
               <sup>(4)</sup>
             </div>
           </div>
@@ -870,44 +899,52 @@ const FormulaireD2I = ({ agent, onClose }) => {
                 {errors.choix_renonciation && <p className="text-red-400 text-xs mt-1">{errors.choix_renonciation}</p>}
               </div>
               
-              {/* Date reprise */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">À compter du</label>
+              {/* Date reprise - Visible uniquement si "reprendre" sélectionné */}
+              <div className={formData.choix_renonciation !== 'reprendre' ? 'opacity-40' : ''}>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  À compter du {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}
+                </label>
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
                   <input
                     type="date"
                     value={formData.date_reprise}
                     onChange={(e) => handleChange('date_reprise', e.target.value)}
-                    disabled={!cadre2Actif}
+                    disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'}
                     className={`
                       flex-1 px-3 py-2 rounded-lg border transition-colors
-                      ${!cadre2Actif 
+                      ${!cadre2Actif || formData.choix_renonciation !== 'reprendre'
                         ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
                         : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                      ${errors.date_reprise ? 'border-red-500' : ''}
                     `}
                   />
                 </div>
+                {errors.date_reprise && <p className="text-red-400 text-xs mt-1">{errors.date_reprise}</p>}
               </div>
               
-              {/* Heure reprise */}
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Heure</label>
+              {/* Heure reprise - Visible uniquement si "reprendre" sélectionné */}
+              <div className={formData.choix_renonciation !== 'reprendre' ? 'opacity-40' : ''}>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Heure {formData.choix_renonciation === 'reprendre' && <span className="text-red-400">*</span>}
+                </label>
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-gray-500 shrink-0" />
                   <input
                     type="time"
                     value={formData.heure_reprise}
                     onChange={(e) => handleChange('heure_reprise', e.target.value)}
-                    disabled={!cadre2Actif}
+                    disabled={!cadre2Actif || formData.choix_renonciation !== 'reprendre'}
                     className={`
                       flex-1 px-3 py-2 rounded-lg border transition-colors
-                      ${!cadre2Actif 
+                      ${!cadre2Actif || formData.choix_renonciation !== 'reprendre'
                         ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
                         : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                      ${errors.heure_reprise ? 'border-red-500' : ''}
                     `}
                   />
                 </div>
+                {errors.heure_reprise && <p className="text-red-400 text-xs mt-1">{errors.heure_reprise}</p>}
               </div>
               
               {/* Lieu */}
