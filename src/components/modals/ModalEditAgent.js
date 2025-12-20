@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Trash2, AlertTriangle, UserPlus, Mail, Phone, RefreshCw, CheckCircle, Loader2 } from 'lucide-react';
+import { X, Save, Trash2, AlertTriangle, UserPlus, Mail, Phone, RefreshCw, CheckCircle, Loader2, Hash } from 'lucide-react';
 import { GROUPES_PAR_STATUT } from '../../constants/config';
 import { generateSNCFEmail, createAgentAccount, DEFAULT_PASSWORD } from '../../services/userManagementService';
 import { supabase } from '../../lib/supabaseClient';
@@ -8,12 +8,10 @@ import { supabase } from '../../lib/supabaseClient';
  * ModalEditAgent - Module central de gestion des agents
  * 
  * Fonctionnalités:
- * - Création/modification des informations de base (nom, prénom, groupe, site, dates)
+ * - Création/modification des informations de base (nom, prénom, CP, groupe, site, dates)
  * - Gestion des coordonnées (email auto-généré, téléphone)
  * - Création automatique du compte Auth Supabase à la création
  * - Ajout automatique dans l'annuaire (groupes_contacts)
- * 
- * v2.1 - Ajout insertion annuaire + email obligatoire
  */
 
 /**
@@ -41,6 +39,7 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
   const [formData, setFormData] = useState({
     nom: '',
     prenom: '',
+    cp: '',
     statut: 'roulement',
     groupe: '',
     site: 'Paris Nord',
@@ -72,6 +71,7 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
       setFormData({
         nom: agent.nom || '',
         prenom: agent.prenom || '',
+        cp: agent.cp || '',
         statut: agent.statut || 'roulement',
         groupe: agent.groupe || '',
         site: agent.site || 'Paris Nord',
@@ -88,6 +88,7 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
       setFormData({
         nom: '',
         prenom: '',
+        cp: '',
         statut: 'roulement',
         groupe: '',
         site: 'Paris Nord',
@@ -147,7 +148,7 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
       
       try {
         // 1. Créer l'agent en BDD (via onCreate qui appelle supabaseService.createAgent)
-        // Le formData inclut maintenant email et telephone
+        // Le formData inclut maintenant email, telephone et cp
         if (onCreate) {
           const createdAgent = await onCreate(formData);
           
@@ -286,6 +287,21 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
                   placeholder="Prénom"
                 />
               </div>
+            </div>
+            
+            {/* Champ CP */}
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                <Hash className="inline w-4 h-4 mr-1" />
+                CP (Code Personnel)
+              </label>
+              <input
+                type="text"
+                value={formData.cp}
+                onChange={(e) => handleInputChange('cp', e.target.value.toUpperCase())}
+                className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                placeholder="Ex: 0012345A"
+              />
             </div>
           </div>
 
