@@ -12,8 +12,6 @@ import { supabase } from '../../lib/supabaseClient';
  * - Gestion des coordonnées (email auto-généré, téléphone)
  * - Création automatique du compte Auth Supabase à la création
  * - Ajout automatique dans l'annuaire (groupes_contacts)
- * 
- * v2.2 - Ajout champ CP (Code Personnel)
  */
 
 /**
@@ -304,9 +302,6 @@ const ModalEditAgent = ({ isOpen, agent, onClose, onSave, onDelete, onCreate }) 
                 className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
                 placeholder="Ex: 0012345A"
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Matricule SNCF utilisé dans les documents officiels (D2I, etc.)
-              </p>
             </div>
           </div>
 
