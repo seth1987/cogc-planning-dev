@@ -1,7 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Upload, Trash2, Image, CheckCircle, AlertCircle, Loader2,
-  PenTool, RefreshCw
+  PenTool, RefreshCw, FileText, Download, Eye, Library, 
+  FolderOpen, Calendar, ExternalLink, Edit3, X
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -10,8 +11,10 @@ import { supabase } from '../../lib/supabaseClient';
  * 
  * Fonctionnalités :
  * - Upload/modification de la signature
- * - Affichage de la signature actuelle
- * - Suppression de la signature
+ * - Liste des documents personnels (bucket documents/{agent_id}/)
+ * - Liste des documents partagés (bucket bibliotheque/)
+ * - Consultation et téléchargement
+ * - Édition des documents HTML de la bibliothèque
  * 
  * @param {object} agent - Infos de l'agent connecté
  * @param {function} onAgentUpdate - Callback pour mettre à jour l'agent après modification
@@ -22,6 +25,17 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
   const [notification, setNotification] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   
+  // États pour les listes de documents
+  const [mesDocuments, setMesDocuments] = useState([]);
+  const [bibliotheque, setBibliotheque] = useState([]);
+  const [loadingDocs, setLoadingDocs] = useState(true);
+  const [loadingBiblio, setLoadingBiblio] = useState(true);
+  
+  // État pour l'éditeur HTML
+  const [editingDoc, setEditingDoc] = useState(null);
+  const [editContent, setEditContent] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  
   const fileInputRef = useRef(null);
 
   // Afficher une notification temporaire
@@ -29,6 +43,180 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
   }, []);
+
+  // Charger les documents personnels
+  const loadMesDocuments = useCallback(async () => {
+    if (!agent?.id) return;
+    
+    try {
+      setLoadingDocs(true);
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .list(agent.id, {
+          sortBy: { column: 'created_at', order: 'desc' }
+        });
+      
+      if (error) throw error;
+      
+      // Ajouter les URLs publiques
+      const docsWithUrls = (data || []).map(file => ({
+        ...file,
+        url: supabase.storage.from('documents').getPublicUrl(`${agent.id}/${file.name}`).data.publicUrl,
+        path: `${agent.id}/${file.name}`
+      }));
+      
+      setMesDocuments(docsWithUrls);
+    } catch (error) {
+      console.error('Erreur chargement documents:', error);
+    } finally {
+      setLoadingDocs(false);
+    }
+  }, [agent?.id]);
+
+  // Charger la bibliothèque
+  const loadBibliotheque = useCallback(async () => {
+    try {
+      setLoadingBiblio(true);
+      const { data, error } = await supabase.storage
+        .from('bibliotheque')
+        .list('', {
+          sortBy: { column: 'created_at', order: 'desc' }
+        });
+      
+      if (error) throw error;
+      
+      // Ajouter les URLs publiques
+      const docsWithUrls = (data || []).map(file => ({
+        ...file,
+        url: supabase.storage.from('bibliotheque').getPublicUrl(file.name).data.publicUrl,
+        path: file.name,
+        isHtml: file.name.endsWith('.html')
+      }));
+      
+      setBibliotheque(docsWithUrls);
+    } catch (error) {
+      console.error('Erreur chargement bibliothèque:', error);
+    } finally {
+      setLoadingBiblio(false);
+    }
+  }, []);
+
+  // Charger les documents au montage
+  useEffect(() => {
+    loadMesDocuments();
+    loadBibliotheque();
+  }, [loadMesDocuments, loadBibliotheque]);
+
+  // Supprimer un document personnel
+  const handleDeleteDocument = async (path, bucket = 'documents') => {
+    if (!window.confirm('Supprimer ce document ?')) return;
+    
+    try {
+      const { error } = await supabase.storage
+        .from(bucket)
+        .remove([path]);
+      
+      if (error) throw error;
+      
+      showNotification('success', 'Document supprimé');
+      
+      if (bucket === 'documents') {
+        loadMesDocuments();
+      } else {
+        loadBibliotheque();
+      }
+    } catch (error) {
+      console.error('Erreur suppression:', error);
+      showNotification('error', 'Erreur lors de la suppression');
+    }
+  };
+
+  // Ouvrir un document pour visualisation
+  const handleViewDocument = (url) => {
+    window.open(url, '_blank');
+  };
+
+  // Télécharger un document
+  const handleDownloadDocument = async (url, filename) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      console.error('Erreur téléchargement:', error);
+      showNotification('error', 'Erreur lors du téléchargement');
+    }
+  };
+
+  // Ouvrir l'éditeur HTML pour un document de la bibliothèque
+  const handleEditBiblioDocument = async (doc) => {
+    try {
+      const response = await fetch(doc.url);
+      const content = await response.text();
+      setEditContent(content);
+      setEditingDoc(doc);
+    } catch (error) {
+      console.error('Erreur chargement document:', error);
+      showNotification('error', 'Erreur lors du chargement');
+    }
+  };
+
+  // Sauvegarder les modifications d'un document HTML
+  const handleSaveEdit = async () => {
+    if (!editingDoc) return;
+    
+    try {
+      setSavingEdit(true);
+      
+      const htmlBlob = new Blob([editContent], { type: 'text/html' });
+      
+      const { error } = await supabase.storage
+        .from('bibliotheque')
+        .upload(editingDoc.path, htmlBlob, {
+          contentType: 'text/html',
+          upsert: true
+        });
+      
+      if (error) throw error;
+      
+      showNotification('success', 'Document modifié avec succès');
+      setEditingDoc(null);
+      setEditContent('');
+      loadBibliotheque();
+    } catch (error) {
+      console.error('Erreur sauvegarde:', error);
+      showNotification('error', 'Erreur lors de la sauvegarde');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Formater la date
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Formater la taille
+  const formatSize = (bytes) => {
+    if (!bytes) return '-';
+    if (bytes < 1024) return bytes + ' o';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' Ko';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+  };
 
   // Handler d'upload de signature
   const handleSignatureUpload = async (file) => {
@@ -64,7 +252,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
         .from('signatures')
         .upload(filePath, file, {
           cacheControl: '3600',
-          upsert: true // Écraser si existe
+          upsert: true
         });
 
       if (uploadError) throw uploadError;
@@ -98,14 +286,13 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
     }
   };
 
-  // Handler de suppression
+  // Handler de suppression signature
   const handleDeleteSignature = async () => {
     if (!window.confirm('Supprimer votre signature ?')) return;
 
     try {
       setDeleting(true);
 
-      // Supprimer du storage
       const filePath = `${agent.id}.png`;
       const { error: storageError } = await supabase.storage
         .from('signatures')
@@ -113,7 +300,6 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
 
       if (storageError) throw storageError;
 
-      // Mettre à jour la table agents
       const { error: updateError } = await supabase
         .from('agents')
         .update({ signature_url: null })
@@ -121,7 +307,6 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
 
       if (updateError) throw updateError;
 
-      // Notifier le parent
       if (onAgentUpdate) {
         onAgentUpdate({ ...agent, signature_url: null });
       }
@@ -163,6 +348,65 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
     }
   };
 
+  // Modal éditeur HTML
+  if (editingDoc) {
+    return (
+      <div className="fixed inset-0 bg-black/90 flex flex-col z-[80]">
+        {/* Header éditeur */}
+        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Edit3 className="w-5 h-5 text-orange-400" />
+            Modifier : {editingDoc.name}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSaveEdit}
+              disabled={savingEdit}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg"
+            >
+              {savingEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              Enregistrer
+            </button>
+            <button
+              onClick={() => { setEditingDoc(null); setEditContent(''); }}
+              className="p-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        
+        {/* Éditeur */}
+        <div className="flex-1 flex">
+          {/* Code HTML */}
+          <div className="w-1/2 flex flex-col border-r border-gray-700">
+            <div className="bg-gray-800 px-4 py-2 text-sm text-gray-400 border-b border-gray-700">
+              Code HTML
+            </div>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="flex-1 p-4 bg-gray-950 text-gray-200 font-mono text-sm resize-none focus:outline-none"
+              spellCheck={false}
+            />
+          </div>
+          
+          {/* Aperçu */}
+          <div className="w-1/2 flex flex-col">
+            <div className="bg-gray-800 px-4 py-2 text-sm text-gray-400 border-b border-gray-700">
+              Aperçu
+            </div>
+            <iframe
+              srcDoc={editContent}
+              className="flex-1 bg-white"
+              title="Aperçu document"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Notification */}
@@ -199,7 +443,6 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
         {/* Affichage signature actuelle */}
         {agent?.signature_url ? (
           <div className="space-y-4">
-            {/* Aperçu */}
             <div className="bg-white rounded-lg p-4 flex items-center justify-center">
               <img 
                 src={agent.signature_url} 
@@ -208,18 +451,13 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
               />
             </div>
 
-            {/* Actions */}
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
                 className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-600 text-white rounded-lg transition-colors"
               >
-                {uploading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="w-4 h-4" />
-                )}
+                {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 Modifier
               </button>
               
@@ -228,11 +466,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
                 disabled={deleting}
                 className="flex items-center gap-2 px-4 py-2 bg-red-600/80 hover:bg-red-500 disabled:bg-gray-600 text-white rounded-lg transition-colors"
               >
-                {deleting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Trash2 className="w-4 h-4" />
-                )}
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Supprimer
               </button>
             </div>
@@ -243,7 +477,6 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
             </p>
           </div>
         ) : (
-          /* Zone d'upload */
           <div
             onDragEnter={handleDrag}
             onDragLeave={handleDrag}
@@ -267,24 +500,17 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-700/50 flex items-center justify-center">
                   <Image className="w-8 h-8 text-gray-400" />
                 </div>
-                <p className="text-gray-300 mb-2">
-                  Glissez-déposez votre signature ici
-                </p>
-                <p className="text-gray-500 text-sm mb-4">
-                  ou cliquez pour sélectionner un fichier
-                </p>
+                <p className="text-gray-300 mb-2">Glissez-déposez votre signature ici</p>
+                <p className="text-gray-500 text-sm mb-4">ou cliquez pour sélectionner un fichier</p>
                 <div className="flex items-center justify-center gap-2">
                   <Upload className="w-4 h-4 text-cyan-400" />
-                  <span className="text-cyan-400 text-sm font-medium">
-                    PNG, JPEG ou WebP (max 1 Mo)
-                  </span>
+                  <span className="text-cyan-400 text-sm font-medium">PNG, JPEG ou WebP (max 1 Mo)</span>
                 </div>
               </>
             )}
           </div>
         )}
 
-        {/* Input file caché */}
         <input
           ref={fileInputRef}
           type="file"
@@ -292,15 +518,187 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
           onChange={handleFileChange}
           className="hidden"
         />
+      </div>
 
-        {/* Conseils */}
-        <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-          <h4 className="text-sm font-medium text-blue-300 mb-2">💡 Conseils pour une bonne signature</h4>
-          <ul className="text-xs text-blue-200/80 space-y-1">
-            <li>• Utilisez un fond transparent (PNG) pour un meilleur rendu</li>
-            <li>• Signez sur fond blanc puis scannez ou photographiez</li>
-            <li>• La signature doit être lisible et de bonne qualité</li>
-          </ul>
+      {/* Section Mes Documents */}
+      <div className="bg-gray-800/50 rounded-lg p-5 border border-gray-700">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <FolderOpen className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">Mes documents</h3>
+              <p className="text-sm text-gray-400">Documents personnels (PDF)</p>
+            </div>
+          </div>
+          <button
+            onClick={loadMesDocuments}
+            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+            title="Actualiser"
+          >
+            <RefreshCw className={`w-4 h-4 text-gray-400 ${loadingDocs ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+
+        {loadingDocs ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+          </div>
+        ) : mesDocuments.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>Aucun document</p>
+            <p className="text-xs mt-1">Les documents générés apparaîtront ici</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {mesDocuments.map((doc) => (
+              <div 
+                key={doc.name}
+                className="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <FileText className="w-5 h-5 text-red-400 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-white font-medium truncate">{doc.name}</p>
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {formatDate(doc.created_at)}
+                      </span>
+                      <span>{formatSize(doc.metadata?.size)}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleViewDocument(doc.url)}
+                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                    title="Voir"
+                  >
+                    <Eye className="w-4 h-4 text-gray-400" />
+                  </button>
+                  <button
+                    onClick={() => handleDownloadDocument(doc.url, doc.name)}
+                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                    title="Télécharger"
+                  >
+                    <Download className="w-4 h-4 text-cyan-400" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteDocument(doc.path, 'documents')}
+                    className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                    title="Supprimer"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-400" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Section Bibliothèque */}
+      <div className="bg-gray-800/50 rounded-lg p-5 border border-gray-700">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+              <Library className="w-5 h-5 text-orange-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">Bibliothèque</h3>
+              <p className="text-sm text-gray-400">Documents partagés modifiables par tous</p>
+            </div>
+          </div>
+          <button
+            onClick={loadBibliotheque}
+            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+            title="Actualiser"
+          >
+            <RefreshCw className={`w-4 h-4 text-gray-400 ${loadingBiblio ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+
+        {loadingBiblio ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+          </div>
+        ) : bibliotheque.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <Library className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>Bibliothèque vide</p>
+            <p className="text-xs mt-1">Ajoutez des documents depuis le formulaire D2I</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {bibliotheque.map((doc) => (
+              <div 
+                key={doc.name}
+                className="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <FileText className={`w-5 h-5 shrink-0 ${doc.isHtml ? 'text-orange-400' : 'text-red-400'}`} />
+                  <div className="min-w-0">
+                    <p className="text-white font-medium truncate">{doc.name}</p>
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {formatDate(doc.created_at)}
+                      </span>
+                      <span>{formatSize(doc.metadata?.size)}</span>
+                      {doc.isHtml && (
+                        <span className="text-orange-400">HTML modifiable</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => handleViewDocument(doc.url)}
+                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                    title="Voir"
+                  >
+                    <ExternalLink className="w-4 h-4 text-gray-400" />
+                  </button>
+                  {doc.isHtml && (
+                    <button
+                      onClick={() => handleEditBiblioDocument(doc)}
+                      className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
+                      title="Modifier"
+                    >
+                      <Edit3 className="w-4 h-4 text-orange-400" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDownloadDocument(doc.url, doc.name)}
+                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                    title="Télécharger"
+                  >
+                    <Download className="w-4 h-4 text-cyan-400" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteDocument(doc.path, 'bibliotheque')}
+                    className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                    title="Supprimer"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-400" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <div className="mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+          <h4 className="text-sm font-medium text-orange-300 mb-1">📚 À propos de la bibliothèque</h4>
+          <p className="text-xs text-orange-200/70">
+            Les documents HTML de la bibliothèque sont modifiables par tous les agents. 
+            Cliquez sur le bouton <Edit3 className="w-3 h-3 inline" /> pour éditer un document.
+          </p>
         </div>
       </div>
 
