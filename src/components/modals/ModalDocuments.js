@@ -503,7 +503,7 @@ const ModalDocuments = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div 
-        className="bg-gray-900 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden border border-cyan-500/30"
+        className="bg-gray-900 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden border border-cyan-500/30"
         style={{
           background: 'linear-gradient(135deg, rgba(15,23,42,0.98) 0%, rgba(30,41,59,0.98) 100%)'
         }}
@@ -523,8 +523,8 @@ const ModalDocuments = ({ isOpen, onClose }) => {
           </div>
         )}
 
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-cyan-500/30">
+        {/* Header - flex-shrink-0 pour ne pas se comprimer */}
+        <div className="flex-shrink-0 flex items-center justify-between p-5 border-b border-cyan-500/30">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
               <FolderOpen className="w-5 h-5 text-cyan-400" />
@@ -546,8 +546,8 @@ const ModalDocuments = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* Tabs Navigation */}
-        <div className="flex border-b border-gray-700/50">
+        {/* Tabs Navigation - flex-shrink-0 pour ne pas se comprimer */}
+        <div className="flex-shrink-0 flex border-b border-gray-700/50">
           {tabs.map(tab => {
             const IconComponent = tab.icon;
             return (
@@ -570,9 +570,9 @@ const ModalDocuments = ({ isOpen, onClose }) => {
 
         {/* ==================== ONGLET BIBLIOTHÈQUE ==================== */}
         {activeTab === 'library' && (
-          <>
+          <div className="flex flex-col min-h-0 flex-1">
             {/* Bouton Ajouter */}
-            <div className="p-3 border-b border-gray-700/50 flex justify-end">
+            <div className="flex-shrink-0 p-3 border-b border-gray-700/50 flex justify-end">
               <button 
                 onClick={() => setShowUploadForm(!showUploadForm)}
                 className={`
@@ -593,7 +593,7 @@ const ModalDocuments = ({ isOpen, onClose }) => {
 
             {/* Upload Form */}
             {showUploadForm && (
-              <div className="p-4 bg-cyan-500/10 border-b border-cyan-500/30">
+              <div className="flex-shrink-0 p-4 bg-cyan-500/10 border-b border-cyan-500/30">
                 <form onSubmit={handleUpload} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
@@ -675,7 +675,7 @@ const ModalDocuments = ({ isOpen, onClose }) => {
             )}
 
             {/* Search & Filter */}
-            <div className="p-4 border-b border-gray-700/50 flex flex-col sm:flex-row gap-3">
+            <div className="flex-shrink-0 p-4 border-b border-gray-700/50 flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input
@@ -698,8 +698,8 @@ const ModalDocuments = ({ isOpen, onClose }) => {
               </select>
             </div>
 
-            {/* Documents Content */}
-            <div className="overflow-y-auto max-h-[calc(90vh-380px)] p-4">
+            {/* Documents Content - scrollable */}
+            <div className="flex-1 overflow-y-auto min-h-0 p-4">
               {loading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
@@ -813,193 +813,197 @@ const ModalDocuments = ({ isOpen, onClose }) => {
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
 
         {/* ==================== ONGLET GÉNÉRER ==================== */}
         {activeTab === 'generate' && (
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Générer un document pré-rempli</h3>
-              <p className="text-gray-400 text-sm">
-                Sélectionnez un formulaire ci-dessous. Vos informations personnelles seront automatiquement intégrées.
-              </p>
-            </div>
-
-            {loadingAgent ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                <span className="ml-3 text-gray-400">Chargement du profil...</span>
-              </div>
-            ) : !currentAgent ? (
-              <div className="text-center py-10 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
-                <AlertCircle className="w-12 h-12 mx-auto mb-3 text-yellow-400" />
-                <p className="text-yellow-300 font-medium">Profil agent non trouvé</p>
-                <p className="text-gray-400 text-sm mt-1">
-                  Votre email ne correspond à aucun agent enregistré.<br />
-                  Contactez l'administrateur.
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Contenu scrollable */}
+            <div className="flex-1 overflow-y-auto min-h-0 p-4 sm:p-6">
+              {/* Header section - ne se comprime pas */}
+              <div className="flex-shrink-0 mb-6">
+                <h3 className="text-lg font-semibold text-white mb-2">Générer un document pré-rempli</h3>
+                <p className="text-gray-400 text-sm">
+                  Sélectionnez un formulaire ci-dessous. Vos informations personnelles seront automatiquement intégrées.
                 </p>
               </div>
-            ) : (
-              <div className="space-y-6">
-                {/* Info agent */}
-                <div className="bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
-                  <div className="flex items-center gap-3 text-sm">
-                    <User className="w-5 h-5 text-cyan-400" />
-                    <span className="text-gray-400">Connecté en tant que :</span>
-                    <span className="text-white font-medium">
-                      {currentAgent.prenom} {currentAgent.nom}
-                    </span>
-                    {currentAgent.signature_url ? (
-                      <span className="ml-auto flex items-center gap-1 text-green-400 text-xs">
-                        <CheckCircle className="w-4 h-4" />
-                        Signature OK
-                      </span>
-                    ) : (
-                      <span className="ml-auto flex items-center gap-1 text-yellow-400 text-xs">
-                        <AlertCircle className="w-4 h-4" />
-                        Pas de signature
-                      </span>
-                    )}
-                  </div>
-                </div>
 
-                {/* Section : Créer un nouveau document */}
-                <div>
-                  <h4 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
-                    <Plus className="w-4 h-4" />
-                    Créer un nouveau document
-                  </h4>
-                  <div className="grid gap-4">
-                    {generableDocuments.map(doc => {
-                      const IconComponent = doc.icon;
-                      return (
-                        <button
-                          key={doc.id}
-                          onClick={handleOpenD2I}
-                          className="w-full text-left p-5 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg border border-gray-700/50 hover:border-cyan-500/50 transition-all group"
-                        >
-                          <div className="flex items-start gap-4">
-                            <div className={`p-3 rounded-lg ${doc.bgColor} group-hover:scale-110 transition-transform`}>
-                              <IconComponent className={`w-6 h-6 ${doc.color}`} />
-                            </div>
-                            <div className="flex-1">
-                              <h4 className="font-semibold text-white group-hover:text-cyan-300 transition-colors">
-                                {doc.name}
-                              </h4>
-                              <p className="text-sm text-gray-400 mt-1">{doc.description}</p>
-                            </div>
-                            <div className="text-cyan-400 group-hover:translate-x-1 transition-transform">
-                              →
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+              {loadingAgent ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+                  <span className="ml-3 text-gray-400">Chargement du profil...</span>
                 </div>
+              ) : !currentAgent ? (
+                <div className="text-center py-10 bg-yellow-500/10 rounded-lg border border-yellow-500/30">
+                  <AlertCircle className="w-12 h-12 mx-auto mb-3 text-yellow-400" />
+                  <p className="text-yellow-300 font-medium">Profil agent non trouvé</p>
+                  <p className="text-gray-400 text-sm mt-1">
+                    Votre email ne correspond à aucun agent enregistré.<br />
+                    Contactez l'administrateur.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Info agent - flex-shrink-0 */}
+                  <div className="flex-shrink-0 bg-gray-800/30 rounded-lg p-4 border border-gray-700/50">
+                    <div className="flex items-center gap-3 text-sm flex-wrap">
+                      <User className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+                      <span className="text-gray-400">Connecté en tant que :</span>
+                      <span className="text-white font-medium">
+                        {currentAgent.prenom} {currentAgent.nom}
+                      </span>
+                      {currentAgent.signature_url ? (
+                        <span className="ml-auto flex items-center gap-1 text-green-400 text-xs">
+                          <CheckCircle className="w-4 h-4" />
+                          Signature OK
+                        </span>
+                      ) : (
+                        <span className="ml-auto flex items-center gap-1 text-yellow-400 text-xs">
+                          <AlertCircle className="w-4 h-4" />
+                          Pas de signature
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-                {/* Section : Modèles de la bibliothèque */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-medium text-gray-400 flex items-center gap-2">
-                      <Library className="w-4 h-4" />
-                      Modèles enregistrés ({bibliothequeModeles.length})
+                  {/* Section : Créer un nouveau document */}
+                  <div className="flex-shrink-0">
+                    <h4 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+                      <Plus className="w-4 h-4" />
+                      Créer un nouveau document
                     </h4>
-                    <button
-                      onClick={loadBibliothequeModeles}
-                      className="p-1 hover:bg-gray-700 rounded transition-colors"
-                      title="Actualiser"
-                    >
-                      <RefreshCw className={`w-4 h-4 text-gray-500 ${loadingBiblio ? 'animate-spin' : ''}`} />
-                    </button>
-                  </div>
-
-                  {loadingBiblio ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
-                    </div>
-                  ) : bibliothequeModeles.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-800/30 rounded-lg border border-gray-700/50">
-                      <Library className="w-10 h-10 mx-auto mb-2 text-gray-600" />
-                      <p className="text-gray-500 text-sm">Aucun modèle enregistré</p>
-                      <p className="text-gray-600 text-xs mt-1">
-                        Générez un D2I et sauvegardez-le dans la Bibliothèque
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {bibliothequeModeles.map((modele) => (
-                        <div 
-                          key={modele.name}
-                          className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-orange-500/30 transition-colors group"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="p-2 rounded-lg bg-orange-500/20">
-                              <FileText className="w-5 h-5 text-orange-400" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-white font-medium truncate">{modele.name}</p>
-                              <div className="flex items-center gap-3 text-xs text-gray-500">
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {formatDate(modele.created_at)}
-                                </span>
-                                <span>{formatFileSize(modele.metadata?.size)}</span>
-                                <span className="text-orange-400">Modifiable</span>
+                    <div className="grid gap-4">
+                      {generableDocuments.map(doc => {
+                        const IconComponent = doc.icon;
+                        return (
+                          <button
+                            key={doc.id}
+                            onClick={handleOpenD2I}
+                            className="w-full text-left p-4 sm:p-5 bg-gray-800/50 hover:bg-gray-700/50 rounded-lg border border-gray-700/50 hover:border-cyan-500/50 transition-all group"
+                          >
+                            <div className="flex items-start gap-3 sm:gap-4">
+                              <div className={`p-2 sm:p-3 rounded-lg ${doc.bgColor} group-hover:scale-110 transition-transform flex-shrink-0`}>
+                                <IconComponent className={`w-5 h-5 sm:w-6 sm:h-6 ${doc.color}`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-semibold text-white group-hover:text-cyan-300 transition-colors text-sm sm:text-base">
+                                  {doc.name}
+                                </h4>
+                                <p className="text-xs sm:text-sm text-gray-400 mt-1">{doc.description}</p>
+                              </div>
+                              <div className="text-cyan-400 group-hover:translate-x-1 transition-transform flex-shrink-0">
+                                →
                               </div>
                             </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              onClick={() => handleViewModele(modele.url)}
-                              className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                              title="Voir"
-                            >
-                              <ExternalLink className="w-4 h-4 text-gray-400" />
-                            </button>
-                            <button
-                              onClick={() => handleEditModele(modele)}
-                              className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
-                              title="Modifier"
-                            >
-                              <Edit3 className="w-4 h-4 text-orange-400" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteModele(modele)}
-                              className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-400" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                          </button>
+                        );
+                      })}
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Info supplémentaire */}
-                <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <PenTool className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                    <div className="text-sm">
-                      <p className="text-blue-300 font-medium">Astuce</p>
-                      <p className="text-blue-200/80 mt-1">
-                        Importez votre signature dans l'onglet "Mon compte" pour qu'elle soit automatiquement ajoutée à vos documents.
-                      </p>
+                  {/* Section : Modèles de la bibliothèque */}
+                  <div className="flex-shrink-0">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-medium text-gray-400 flex items-center gap-2">
+                        <Library className="w-4 h-4" />
+                        Modèles enregistrés ({bibliothequeModeles.length})
+                      </h4>
+                      <button
+                        onClick={loadBibliothequeModeles}
+                        className="p-1 hover:bg-gray-700 rounded transition-colors"
+                        title="Actualiser"
+                      >
+                        <RefreshCw className={`w-4 h-4 text-gray-500 ${loadingBiblio ? 'animate-spin' : ''}`} />
+                      </button>
+                    </div>
+
+                    {loadingBiblio ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-6 h-6 text-cyan-400 animate-spin" />
+                      </div>
+                    ) : bibliothequeModeles.length === 0 ? (
+                      <div className="text-center py-8 bg-gray-800/30 rounded-lg border border-gray-700/50">
+                        <Library className="w-10 h-10 mx-auto mb-2 text-gray-600" />
+                        <p className="text-gray-500 text-sm">Aucun modèle enregistré</p>
+                        <p className="text-gray-600 text-xs mt-1">
+                          Générez un D2I et sauvegardez-le dans la Bibliothèque
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {bibliothequeModeles.map((modele) => (
+                          <div 
+                            key={modele.name}
+                            className="flex items-center justify-between p-3 sm:p-4 bg-gray-800/50 rounded-lg border border-gray-700/50 hover:border-orange-500/30 transition-colors group"
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="p-2 rounded-lg bg-orange-500/20 flex-shrink-0">
+                                <FileText className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-white font-medium truncate text-sm sm:text-base">{modele.name}</p>
+                                <div className="flex items-center gap-2 sm:gap-3 text-xs text-gray-500 flex-wrap">
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" />
+                                    {formatDate(modele.created_at)}
+                                  </span>
+                                  <span>{formatFileSize(modele.metadata?.size)}</span>
+                                  <span className="text-orange-400">Modifiable</span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 ml-2">
+                              <button
+                                onClick={() => handleViewModele(modele.url)}
+                                className="p-1.5 sm:p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                                title="Voir"
+                              >
+                                <ExternalLink className="w-4 h-4 text-gray-400" />
+                              </button>
+                              <button
+                                onClick={() => handleEditModele(modele)}
+                                className="p-1.5 sm:p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
+                                title="Modifier"
+                              >
+                                <Edit3 className="w-4 h-4 text-orange-400" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteModele(modele)}
+                                className="p-1.5 sm:p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-400" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Info supplémentaire */}
+                  <div className="flex-shrink-0 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <PenTool className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm">
+                        <p className="text-blue-300 font-medium">Astuce</p>
+                        <p className="text-blue-200/80 mt-1">
+                          Importez votre signature dans l'onglet "Mon compte" pour qu'elle soit automatiquement ajoutée à vos documents.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
         {/* ==================== ONGLET MON COMPTE ==================== */}
         {activeTab === 'myaccount' && (
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+          <div className="flex-1 overflow-y-auto min-h-0 p-6">
             {loadingAgent ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
@@ -1023,8 +1027,8 @@ const ModalDocuments = ({ isOpen, onClose }) => {
           </div>
         )}
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-700/50 flex justify-between items-center">
+        {/* Footer - flex-shrink-0 pour ne pas se comprimer */}
+        <div className="flex-shrink-0 p-4 border-t border-gray-700/50 flex justify-between items-center">
           <p className="text-xs text-gray-500">
             Documents SNCF Réseau • COGC Paris Nord • Stockage Supabase
           </p>
