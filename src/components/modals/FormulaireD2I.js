@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   FileText, Calendar, Clock, MapPin, User, Building, Hash,
-  CheckSquare, Square, AlertCircle, Printer, Download, Eye
+  CheckSquare, Square, AlertCircle, Printer, Download, Eye, X
 } from 'lucide-react';
 
 /**
@@ -384,7 +384,7 @@ const FormulaireD2I = ({ agent, onClose }) => {
   // Modal d'aperçu
   if (showPreview) {
     return (
-      <div className="fixed inset-0 bg-black/90 flex flex-col z-[60]">
+      <div className="fixed inset-0 bg-black/90 flex flex-col z-[70]">
         {/* Header aperçu */}
         <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -401,9 +401,9 @@ const FormulaireD2I = ({ agent, onClose }) => {
             </button>
             <button
               onClick={() => setShowPreview(false)}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+              className="p-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
             >
-              Retour
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -433,536 +433,553 @@ const FormulaireD2I = ({ agent, onClose }) => {
     );
   }
 
+  // Modal principale du formulaire
   return (
-    <div className="space-y-6">
-      {/* Info */}
-      <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <FileText className="w-5 h-5 text-blue-400 mt-0.5" />
-          <div>
-            <h4 className="font-medium text-blue-300">Déclaration Individuelle d'Intention (D2I)</h4>
-            <p className="text-sm text-blue-200/80 mt-1">
-              Formulaire pour déclarer votre participation à un mouvement social.
-              Remplissez le mouvement social, puis cochez le(s) cadre(s) à compléter.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Section Mouvement Social - Toujours active */}
-      <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Building className="w-5 h-5 text-cyan-400" />
-          Mouvement social
-        </h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* N° DII */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              N° DII {cadre2Actif && <span className="text-red-400">*</span>}
-            </label>
-            <div className="flex items-center gap-2">
-              <Hash className="w-4 h-4 text-gray-500" />
-              <input
-                type="text"
-                value={formData.num_dii}
-                onChange={(e) => handleChange('num_dii', e.target.value)}
-                placeholder="Numéro (si connu)"
-                className={`
-                  flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white
-                  ${errors.num_dii ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
-                `}
-              />
-            </div>
-            {errors.num_dii && <p className="text-red-400 text-xs mt-1">{errors.num_dii}</p>}
-          </div>
-          
-          {/* Établissement */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Établissement <span className="text-red-400">*</span>
-            </label>
-            <SelectWithFreeText
-              value={formData.etablissement_ms}
-              freeTextValue={formData.etablissement_ms_libre}
-              onChange={(v) => handleChange('etablissement_ms', v)}
-              onFreeTextChange={(v) => handleChange('etablissement_ms_libre', v)}
-              options={['EIC Paris Nord']}
-              disabled={false}
-              error={errors.etablissement_ms}
-              freeTextError={errors.etablissement_ms_libre}
-            />
-          </div>
-          
-          {/* Préavis début */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Préavis du <span className="text-red-400">*</span>
-            </label>
-            <div className="flex gap-2">
-              <div className="flex-1 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-gray-500" />
-                <input
-                  type="date"
-                  value={formData.preavis_date_debut}
-                  onChange={(e) => handleChange('preavis_date_debut', e.target.value)}
-                  className={`
-                    flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white
-                    ${errors.preavis_date_debut ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
-                  `}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-gray-500" />
-                <input
-                  type="time"
-                  value={formData.preavis_heure_debut}
-                  onChange={(e) => handleChange('preavis_heure_debut', e.target.value)}
-                  className={`
-                    w-24 px-3 py-2 bg-gray-800 border rounded-lg text-white
-                    ${errors.preavis_heure_debut ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
-                  `}
-                />
-              </div>
-            </div>
-          </div>
-          
-          {/* Préavis fin */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              Au <span className="text-red-400">*</span>
-            </label>
-            <div className="flex gap-2">
-              <div className="flex-1 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-gray-500" />
-                <input
-                  type="date"
-                  value={formData.preavis_date_fin}
-                  onChange={(e) => handleChange('preavis_date_fin', e.target.value)}
-                  min={formData.preavis_date_debut}
-                  className={`
-                    flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white
-                    ${errors.preavis_date_fin ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
-                  `}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-gray-500" />
-                <input
-                  type="time"
-                  value={formData.preavis_heure_fin}
-                  onChange={(e) => handleChange('preavis_heure_fin', e.target.value)}
-                  className={`
-                    w-24 px-3 py-2 bg-gray-800 border rounded-lg text-white
-                    ${errors.preavis_heure_fin ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
-                  `}
-                />
-              </div>
-            </div>
-            {errors.preavis_date_fin && <p className="text-red-400 text-xs mt-1">{errors.preavis_date_fin}</p>}
-          </div>
-        </div>
-      </div>
-
-      {/* Cadre 1 - Participation */}
-      <div className={`
-        rounded-lg p-4 border transition-all
-        ${cadre1Actif 
-          ? 'bg-green-500/10 border-green-500/50' 
-          : 'bg-gray-800/30 border-gray-700 opacity-60'}
-      `}>
-        <div className="flex items-center gap-3 mb-4">
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+      <div className="bg-gray-900 rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl border border-gray-700">
+        {/* Header avec croix de fermeture */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-700 shrink-0">
+          <h2 className="text-xl font-bold text-white flex items-center gap-3">
+            <FileText className="w-6 h-6 text-cyan-400" />
+            Déclaration Individuelle d'Intention (D2I)
+          </h2>
           <button
-            onClick={() => setCadre1Actif(!cadre1Actif)}
-            className="flex items-center gap-2"
+            onClick={onClose}
+            className="p-2 hover:bg-gray-700 rounded-lg transition-colors text-gray-400 hover:text-white"
           >
-            {cadre1Actif ? (
-              <CheckSquare className="w-6 h-6 text-green-400" />
-            ) : (
-              <Square className="w-6 h-6 text-gray-500" />
-            )}
+            <X className="w-6 h-6" />
           </button>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-sm font-bold text-green-400">1</span>
-            <h3 className="text-lg font-semibold text-white">Participation à la grève</h3>
-          </div>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* NOM */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">NOM</label>
-            <input
-              type="text"
-              value={formData.nom_1}
-              onChange={(e) => handleChange('nom_1', e.target.value)}
-              disabled={!cadre1Actif}
-              className={`
-                w-full px-3 py-2 rounded-lg border transition-colors
-                ${!cadre1Actif 
-                  ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                  : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-              `}
-            />
-          </div>
-          
-          {/* PRÉNOM */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
-            <input
-              type="text"
-              value={formData.prenom_1}
-              onChange={(e) => handleChange('prenom_1', e.target.value)}
-              disabled={!cadre1Actif}
-              className={`
-                w-full px-3 py-2 rounded-lg border transition-colors
-                ${!cadre1Actif 
-                  ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                  : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-              `}
-            />
-          </div>
-          
-          {/* CP */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">CP</label>
-            <input
-              type="text"
-              value={formData.cp_1}
-              onChange={(e) => handleChange('cp_1', e.target.value)}
-              disabled={!cadre1Actif}
-              placeholder="Code Personnel"
-              className={`
-                w-full px-3 py-2 rounded-lg border transition-colors
-                ${!cadre1Actif 
-                  ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                  : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-              `}
-            />
-          </div>
-          
-          {/* Établissement */}
-          <div className="md:col-span-3">
-            <label className="block text-sm font-medium text-gray-300 mb-1">ÉTABLISSEMENT</label>
-            <SelectWithFreeText
-              value={formData.etablissement_1}
-              freeTextValue={formData.etablissement_1_libre}
-              onChange={(v) => handleChange('etablissement_1', v)}
-              onFreeTextChange={(v) => handleChange('etablissement_1_libre', v)}
-              options={['EIC Paris Nord']}
-              disabled={!cadre1Actif}
-            />
-          </div>
-          
-          {/* Date grève */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Date participation</label>
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-gray-500" />
-              <input
-                type="date"
-                value={formData.date_greve}
-                onChange={(e) => handleChange('date_greve', e.target.value)}
-                disabled={!cadre1Actif}
-                className={`
-                  flex-1 px-3 py-2 rounded-lg border transition-colors
-                  ${!cadre1Actif 
-                    ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                    : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                  ${errors.date_greve ? 'border-red-500' : ''}
-                `}
-              />
-            </div>
-          </div>
-          
-          {/* Heure */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Heure</label>
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-gray-500" />
-              <input
-                type="time"
-                value={formData.heure_greve}
-                onChange={(e) => handleChange('heure_greve', e.target.value)}
-                disabled={!cadre1Actif}
-                className={`
-                  flex-1 px-3 py-2 rounded-lg border transition-colors
-                  ${!cadre1Actif 
-                    ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                    : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                  ${errors.heure_greve ? 'border-red-500' : ''}
-                `}
-              />
-            </div>
-          </div>
-          
-          {/* Lieu */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Lieu</label>
-            <SelectWithFreeText
-              value={formData.lieu_1}
-              freeTextValue={formData.lieu_1_libre}
-              onChange={(v) => handleChange('lieu_1', v)}
-              onFreeTextChange={(v) => handleChange('lieu_1_libre', v)}
-              options={['Paris']}
-              disabled={!cadre1Actif}
-            />
-          </div>
-          
-          {/* Date signature */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Date signature</label>
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-gray-500" />
-              <input
-                type="date"
-                value={formData.date_sign_1}
-                onChange={(e) => handleChange('date_sign_1', e.target.value)}
-                disabled={!cadre1Actif}
-                className={`
-                  flex-1 px-3 py-2 rounded-lg border transition-colors
-                  ${!cadre1Actif 
-                    ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                    : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                `}
-              />
-            </div>
-          </div>
-          
-          {/* Signature */}
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-300 mb-1">Signature</label>
-            {agent?.signature_url ? (
-              <div className="flex items-center gap-3 p-2 bg-gray-800 rounded-lg border border-gray-600">
-                <img src={agent.signature_url} alt="Votre signature" className="h-10 max-w-[150px]" />
-                <span className="text-green-400 text-sm">✓ Signature chargée</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
-                <AlertCircle className="w-5 h-5 text-yellow-400" />
-                <span className="text-yellow-300 text-sm">
-                  Pas de signature enregistrée. Ajoutez-la dans "Mes documents".
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
-      {/* Cadre 2 - Renonciation/Reprise */}
-      <div className={`
-        rounded-lg p-4 border transition-all
-        ${cadre2Actif 
-          ? 'bg-orange-500/10 border-orange-500/50' 
-          : 'bg-gray-800/30 border-gray-700 opacity-60'}
-      `}>
-        <div className="flex items-center gap-3 mb-4">
-          <button
-            onClick={() => setCadre2Actif(!cadre2Actif)}
-            className="flex items-center gap-2"
-          >
-            {cadre2Actif ? (
-              <CheckSquare className="w-6 h-6 text-orange-400" />
-            ) : (
-              <Square className="w-6 h-6 text-gray-500" />
-            )}
-          </button>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-sm font-bold text-orange-400">2</span>
-            <h3 className="text-lg font-semibold text-white">Renonciation / Reprise du travail</h3>
+        {/* Contenu scrollable */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Info */}
+          <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
+              <p className="text-sm text-blue-200/80">
+                Formulaire pour déclarer votre participation à un mouvement social.
+                Remplissez le mouvement social, puis cochez le(s) cadre(s) à compléter.
+              </p>
+            </div>
           </div>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* NOM */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">NOM</label>
-            <input
-              type="text"
-              value={formData.nom_2}
-              disabled={true}
-              className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed"
-            />
-          </div>
-          
-          {/* PRÉNOM */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
-            <input
-              type="text"
-              value={formData.prenom_2}
-              disabled={true}
-              className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed"
-            />
-          </div>
-          
-          {/* CP */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">CP</label>
-            <input
-              type="text"
-              value={formData.cp_2}
-              disabled={true}
-              className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed"
-            />
-          </div>
-          
-          {/* Choix Renoncer / Reprendre */}
-          <div className="md:col-span-3">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Je déclare <span className="text-red-400">*</span>
-            </label>
-            <div className="flex flex-wrap gap-4">
-              <label className={`
-                flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all
-                ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''}
-                ${formData.choix_renonciation === 'renoncer' 
-                  ? 'bg-orange-500/20 border-orange-500' 
-                  : 'bg-gray-800 border-gray-600 hover:border-gray-500'}
-              `}>
-                <input
-                  type="radio"
-                  name="choix_renonciation"
-                  value="renoncer"
-                  checked={formData.choix_renonciation === 'renoncer'}
-                  onChange={(e) => handleChange('choix_renonciation', e.target.value)}
-                  disabled={!cadre2Actif}
-                  className="w-4 h-4 text-orange-500"
-                />
-                <span className="text-white">Renoncer à participer à la grève</span>
-              </label>
+
+          {/* Section Mouvement Social - Toujours active */}
+          <div className="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <Building className="w-5 h-5 text-cyan-400" />
+              Mouvement social
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* N° DII */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  N° DII {cadre2Actif && <span className="text-red-400">*</span>}
+                </label>
+                <div className="flex items-center gap-2">
+                  <Hash className="w-4 h-4 text-gray-500" />
+                  <input
+                    type="text"
+                    value={formData.num_dii}
+                    onChange={(e) => handleChange('num_dii', e.target.value)}
+                    placeholder="Numéro (si connu)"
+                    className={`
+                      flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                      ${errors.num_dii ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
+                    `}
+                  />
+                </div>
+                {errors.num_dii && <p className="text-red-400 text-xs mt-1">{errors.num_dii}</p>}
+              </div>
               
-              <label className={`
-                flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all
-                ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''}
-                ${formData.choix_renonciation === 'reprendre' 
-                  ? 'bg-orange-500/20 border-orange-500' 
-                  : 'bg-gray-800 border-gray-600 hover:border-gray-500'}
-              `}>
-                <input
-                  type="radio"
-                  name="choix_renonciation"
-                  value="reprendre"
-                  checked={formData.choix_renonciation === 'reprendre'}
-                  onChange={(e) => handleChange('choix_renonciation', e.target.value)}
-                  disabled={!cadre2Actif}
-                  className="w-4 h-4 text-orange-500"
+              {/* Établissement */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Établissement <span className="text-red-400">*</span>
+                </label>
+                <SelectWithFreeText
+                  value={formData.etablissement_ms}
+                  freeTextValue={formData.etablissement_ms_libre}
+                  onChange={(v) => handleChange('etablissement_ms', v)}
+                  onFreeTextChange={(v) => handleChange('etablissement_ms_libre', v)}
+                  options={['EIC Paris Nord']}
+                  disabled={false}
+                  error={errors.etablissement_ms}
+                  freeTextError={errors.etablissement_ms_libre}
                 />
-                <span className="text-white">Reprendre le travail</span>
-              </label>
-            </div>
-            {errors.choix_renonciation && <p className="text-red-400 text-xs mt-1">{errors.choix_renonciation}</p>}
-          </div>
-          
-          {/* Date reprise */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">À compter du</label>
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-gray-500" />
-              <input
-                type="date"
-                value={formData.date_reprise}
-                onChange={(e) => handleChange('date_reprise', e.target.value)}
-                disabled={!cadre2Actif}
-                className={`
-                  flex-1 px-3 py-2 rounded-lg border transition-colors
-                  ${!cadre2Actif 
-                    ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                    : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                `}
-              />
-            </div>
-          </div>
-          
-          {/* Heure reprise */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Heure</label>
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-gray-500" />
-              <input
-                type="time"
-                value={formData.heure_reprise}
-                onChange={(e) => handleChange('heure_reprise', e.target.value)}
-                disabled={!cadre2Actif}
-                className={`
-                  flex-1 px-3 py-2 rounded-lg border transition-colors
-                  ${!cadre2Actif 
-                    ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                    : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                `}
-              />
-            </div>
-          </div>
-          
-          {/* Lieu */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Lieu</label>
-            <SelectWithFreeText
-              value={formData.lieu_2}
-              freeTextValue={formData.lieu_2_libre}
-              onChange={(v) => handleChange('lieu_2', v)}
-              onFreeTextChange={(v) => handleChange('lieu_2_libre', v)}
-              options={['Paris']}
-              disabled={!cadre2Actif}
-            />
-          </div>
-          
-          {/* Date signature */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Date signature</label>
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-gray-500" />
-              <input
-                type="date"
-                value={formData.date_sign_2}
-                onChange={(e) => handleChange('date_sign_2', e.target.value)}
-                disabled={!cadre2Actif}
-                className={`
-                  flex-1 px-3 py-2 rounded-lg border transition-colors
-                  ${!cadre2Actif 
-                    ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
-                    : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
-                `}
-              />
-            </div>
-          </div>
-          
-          {/* Signature */}
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-300 mb-1">Signature</label>
-            {agent?.signature_url ? (
-              <div className="flex items-center gap-3 p-2 bg-gray-800 rounded-lg border border-gray-600">
-                <img src={agent.signature_url} alt="Votre signature" className="h-10 max-w-[150px]" />
-                <span className="text-green-400 text-sm">✓ Signature chargée</span>
               </div>
-            ) : (
-              <div className="flex items-center gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
-                <AlertCircle className="w-5 h-5 text-yellow-400" />
-                <span className="text-yellow-300 text-sm">
-                  Pas de signature enregistrée.
-                </span>
+              
+              {/* Préavis début */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Préavis du <span className="text-red-400">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <div className="flex-1 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                    <input
+                      type="date"
+                      value={formData.preavis_date_debut}
+                      onChange={(e) => handleChange('preavis_date_debut', e.target.value)}
+                      className={`
+                        flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                        ${errors.preavis_date_debut ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
+                      `}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-gray-500 shrink-0" />
+                    <input
+                      type="time"
+                      value={formData.preavis_heure_debut}
+                      onChange={(e) => handleChange('preavis_heure_debut', e.target.value)}
+                      className={`
+                        w-24 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                        ${errors.preavis_heure_debut ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
+                      `}
+                    />
+                  </div>
+                </div>
               </div>
-            )}
+              
+              {/* Préavis fin */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Au <span className="text-red-400">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <div className="flex-1 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                    <input
+                      type="date"
+                      value={formData.preavis_date_fin}
+                      onChange={(e) => handleChange('preavis_date_fin', e.target.value)}
+                      min={formData.preavis_date_debut}
+                      className={`
+                        flex-1 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                        ${errors.preavis_date_fin ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
+                      `}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-gray-500 shrink-0" />
+                    <input
+                      type="time"
+                      value={formData.preavis_heure_fin}
+                      onChange={(e) => handleChange('preavis_heure_fin', e.target.value)}
+                      className={`
+                        w-24 px-3 py-2 bg-gray-800 border rounded-lg text-white
+                        ${errors.preavis_heure_fin ? 'border-red-500' : 'border-gray-600 focus:border-cyan-500'}
+                      `}
+                    />
+                  </div>
+                </div>
+                {errors.preavis_date_fin && <p className="text-red-400 text-xs mt-1">{errors.preavis_date_fin}</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Cadre 1 - Participation */}
+          <div className={`
+            rounded-lg p-4 border transition-all
+            ${cadre1Actif 
+              ? 'bg-green-500/10 border-green-500/50' 
+              : 'bg-gray-800/30 border-gray-700 opacity-60'}
+          `}>
+            <div className="flex items-center gap-3 mb-4">
+              <button
+                onClick={() => setCadre1Actif(!cadre1Actif)}
+                className="flex items-center gap-2"
+              >
+                {cadre1Actif ? (
+                  <CheckSquare className="w-6 h-6 text-green-400" />
+                ) : (
+                  <Square className="w-6 h-6 text-gray-500" />
+                )}
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-sm font-bold text-green-400">1</span>
+                <h3 className="text-lg font-semibold text-white">Participation à la grève</h3>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* NOM */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">NOM</label>
+                <input
+                  type="text"
+                  value={formData.nom_1}
+                  onChange={(e) => handleChange('nom_1', e.target.value)}
+                  disabled={!cadre1Actif}
+                  className={`
+                    w-full px-3 py-2 rounded-lg border transition-colors
+                    ${!cadre1Actif 
+                      ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
+                      : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                  `}
+                />
+              </div>
+              
+              {/* PRÉNOM */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
+                <input
+                  type="text"
+                  value={formData.prenom_1}
+                  onChange={(e) => handleChange('prenom_1', e.target.value)}
+                  disabled={!cadre1Actif}
+                  className={`
+                    w-full px-3 py-2 rounded-lg border transition-colors
+                    ${!cadre1Actif 
+                      ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
+                      : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                  `}
+                />
+              </div>
+              
+              {/* CP */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">CP</label>
+                <input
+                  type="text"
+                  value={formData.cp_1}
+                  onChange={(e) => handleChange('cp_1', e.target.value)}
+                  disabled={!cadre1Actif}
+                  placeholder="Code Personnel"
+                  className={`
+                    w-full px-3 py-2 rounded-lg border transition-colors
+                    ${!cadre1Actif 
+                      ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
+                      : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                  `}
+                />
+              </div>
+              
+              {/* Établissement */}
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-300 mb-1">ÉTABLISSEMENT</label>
+                <SelectWithFreeText
+                  value={formData.etablissement_1}
+                  freeTextValue={formData.etablissement_1_libre}
+                  onChange={(v) => handleChange('etablissement_1', v)}
+                  onFreeTextChange={(v) => handleChange('etablissement_1_libre', v)}
+                  options={['EIC Paris Nord']}
+                  disabled={!cadre1Actif}
+                />
+              </div>
+              
+              {/* Date grève */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Date participation</label>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                  <input
+                    type="date"
+                    value={formData.date_greve}
+                    onChange={(e) => handleChange('date_greve', e.target.value)}
+                    disabled={!cadre1Actif}
+                    className={`
+                      flex-1 px-3 py-2 rounded-lg border transition-colors
+                      ${!cadre1Actif 
+                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
+                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                      ${errors.date_greve ? 'border-red-500' : ''}
+                    `}
+                  />
+                </div>
+              </div>
+              
+              {/* Heure */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Heure</label>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-gray-500 shrink-0" />
+                  <input
+                    type="time"
+                    value={formData.heure_greve}
+                    onChange={(e) => handleChange('heure_greve', e.target.value)}
+                    disabled={!cadre1Actif}
+                    className={`
+                      flex-1 px-3 py-2 rounded-lg border transition-colors
+                      ${!cadre1Actif 
+                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
+                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                      ${errors.heure_greve ? 'border-red-500' : ''}
+                    `}
+                  />
+                </div>
+              </div>
+              
+              {/* Lieu */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Lieu</label>
+                <SelectWithFreeText
+                  value={formData.lieu_1}
+                  freeTextValue={formData.lieu_1_libre}
+                  onChange={(v) => handleChange('lieu_1', v)}
+                  onFreeTextChange={(v) => handleChange('lieu_1_libre', v)}
+                  options={['Paris']}
+                  disabled={!cadre1Actif}
+                />
+              </div>
+              
+              {/* Date signature */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Date signature</label>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                  <input
+                    type="date"
+                    value={formData.date_sign_1}
+                    onChange={(e) => handleChange('date_sign_1', e.target.value)}
+                    disabled={!cadre1Actif}
+                    className={`
+                      flex-1 px-3 py-2 rounded-lg border transition-colors
+                      ${!cadre1Actif 
+                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
+                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                    `}
+                  />
+                </div>
+              </div>
+              
+              {/* Signature */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-300 mb-1">Signature</label>
+                {agent?.signature_url ? (
+                  <div className="flex items-center gap-3 p-2 bg-gray-800 rounded-lg border border-gray-600">
+                    <img src={agent.signature_url} alt="Votre signature" className="h-10 max-w-[150px]" />
+                    <span className="text-green-400 text-sm">✓ Signature chargée</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
+                    <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0" />
+                    <span className="text-yellow-300 text-sm">
+                      Pas de signature enregistrée. Ajoutez-la dans "Mon compte".
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Cadre 2 - Renonciation/Reprise */}
+          <div className={`
+            rounded-lg p-4 border transition-all
+            ${cadre2Actif 
+              ? 'bg-orange-500/10 border-orange-500/50' 
+              : 'bg-gray-800/30 border-gray-700 opacity-60'}
+          `}>
+            <div className="flex items-center gap-3 mb-4">
+              <button
+                onClick={() => setCadre2Actif(!cadre2Actif)}
+                className="flex items-center gap-2"
+              >
+                {cadre2Actif ? (
+                  <CheckSquare className="w-6 h-6 text-orange-400" />
+                ) : (
+                  <Square className="w-6 h-6 text-gray-500" />
+                )}
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-sm font-bold text-orange-400">2</span>
+                <h3 className="text-lg font-semibold text-white">Renonciation / Reprise du travail</h3>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* NOM */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">NOM</label>
+                <input
+                  type="text"
+                  value={formData.nom_2}
+                  disabled={true}
+                  className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed"
+                />
+              </div>
+              
+              {/* PRÉNOM */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">PRÉNOM</label>
+                <input
+                  type="text"
+                  value={formData.prenom_2}
+                  disabled={true}
+                  className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed"
+                />
+              </div>
+              
+              {/* CP */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">CP</label>
+                <input
+                  type="text"
+                  value={formData.cp_2}
+                  disabled={true}
+                  className="w-full px-3 py-2 rounded-lg border bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed"
+                />
+              </div>
+              
+              {/* Choix Renoncer / Reprendre */}
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Je déclare <span className="text-red-400">*</span>
+                </label>
+                <div className="flex flex-wrap gap-4">
+                  <label className={`
+                    flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all
+                    ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''}
+                    ${formData.choix_renonciation === 'renoncer' 
+                      ? 'bg-orange-500/20 border-orange-500' 
+                      : 'bg-gray-800 border-gray-600 hover:border-gray-500'}
+                  `}>
+                    <input
+                      type="radio"
+                      name="choix_renonciation"
+                      value="renoncer"
+                      checked={formData.choix_renonciation === 'renoncer'}
+                      onChange={(e) => handleChange('choix_renonciation', e.target.value)}
+                      disabled={!cadre2Actif}
+                      className="w-4 h-4 text-orange-500"
+                    />
+                    <span className="text-white">Renoncer à participer à la grève</span>
+                  </label>
+                  
+                  <label className={`
+                    flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all
+                    ${!cadre2Actif ? 'opacity-50 cursor-not-allowed' : ''}
+                    ${formData.choix_renonciation === 'reprendre' 
+                      ? 'bg-orange-500/20 border-orange-500' 
+                      : 'bg-gray-800 border-gray-600 hover:border-gray-500'}
+                  `}>
+                    <input
+                      type="radio"
+                      name="choix_renonciation"
+                      value="reprendre"
+                      checked={formData.choix_renonciation === 'reprendre'}
+                      onChange={(e) => handleChange('choix_renonciation', e.target.value)}
+                      disabled={!cadre2Actif}
+                      className="w-4 h-4 text-orange-500"
+                    />
+                    <span className="text-white">Reprendre le travail</span>
+                  </label>
+                </div>
+                {errors.choix_renonciation && <p className="text-red-400 text-xs mt-1">{errors.choix_renonciation}</p>}
+              </div>
+              
+              {/* Date reprise */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">À compter du</label>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                  <input
+                    type="date"
+                    value={formData.date_reprise}
+                    onChange={(e) => handleChange('date_reprise', e.target.value)}
+                    disabled={!cadre2Actif}
+                    className={`
+                      flex-1 px-3 py-2 rounded-lg border transition-colors
+                      ${!cadre2Actif 
+                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
+                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                    `}
+                  />
+                </div>
+              </div>
+              
+              {/* Heure reprise */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Heure</label>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-gray-500 shrink-0" />
+                  <input
+                    type="time"
+                    value={formData.heure_reprise}
+                    onChange={(e) => handleChange('heure_reprise', e.target.value)}
+                    disabled={!cadre2Actif}
+                    className={`
+                      flex-1 px-3 py-2 rounded-lg border transition-colors
+                      ${!cadre2Actif 
+                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
+                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                    `}
+                  />
+                </div>
+              </div>
+              
+              {/* Lieu */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Lieu</label>
+                <SelectWithFreeText
+                  value={formData.lieu_2}
+                  freeTextValue={formData.lieu_2_libre}
+                  onChange={(v) => handleChange('lieu_2', v)}
+                  onFreeTextChange={(v) => handleChange('lieu_2_libre', v)}
+                  options={['Paris']}
+                  disabled={!cadre2Actif}
+                />
+              </div>
+              
+              {/* Date signature */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">Date signature</label>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                  <input
+                    type="date"
+                    value={formData.date_sign_2}
+                    onChange={(e) => handleChange('date_sign_2', e.target.value)}
+                    disabled={!cadre2Actif}
+                    className={`
+                      flex-1 px-3 py-2 rounded-lg border transition-colors
+                      ${!cadre2Actif 
+                        ? 'bg-gray-700/50 border-gray-600 text-gray-500 cursor-not-allowed' 
+                        : 'bg-gray-800 border-gray-600 text-white focus:border-cyan-500'}
+                    `}
+                  />
+                </div>
+              </div>
+              
+              {/* Signature */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-300 mb-1">Signature</label>
+                {agent?.signature_url ? (
+                  <div className="flex items-center gap-3 p-2 bg-gray-800 rounded-lg border border-gray-600">
+                    <img src={agent.signature_url} alt="Votre signature" className="h-10 max-w-[150px]" />
+                    <span className="text-green-400 text-sm">✓ Signature chargée</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-2 bg-yellow-500/20 rounded-lg border border-yellow-500/50">
+                    <AlertCircle className="w-5 h-5 text-yellow-400 shrink-0" />
+                    <span className="text-yellow-300 text-sm">
+                      Pas de signature enregistrée.
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Boutons d'action */}
-      <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
-        <button
-          onClick={onClose}
-          className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-        >
-          Annuler
-        </button>
-        <button
-          onClick={handleGenerate}
-          className="flex items-center gap-2 px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors"
-        >
-          <Eye className="w-4 h-4" />
-          Aperçu & Impression
-        </button>
+        {/* Footer avec boutons - toujours visible */}
+        <div className="flex justify-end gap-3 p-4 border-t border-gray-700 shrink-0 bg-gray-900">
+          <button
+            onClick={onClose}
+            className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleGenerate}
+            className="flex items-center gap-2 px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors"
+          >
+            <Eye className="w-4 h-4" />
+            Aperçu & Impression
+          </button>
+        </div>
       </div>
     </div>
   );
