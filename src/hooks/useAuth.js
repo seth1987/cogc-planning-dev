@@ -13,6 +13,7 @@ export function useAuth() {
     // Écouter les changements d'authentification
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('🔐 Auth event:', event);
         if (session?.user) {
           setUser(session.user);
           setError(null);
@@ -31,15 +32,59 @@ export function useAuth() {
   const checkUser = async () => {
     try {
       setLoading(true);
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error) throw error;
+      
+      // D'abord essayer de récupérer la session (inclut le refresh token)
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.warn('⚠️ Session error:', sessionError.message);
+        // Si erreur de session, nettoyer et rediriger vers login
+        await cleanupAndLogout();
+        return;
+      }
+      
+      if (!session) {
+        // Pas de session = pas connecté, c'est normal
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      
+      // Session existe, récupérer l'utilisateur
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        // Erreur JWT (expiré, invalide, etc.) → nettoyer et rediriger vers login
+        console.warn('⚠️ JWT error:', userError.message);
+        await cleanupAndLogout();
+        return;
+      }
+      
       setUser(user);
+      setError(null);
     } catch (error) {
-      setError(error.message);
-      setUser(null);
+      console.error('❌ Auth check error:', error.message);
+      // En cas d'erreur inattendue, nettoyer la session
+      await cleanupAndLogout();
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Nettoie la session locale et déconnecte proprement
+   * Utilisé quand le JWT est expiré ou invalide
+   */
+  const cleanupAndLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      // Ignorer les erreurs de signOut (la session est déjà invalide)
+      console.warn('SignOut cleanup error (ignored):', e.message);
+    }
+    setUser(null);
+    setError(null); // Pas d'erreur à afficher, juste rediriger vers login
+    setLoading(false);
   };
 
   const signIn = async (email, password) => {
