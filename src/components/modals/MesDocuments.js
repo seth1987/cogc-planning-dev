@@ -628,13 +628,14 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
             {mesDocuments.map((doc) => (
               <div 
                 key={doc.name}
-                className="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                {/* Infos du document */}
+                <div className="flex items-center gap-3 flex-1 min-w-0">
                   <FileText className="w-5 h-5 text-red-400 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-white font-medium truncate">{doc.name}</p>
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white font-medium truncate text-sm">{doc.name}</p>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         {formatDate(doc.created_at)}
@@ -644,7 +645,8 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2 shrink-0">
+                {/* Boutons d'action - toujours sur une ligne */}
+                <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
                   <button
                     onClick={() => handleViewDocument(doc.url)}
                     className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
@@ -709,26 +711,28 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
             {bibliotheque.map((doc) => (
               <div 
                 key={doc.name}
-                className="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
+                className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                {/* Infos du document */}
+                <div className="flex items-center gap-3 flex-1 min-w-0">
                   <FileText className={`w-5 h-5 shrink-0 ${doc.isHtml ? 'text-orange-400' : 'text-red-400'}`} />
-                  <div className="min-w-0">
-                    <p className="text-white font-medium truncate">{doc.name}</p>
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-white font-medium truncate text-sm">{doc.name}</p>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         {formatDate(doc.created_at)}
                       </span>
                       <span>{formatSize(doc.metadata?.size)}</span>
                       {doc.isHtml && (
-                        <span className="text-orange-400">HTML modifiable</span>
+                        <span className="text-orange-400 font-medium">HTML modifiable</span>
                       )}
                     </div>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2 shrink-0">
+                {/* Boutons d'action - toujours sur une ligne, alignés à droite */}
+                <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
                   <button
                     onClick={() => handleViewDocument(doc.url)}
                     className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
