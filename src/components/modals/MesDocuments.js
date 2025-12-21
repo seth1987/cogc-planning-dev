@@ -76,7 +76,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
     }
   }, [agent?.id]);
 
-  // Charger la bibliothèque
+  // Charger la bibliothèque (uniquement les fichiers HTML, pas les JSON)
   const loadBibliotheque = useCallback(async () => {
     try {
       setLoadingBiblio(true);
@@ -88,13 +88,16 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
       
       if (error) throw error;
       
-      // Ajouter les URLs publiques
-      const docsWithUrls = (data || []).map(file => ({
-        ...file,
-        url: supabase.storage.from('bibliotheque').getPublicUrl(file.name).data.publicUrl,
-        path: file.name,
-        isHtml: file.name.endsWith('.html')
-      }));
+      // Filtrer uniquement les fichiers HTML (les JSON sont des données techniques)
+      // et ajouter les URLs publiques
+      const docsWithUrls = (data || [])
+        .filter(file => file.name.endsWith('.html'))
+        .map(file => ({
+          ...file,
+          url: supabase.storage.from('bibliotheque').getPublicUrl(file.name).data.publicUrl,
+          path: file.name,
+          isHtml: true
+        }));
       
       setBibliotheque(docsWithUrls);
     } catch (error) {
@@ -159,6 +162,13 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
     if (!window.confirm('Supprimer ce document ?')) return;
     
     try {
+      // Si c'est un fichier HTML de la bibliothèque, supprimer aussi le JSON associé
+      if (bucket === 'bibliotheque' && path.endsWith('.html')) {
+        const jsonPath = path.replace('.html', '.json');
+        // Supprimer le JSON (ignorer les erreurs s'il n'existe pas)
+        await supabase.storage.from(bucket).remove([jsonPath]);
+      }
+      
       const { error } = await supabase.storage
         .from(bucket)
         .remove([path]);
@@ -719,7 +729,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
               >
                 {/* Ligne 1: Icône + Nom */}
                 <div className="flex items-center gap-3 mb-2">
-                  <FileText className={`w-5 h-5 shrink-0 ${doc.isHtml ? 'text-orange-400' : 'text-red-400'}`} />
+                  <FileText className="w-5 h-5 shrink-0 text-orange-400" />
                   <p className="text-white font-medium truncate text-sm flex-1">{doc.name}</p>
                 </div>
                 
@@ -731,9 +741,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
                     <span className="xs:hidden">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</span>
                   </span>
                   <span className="shrink-0">{formatSize(doc.metadata?.size)}</span>
-                  {doc.isHtml && (
-                    <span className="text-orange-400 font-medium shrink-0">HTML modifiable</span>
-                  )}
+                  <span className="text-orange-400 font-medium shrink-0">HTML modifiable</span>
                 </div>
                 
                 {/* Ligne 3: Boutons d'action */}
@@ -745,15 +753,13 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
                   >
                     <ExternalLink className="w-4 h-4 text-gray-400" />
                   </button>
-                  {doc.isHtml && (
-                    <button
-                      onClick={() => handleEditBiblioDocument(doc)}
-                      className="p-1.5 hover:bg-orange-500/20 rounded transition-colors"
-                      title="Modifier"
-                    >
-                      <Edit3 className="w-4 h-4 text-orange-400" />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => handleEditBiblioDocument(doc)}
+                    className="p-1.5 hover:bg-orange-500/20 rounded transition-colors"
+                    title="Modifier"
+                  >
+                    <Edit3 className="w-4 h-4 text-orange-400" />
+                  </button>
                   <button
                     onClick={() => handleDownloadDocument(doc.url, doc.name)}
                     className="p-1.5 hover:bg-gray-600 rounded transition-colors"
