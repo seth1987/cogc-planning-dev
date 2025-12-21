@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   Upload, Trash2, Image, CheckCircle, AlertCircle, Loader2,
   PenTool, RefreshCw, FileText, Download, Eye, Library, 
-  FolderOpen, Calendar, ExternalLink, Edit3, X, Plus
+  FolderOpen, Calendar, ExternalLink, Edit3, X, Plus, Printer
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -16,6 +16,7 @@ import { supabase } from '../../lib/supabaseClient';
  * - Liste des documents partagés (bucket bibliotheque/)
  * - Consultation et téléchargement
  * - Édition des documents HTML de la bibliothèque
+ * - Aperçu et impression des documents
  * 
  * @param {object} agent - Infos de l'agent connecté
  * @param {function} onAgentUpdate - Callback pour mettre à jour l'agent après modification
@@ -38,8 +39,14 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
   const [editContent, setEditContent] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   
+  // État pour l'aperçu du document
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [previewContent, setPreviewContent] = useState('');
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  
   const fileInputRef = useRef(null);
   const docInputRef = useRef(null);
+  const previewIframeRef = useRef(null);
 
   // Afficher une notification temporaire
   const showNotification = useCallback((type, message) => {
@@ -188,9 +195,34 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
     }
   };
 
-  // Ouvrir un document pour visualisation
+  // Ouvrir un document pour visualisation (documents non-HTML)
   const handleViewDocument = (url) => {
     window.open(url, '_blank');
+  };
+
+  // Ouvrir l'aperçu d'un document HTML
+  const handlePreviewDocument = async (doc) => {
+    try {
+      setLoadingPreview(true);
+      setPreviewDoc(doc);
+      
+      const response = await fetch(doc.url);
+      const content = await response.text();
+      setPreviewContent(content);
+    } catch (error) {
+      console.error('Erreur chargement aperçu:', error);
+      showNotification('error', 'Erreur lors du chargement de l\'aperçu');
+      setPreviewDoc(null);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  // Imprimer le document depuis l'aperçu
+  const handlePrintPreview = () => {
+    if (previewIframeRef.current) {
+      previewIframeRef.current.contentWindow.print();
+    }
   };
 
   // Télécharger un document
@@ -404,6 +436,53 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
       handleSignatureUpload(e.target.files[0]);
     }
   };
+
+  // Modal aperçu document
+  if (previewDoc) {
+    return (
+      <div className="fixed inset-0 bg-black/90 flex flex-col z-[80]">
+        {/* Header aperçu */}
+        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Eye className="w-5 h-5 text-cyan-400" />
+            Aperçu : {previewDoc.name}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrintPreview}
+              className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg"
+            >
+              <Printer className="w-4 h-4" />
+              Imprimer
+            </button>
+            <button
+              onClick={() => { setPreviewDoc(null); setPreviewContent(''); }}
+              className="p-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        
+        {/* Contenu aperçu */}
+        <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
+          {loadingPreview ? (
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
+              <p className="text-gray-300">Chargement...</p>
+            </div>
+          ) : (
+            <iframe
+              ref={previewIframeRef}
+              srcDoc={previewContent}
+              className="w-full max-w-4xl h-full bg-white rounded-lg shadow-2xl"
+              title="Aperçu document"
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Modal éditeur HTML
   if (editingDoc) {
@@ -747,11 +826,11 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
                 {/* Ligne 3: Boutons d'action */}
                 <div className="flex items-center justify-end gap-0.5">
                   <button
-                    onClick={() => handleViewDocument(doc.url)}
-                    className="p-1.5 hover:bg-gray-600 rounded transition-colors"
-                    title="Voir"
+                    onClick={() => handlePreviewDocument(doc)}
+                    className="p-1.5 hover:bg-cyan-500/20 rounded transition-colors"
+                    title="Aperçu & Imprimer"
                   >
-                    <ExternalLink className="w-4 h-4 text-gray-400" />
+                    <Eye className="w-4 h-4 text-cyan-400" />
                   </button>
                   <button
                     onClick={() => handleEditBiblioDocument(doc)}
@@ -784,7 +863,8 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
           <h4 className="text-sm font-medium text-orange-300 mb-1">📚 À propos de la bibliothèque</h4>
           <p className="text-xs text-orange-200/70">
             Les documents HTML de la bibliothèque sont modifiables par tous les agents. 
-            Cliquez sur le bouton <Edit3 className="w-3 h-3 inline" /> pour éditer un document.
+            Cliquez sur <Eye className="w-3 h-3 inline text-cyan-400" /> pour voir et imprimer, 
+            ou sur <Edit3 className="w-3 h-3 inline" /> pour éditer.
           </p>
         </div>
       </div>
