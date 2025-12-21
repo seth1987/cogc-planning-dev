@@ -3,7 +3,7 @@ import {
   X, FileText, Download, FolderOpen, Search, AlertTriangle, 
   Clock, Euro, Flag, Upload, Trash2, Plus, Loader2, CheckCircle,
   AlertCircle, FolderPlus, FileSignature, User, Library, PenTool,
-  RefreshCw, Edit3, ExternalLink, Calendar
+  RefreshCw, Edit3, ExternalLink, Calendar, Eye, Printer
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import FormulaireD2I from './FormulaireD2I';
@@ -45,6 +45,11 @@ const ModalDocuments = ({ isOpen, onClose }) => {
   const [bibliothequeModeles, setBibliothequeModeles] = useState([]);
   const [loadingBiblio, setLoadingBiblio] = useState(true);
   
+  // États pour l'aperçu des modèles
+  const [previewModele, setPreviewModele] = useState(null);
+  const [previewContent, setPreviewContent] = useState('');
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  
   // Upload form state
   const [uploadData, setUploadData] = useState({
     name: '',
@@ -54,6 +59,7 @@ const ModalDocuments = ({ isOpen, onClose }) => {
   });
   
   const fileInputRef = useRef(null);
+  const previewIframeRef = useRef(null);
 
   // Configuration des onglets - Bibliothèque en premier
   const tabs = [
@@ -428,9 +434,29 @@ const ModalDocuments = ({ isOpen, onClose }) => {
     }
   };
 
-  // Ouvrir un modèle en lecture
-  const handleViewModele = (url) => {
-    window.open(url, '_blank');
+  // Ouvrir l'aperçu d'un modèle
+  const handlePreviewModele = async (modele) => {
+    try {
+      setLoadingPreview(true);
+      setPreviewModele(modele);
+      
+      const response = await fetch(modele.url);
+      const content = await response.text();
+      setPreviewContent(content);
+    } catch (error) {
+      console.error('Erreur chargement aperçu:', error);
+      showNotification('error', 'Erreur lors du chargement de l\'aperçu');
+      setPreviewModele(null);
+    } finally {
+      setLoadingPreview(false);
+    }
+  };
+
+  // Imprimer le document depuis l'aperçu
+  const handlePrintPreview = () => {
+    if (previewIframeRef.current) {
+      previewIframeRef.current.contentWindow.print();
+    }
   };
 
   // Filtrer les documents par catégorie et recherche
@@ -484,6 +510,53 @@ const ModalDocuments = ({ isOpen, onClose }) => {
   };
 
   if (!isOpen) return null;
+
+  // Modal aperçu modèle
+  if (previewModele) {
+    return (
+      <div className="fixed inset-0 bg-black/90 flex flex-col z-[80]">
+        {/* Header aperçu */}
+        <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
+          <h3 className="text-lg font-bold text-white flex items-center gap-2">
+            <Eye className="w-5 h-5 text-cyan-400" />
+            Aperçu : {previewModele.name}
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrintPreview}
+              className="flex items-center gap-2 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg"
+            >
+              <Printer className="w-4 h-4" />
+              Imprimer
+            </button>
+            <button
+              onClick={() => { setPreviewModele(null); setPreviewContent(''); }}
+              className="p-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        
+        {/* Contenu aperçu */}
+        <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
+          {loadingPreview ? (
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
+              <p className="text-gray-300">Chargement...</p>
+            </div>
+          ) : (
+            <iframe
+              ref={previewIframeRef}
+              srcDoc={previewContent}
+              className="w-full max-w-4xl h-full bg-white rounded-lg shadow-2xl"
+              title="Aperçu document"
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // Si le formulaire D2I est ouvert, l'afficher en plein écran
   if (showD2IForm) {
@@ -956,11 +1029,11 @@ const ModalDocuments = ({ isOpen, onClose }) => {
                             
                             <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0 ml-2">
                               <button
-                                onClick={() => handleViewModele(modele.url)}
-                                className="p-1.5 sm:p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                                title="Voir"
+                                onClick={() => handlePreviewModele(modele)}
+                                className="p-1.5 sm:p-2 hover:bg-cyan-500/20 rounded-lg transition-colors"
+                                title="Aperçu & Imprimer"
                               >
-                                <ExternalLink className="w-4 h-4 text-gray-400" />
+                                <Eye className="w-4 h-4 text-cyan-400" />
                               </button>
                               <button
                                 onClick={() => handleEditModele(modele)}
