@@ -628,46 +628,50 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
             {mesDocuments.map((doc) => (
               <div 
                 key={doc.name}
-                className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
+                className="p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
               >
-                {/* Infos du document */}
-                <div className="flex items-center gap-3 flex-1 min-w-0">
+                {/* Ligne 1: Icône + Nom */}
+                <div className="flex items-center gap-3 mb-2">
                   <FileText className="w-5 h-5 text-red-400 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-white font-medium truncate text-sm">{doc.name}</p>
-                    <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {formatDate(doc.created_at)}
-                      </span>
-                      <span>{formatSize(doc.metadata?.size)}</span>
-                    </div>
-                  </div>
+                  <p className="text-white font-medium truncate text-sm flex-1">{doc.name}</p>
                 </div>
                 
-                {/* Boutons d'action - toujours sur une ligne */}
-                <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
-                  <button
-                    onClick={() => handleViewDocument(doc.url)}
-                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                    title="Voir"
-                  >
-                    <Eye className="w-4 h-4 text-gray-400" />
-                  </button>
-                  <button
-                    onClick={() => handleDownloadDocument(doc.url, doc.name)}
-                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                    title="Télécharger"
-                  >
-                    <Download className="w-4 h-4 text-cyan-400" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteDocument(doc.path, 'documents')}
-                    className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
-                    title="Supprimer"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-400" />
-                  </button>
+                {/* Ligne 2: Métadonnées + Boutons */}
+                <div className="flex items-center justify-between gap-2">
+                  {/* Métadonnées */}
+                  <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
+                    <span className="flex items-center gap-1 shrink-0">
+                      <Calendar className="w-3 h-3" />
+                      <span className="hidden xs:inline">{formatDate(doc.created_at)}</span>
+                      <span className="xs:hidden">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</span>
+                    </span>
+                    <span className="shrink-0">{formatSize(doc.metadata?.size)}</span>
+                  </div>
+                  
+                  {/* Boutons d'action */}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={() => handleViewDocument(doc.url)}
+                      className="p-1.5 hover:bg-gray-600 rounded transition-colors"
+                      title="Voir"
+                    >
+                      <Eye className="w-4 h-4 text-gray-400" />
+                    </button>
+                    <button
+                      onClick={() => handleDownloadDocument(doc.url, doc.name)}
+                      className="p-1.5 hover:bg-gray-600 rounded transition-colors"
+                      title="Télécharger"
+                    >
+                      <Download className="w-4 h-4 text-cyan-400" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteDocument(doc.path, 'documents')}
+                      className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-400" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -711,31 +715,32 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
             {bibliotheque.map((doc) => (
               <div 
                 key={doc.name}
-                className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
+                className="p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
               >
-                {/* Infos du document */}
-                <div className="flex items-center gap-3 flex-1 min-w-0">
+                {/* Ligne 1: Icône + Nom */}
+                <div className="flex items-center gap-3 mb-2">
                   <FileText className={`w-5 h-5 shrink-0 ${doc.isHtml ? 'text-orange-400' : 'text-red-400'}`} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-white font-medium truncate text-sm">{doc.name}</p>
-                    <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {formatDate(doc.created_at)}
-                      </span>
-                      <span>{formatSize(doc.metadata?.size)}</span>
-                      {doc.isHtml && (
-                        <span className="text-orange-400 font-medium">HTML modifiable</span>
-                      )}
-                    </div>
-                  </div>
+                  <p className="text-white font-medium truncate text-sm flex-1">{doc.name}</p>
                 </div>
                 
-                {/* Boutons d'action - toujours sur une ligne, alignés à droite */}
-                <div className="flex items-center gap-1 shrink-0 self-end sm:self-center">
+                {/* Ligne 2: Métadonnées */}
+                <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                  <span className="flex items-center gap-1 shrink-0">
+                    <Calendar className="w-3 h-3" />
+                    <span className="hidden xs:inline">{formatDate(doc.created_at)}</span>
+                    <span className="xs:hidden">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</span>
+                  </span>
+                  <span className="shrink-0">{formatSize(doc.metadata?.size)}</span>
+                  {doc.isHtml && (
+                    <span className="text-orange-400 font-medium shrink-0">HTML modifiable</span>
+                  )}
+                </div>
+                
+                {/* Ligne 3: Boutons d'action */}
+                <div className="flex items-center justify-end gap-0.5">
                   <button
                     onClick={() => handleViewDocument(doc.url)}
-                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                    className="p-1.5 hover:bg-gray-600 rounded transition-colors"
                     title="Voir"
                   >
                     <ExternalLink className="w-4 h-4 text-gray-400" />
@@ -743,7 +748,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
                   {doc.isHtml && (
                     <button
                       onClick={() => handleEditBiblioDocument(doc)}
-                      className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
+                      className="p-1.5 hover:bg-orange-500/20 rounded transition-colors"
                       title="Modifier"
                     >
                       <Edit3 className="w-4 h-4 text-orange-400" />
@@ -751,14 +756,14 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
                   )}
                   <button
                     onClick={() => handleDownloadDocument(doc.url, doc.name)}
-                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                    className="p-1.5 hover:bg-gray-600 rounded transition-colors"
                     title="Télécharger"
                   >
                     <Download className="w-4 h-4 text-cyan-400" />
                   </button>
                   <button
                     onClick={() => handleDeleteDocument(doc.path, 'bibliotheque')}
-                    className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                    className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
                     title="Supprimer"
                   >
                     <Trash2 className="w-4 h-4 text-red-400" />
