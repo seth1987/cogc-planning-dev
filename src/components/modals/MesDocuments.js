@@ -13,7 +13,7 @@ import { supabase } from '../../lib/supabaseClient';
  * - Upload/modification de la signature
  * - Upload de documents personnels
  * - Liste des documents personnels (bucket documents/{agent_id}/)
- * - Liste des documents partagés (bucket bibliotheque/) - UNIQUEMENT HTML
+ * - Liste des documents partagés (bucket bibliotheque/)
  * - Consultation et téléchargement
  * - Édition des documents HTML de la bibliothèque
  * 
@@ -76,7 +76,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
     }
   }, [agent?.id]);
 
-  // Charger la bibliothèque (UNIQUEMENT fichiers HTML - pas les JSON)
+  // Charger la bibliothèque
   const loadBibliotheque = useCallback(async () => {
     try {
       setLoadingBiblio(true);
@@ -88,21 +88,13 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
       
       if (error) throw error;
       
-      // FILTRER uniquement les fichiers HTML (pas les JSON qui sont des données techniques)
-      const docsWithUrls = (data || [])
-        .filter(file => file.name.endsWith('.html'))
-        .map(file => {
-          // Extraire un nom lisible sans extension
-          const displayName = file.name.replace('.html', '').replace(/_/g, ' ');
-          return {
-            ...file,
-            displayName,
-            url: supabase.storage.from('bibliotheque').getPublicUrl(file.name).data.publicUrl,
-            path: file.name,
-            jsonPath: file.name.replace('.html', '.json'),
-            isHtml: true
-          };
-        });
+      // Ajouter les URLs publiques
+      const docsWithUrls = (data || []).map(file => ({
+        ...file,
+        url: supabase.storage.from('bibliotheque').getPublicUrl(file.name).data.publicUrl,
+        path: file.name,
+        isHtml: file.name.endsWith('.html')
+      }));
       
       setBibliotheque(docsWithUrls);
     } catch (error) {
@@ -172,12 +164,6 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
         .remove([path]);
       
       if (error) throw error;
-      
-      // Si c'est un document HTML de la bibliothèque, supprimer aussi le JSON associé
-      if (bucket === 'bibliotheque' && path.endsWith('.html')) {
-        const jsonPath = path.replace('.html', '.json');
-        await supabase.storage.from('bibliotheque').remove([jsonPath]);
-      }
       
       showNotification('success', 'Document supprimé');
       
@@ -265,7 +251,9 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
     return new Date(dateStr).toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -415,7 +403,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
         <div className="bg-gray-900 p-4 flex items-center justify-between border-b border-gray-700">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <Edit3 className="w-5 h-5 text-orange-400" />
-            Modifier : {editingDoc.displayName || editingDoc.name}
+            Modifier : {editingDoc.name}
           </h3>
           <div className="flex items-center gap-2">
             <button
@@ -640,44 +628,50 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
             {mesDocuments.map((doc) => (
               <div 
                 key={doc.name}
-                className="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
+                className="p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                {/* Ligne 1: Icône + Nom */}
+                <div className="flex items-center gap-3 mb-2">
                   <FileText className="w-5 h-5 text-red-400 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-white font-medium truncate">{doc.name}</p>
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {formatDate(doc.created_at)}
-                      </span>
-                      <span>{formatSize(doc.metadata?.size)}</span>
-                    </div>
-                  </div>
+                  <p className="text-white font-medium truncate text-sm flex-1">{doc.name}</p>
                 </div>
                 
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => handleViewDocument(doc.url)}
-                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                    title="Voir"
-                  >
-                    <Eye className="w-4 h-4 text-gray-400" />
-                  </button>
-                  <button
-                    onClick={() => handleDownloadDocument(doc.url, doc.name)}
-                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                    title="Télécharger"
-                  >
-                    <Download className="w-4 h-4 text-cyan-400" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteDocument(doc.path, 'documents')}
-                    className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
-                    title="Supprimer"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-400" />
-                  </button>
+                {/* Ligne 2: Métadonnées + Boutons */}
+                <div className="flex items-center justify-between gap-2">
+                  {/* Métadonnées */}
+                  <div className="flex items-center gap-2 text-xs text-gray-500 min-w-0">
+                    <span className="flex items-center gap-1 shrink-0">
+                      <Calendar className="w-3 h-3" />
+                      <span className="hidden xs:inline">{formatDate(doc.created_at)}</span>
+                      <span className="xs:hidden">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</span>
+                    </span>
+                    <span className="shrink-0">{formatSize(doc.metadata?.size)}</span>
+                  </div>
+                  
+                  {/* Boutons d'action */}
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    <button
+                      onClick={() => handleViewDocument(doc.url)}
+                      className="p-1.5 hover:bg-gray-600 rounded transition-colors"
+                      title="Voir"
+                    >
+                      <Eye className="w-4 h-4 text-gray-400" />
+                    </button>
+                    <button
+                      onClick={() => handleDownloadDocument(doc.url, doc.name)}
+                      className="p-1.5 hover:bg-gray-600 rounded transition-colors"
+                      title="Télécharger"
+                    >
+                      <Download className="w-4 h-4 text-cyan-400" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteDocument(doc.path, 'documents')}
+                      className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-400" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -685,7 +679,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
         )}
       </div>
 
-      {/* Section Bibliothèque - Affiche UNIQUEMENT les fichiers HTML (pas les JSON) */}
+      {/* Section Bibliothèque */}
       <div className="bg-gray-800/50 rounded-lg p-5 border border-gray-700">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -721,48 +715,55 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
             {bibliotheque.map((doc) => (
               <div 
                 key={doc.name}
-                className="flex items-center justify-between p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
+                className="p-3 bg-gray-800 rounded-lg hover:bg-gray-700/80 transition-colors"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <FileText className="w-5 h-5 shrink-0 text-orange-400" />
-                  <div className="min-w-0">
-                    {/* Afficher le nom lisible (sans extension, underscores → espaces) */}
-                    <p className="text-white font-medium truncate">{doc.displayName}</p>
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {formatDate(doc.created_at)}
-                      </span>
-                      <span>{formatSize(doc.metadata?.size)}</span>
-                    </div>
-                  </div>
+                {/* Ligne 1: Icône + Nom */}
+                <div className="flex items-center gap-3 mb-2">
+                  <FileText className={`w-5 h-5 shrink-0 ${doc.isHtml ? 'text-orange-400' : 'text-red-400'}`} />
+                  <p className="text-white font-medium truncate text-sm flex-1">{doc.name}</p>
                 </div>
                 
-                <div className="flex items-center gap-2 shrink-0">
+                {/* Ligne 2: Métadonnées */}
+                <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                  <span className="flex items-center gap-1 shrink-0">
+                    <Calendar className="w-3 h-3" />
+                    <span className="hidden xs:inline">{formatDate(doc.created_at)}</span>
+                    <span className="xs:hidden">{new Date(doc.created_at).toLocaleDateString('fr-FR')}</span>
+                  </span>
+                  <span className="shrink-0">{formatSize(doc.metadata?.size)}</span>
+                  {doc.isHtml && (
+                    <span className="text-orange-400 font-medium shrink-0">HTML modifiable</span>
+                  )}
+                </div>
+                
+                {/* Ligne 3: Boutons d'action */}
+                <div className="flex items-center justify-end gap-0.5">
                   <button
                     onClick={() => handleViewDocument(doc.url)}
-                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                    className="p-1.5 hover:bg-gray-600 rounded transition-colors"
                     title="Voir"
                   >
                     <ExternalLink className="w-4 h-4 text-gray-400" />
                   </button>
-                  <button
-                    onClick={() => handleEditBiblioDocument(doc)}
-                    className="p-2 hover:bg-orange-500/20 rounded-lg transition-colors"
-                    title="Modifier"
-                  >
-                    <Edit3 className="w-4 h-4 text-orange-400" />
-                  </button>
+                  {doc.isHtml && (
+                    <button
+                      onClick={() => handleEditBiblioDocument(doc)}
+                      className="p-1.5 hover:bg-orange-500/20 rounded transition-colors"
+                      title="Modifier"
+                    >
+                      <Edit3 className="w-4 h-4 text-orange-400" />
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDownloadDocument(doc.url, doc.name)}
-                    className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                    className="p-1.5 hover:bg-gray-600 rounded transition-colors"
                     title="Télécharger"
                   >
                     <Download className="w-4 h-4 text-cyan-400" />
                   </button>
                   <button
                     onClick={() => handleDeleteDocument(doc.path, 'bibliotheque')}
-                    className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                    className="p-1.5 hover:bg-red-500/20 rounded transition-colors"
                     title="Supprimer"
                   >
                     <Trash2 className="w-4 h-4 text-red-400" />
@@ -776,7 +777,7 @@ const MesDocuments = ({ agent, onAgentUpdate }) => {
         <div className="mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg">
           <h4 className="text-sm font-medium text-orange-300 mb-1">📚 À propos de la bibliothèque</h4>
           <p className="text-xs text-orange-200/70">
-            Les documents de la bibliothèque sont modifiables par tous les agents. 
+            Les documents HTML de la bibliothèque sont modifiables par tous les agents. 
             Cliquez sur le bouton <Edit3 className="w-3 h-3 inline" /> pour éditer un document.
           </p>
         </div>
