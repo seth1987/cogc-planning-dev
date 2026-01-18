@@ -8,6 +8,7 @@ export function useSupabase(table, query = {}) {
 
   useEffect(() => {
     fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table, JSON.stringify(query)]);
 
   const fetchData = async () => {
