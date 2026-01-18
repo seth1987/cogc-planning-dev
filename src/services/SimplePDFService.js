@@ -10,8 +10,8 @@
  * 2. Chat avec response_format: json_object → Structure en JSON
  */
 
-// Clé API Mistral
-const MISTRAL_API_KEY = 'Kx84WAxDnne4YTTViVbWtPOedYLVHpo1';
+// Clé API Mistral via variables d'environnement
+const MISTRAL_API_KEY = process.env.REACT_APP_MISTRAL_API_KEY;
 
 // Endpoints API Mistral
 const ENDPOINTS = {

@@ -17,10 +17,10 @@
 
 class MistralPDFReaderService {
   // ═══════════════════════════════════════════════════════════════
-  // CONFIGURATION API MISTRAL
+  // CONFIGURATION API MISTRAL (via variables d'environnement)
   // ═══════════════════════════════════════════════════════════════
-  
-  static MISTRAL_API_KEY = 'Kx84WAxDnne4YTTViVbWtPOedYLVHpo1';
+
+  static MISTRAL_API_KEY = process.env.REACT_APP_MISTRAL_API_KEY;
   
   // Endpoints API Mistral
   static ENDPOINTS = {

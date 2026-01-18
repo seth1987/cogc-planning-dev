@@ -1,12 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Configuration Supabase directe (temporaire - à migrer vers .env en production)
-const supabaseUrl = 'https://kbihxjbazmjmpsxkeydf.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtiaWh4amJhem1qbXBzeGtleWRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTEzMTEzNjksImV4cCI6MjA2Njg4NzM2OX0.lvbPBBbiweTEIUi0JK7hvLvTD7EuF9EazN7l2PZbiYU';
+// Configuration Supabase via variables d'environnement
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
 console.log('✅ Supabase URL:', supabaseUrl);
 console.log('✅ Supabase Key valide:', supabaseAnonKey ? 'OUI' : 'NON');
-console.log('🔑 Clé API utilisée (10 premiers caractères):', supabaseAnonKey.substring(0, 10));
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Configuration Supabase manquante!');
