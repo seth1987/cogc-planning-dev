@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Moon, Sun, Sunset, ChevronDown, ChevronUp, Users, AlertCircle, Loader2, Briefcase } from 'lucide-react';
 import supabaseService from '../../services/supabaseService';
+import { JOURS_FERIES, MONTHS } from '../../constants/config';
 
 /**
  * Modal "Équipes du Jour" - Affiche les agents travaillant sur une journée donnée
  * Répartis par créneaux horaires (Nuit, Matin, Soirée, Jour) et par poste
  * 
- * @version 1.7.1 - Correction boutons : ACRF matin, SOUF soir uniquement
+ * @version 1.7.3 - SOUF masqué les week-ends et jours fériés (présent uniquement en semaine)
  * @param {boolean} isOpen - État d'ouverture du modal
  * @param {Date|string} selectedDate - Date sélectionnée (format YYYY-MM-DD)
  * @param {Array} agents - Liste des agents
@@ -51,7 +52,26 @@ const ModalPrevisionnelJour = ({
     'INAC': 'Inactif'
   }), []);
 
+  // Vérifier si la date est un week-end ou jour férié (SOUF pas présent ces jours)
+  const isWeekendOrHoliday = useMemo(() => {
+    if (!selectedDate) return false;
+    const date = new Date(selectedDate);
+    const dayOfWeek = date.getDay(); // 0 = dimanche, 6 = samedi
+
+    // Week-end
+    if (dayOfWeek === 0 || dayOfWeek === 6) return true;
+
+    // Jour férié
+    const day = date.getDate();
+    const monthIndex = date.getMonth();
+    const monthName = MONTHS[monthIndex];
+    const feriesOfMonth = JOURS_FERIES[monthName] || [];
+
+    return feriesOfMonth.includes(day);
+  }, [selectedDate]);
+
   // Configuration des créneaux
+  // Note: SOUF n'est présent en soirée que les jours de semaine (pas week-end ni férié)
   const CRENEAUX = useMemo(() => ({
     nuitAvant: {
       id: 'nuitAvant',
@@ -77,7 +97,10 @@ const ModalPrevisionnelJour = ({
       symbole: 'O',
       colonneJour: 'J',
       icon: Sunset,
-      postes: ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'SOUF'],
+      // SOUF uniquement en semaine (pas week-end ni férié)
+      postes: isWeekendOrHoliday
+        ? ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC']
+        : ['CRC', 'ACR', 'RC', 'RO', 'CCU', 'RE', 'CAC', 'SOUF'],
       color: 'orange'
     },
     jour: {
@@ -98,7 +121,7 @@ const ModalPrevisionnelJour = ({
       postes: ['CRC', 'ACR', 'RC', 'CCU', 'RE'],
       color: 'indigo'
     }
-  }), []);
+  }), [isWeekendOrHoliday]);
 
   // Postes avec menu déroulant (FIGÉ ou RAPATRIÉ PN)
   const POSTES_AVEC_MENU = useMemo(() => ['CCU', 'RE'], []);
@@ -645,8 +668,8 @@ const ModalPrevisionnelJour = ({
 
     const colors = colorClasses[color] || colorClasses.indigo;
 
-    // Filtrer les postes spéciaux (ACRF, SOUF) pour l'affichage des agents
-    const postesAffichage = postes.filter(p => !['ACRF', 'SOUF'].includes(p));
+    // Filtrer ACRF (bouton uniquement, pas d'agents) - SOUF doit afficher ses agents
+    const postesAffichage = postes.filter(p => p !== 'ACRF');
 
     return (
       <div className={`rounded-lg border ${colors.border} ${colors.bg}`} style={{ overflow: 'visible' }}>
