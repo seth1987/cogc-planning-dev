@@ -178,7 +178,7 @@ const LoginPage = ({ onLogin }) => {
     
     try {
       // 1. D'abord se connecter avec le mot de passe actuel
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: generatedEmail,
         password: currentPassword,
       });

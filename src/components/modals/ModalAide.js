@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { 
-  X, HelpCircle, Calendar, Users, AlertTriangle, Briefcase, 
+import {
+  X, HelpCircle, Calendar, Users, AlertTriangle, Briefcase,
   FileText, ChevronRight, ChevronDown, Upload, Edit3, Phone,
-  Mail, MousePointer, Download, ExternalLink, Shield, Clock,
-  CheckCircle, Info, BarChart3, User, StickyNote
+  MousePointer, Download, ExternalLink, Clock,
+  Info, BarChart3, User, StickyNote
 } from 'lucide-react';
 
 /**

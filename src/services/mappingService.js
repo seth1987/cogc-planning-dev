@@ -218,4 +218,5 @@ class MappingService {
 }
 
 // Export singleton
-export default new MappingService();
+const mappingService = new MappingService();
+export default mappingService;

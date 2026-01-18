@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Palette, Search, X, ChevronDown, ChevronRight, Type, Check, Edit3, StickyNote, Trash2, Lock } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
-import { 
-  SERVICE_CODES, 
-  POSTES_CODES, 
-  POSTES_SUPPLEMENTAIRES, 
-  GROUPES_AVEC_POSTE, 
+import {
+  SERVICE_CODES,
+  POSTES_CODES,
+  POSTES_SUPPLEMENTAIRES,
+  GROUPES_AVEC_POSTE,
   POSTES_PAR_GROUPE,
   SERVICE_JOUR_CODES,
   HABILITATION_CODES,
   JOURS_RH_CODES,
   ABSENCES_CODES,
-  STATUT_CONGE_CODES,
-  PCD_CODES
+  STATUT_CONGE_CODES
 } from '../../constants/config';
 import { getPaieType, PAIE_ICONS } from '../../constants/paie2026';
 import useColors from '../../hooks/useColors';
@@ -564,13 +563,6 @@ const ModalMonPlanning = ({ isOpen, onClose, currentUser, onUpdate, initialYear 
       setTempCategorie('LIBRE');
     }
     setShowTexteLibreModal(false);
-  };
-
-  const handleDeleteTexteLibre = () => {
-    if (window.confirm('Supprimer ce texte libre ?')) {
-      setTempTexteLibre('');
-      setTempCategorie('');
-    }
   };
 
   const selectTexteLibre = () => {

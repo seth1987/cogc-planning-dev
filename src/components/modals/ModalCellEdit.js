@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Check, MessageSquarePlus, Trash2, StickyNote, Edit3, Type, ArrowLeftRight, Search, Calendar, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
-import { 
-  SERVICE_CODES, 
-  POSTES_CODES, 
-  POSTES_SUPPLEMENTAIRES, 
-  POSTES_PAR_GROUPE, 
-  GROUPES_AVEC_POSTE, 
+import {
+  SERVICE_CODES,
+  POSTES_CODES,
+  POSTES_SUPPLEMENTAIRES,
+  POSTES_PAR_GROUPE,
+  GROUPES_AVEC_POSTE,
   MONTHS,
   SERVICE_JOUR_CODES,
   HABILITATION_CODES,
   JOURS_RH_CODES,
   ABSENCES_CODES,
-  STATUT_CONGE_CODES,
-  PCD_CODES
+  STATUT_CONGE_CODES
 } from '../../constants/config';
 
 // Couleurs pour la modal d'édition - par catégorie
@@ -296,12 +295,6 @@ const ModalCellEdit = ({
     return new Date(year, monthIndex + 1, 0).getDate();
   };
 
-  // Fonction pour obtenir le numéro du mois (1-12) à partir du nom
-  const getMonthNumber = (monthName) => {
-    const monthIndex = MONTHS.indexOf(monthName);
-    return monthIndex >= 0 ? monthIndex + 1 : 1;
-  };
-
   const handleQuickDateRange = (days) => {
     // Utiliser startDate si défini, sinon la date de la cellule
     let baseDay;
@@ -501,13 +494,6 @@ const ModalCellEdit = ({
   const handleCancelTexteLibre = () => {
     setTexteLibreInput('');
     setShowTexteLibreModal(false);
-  };
-
-  const handleDeleteTexteLibre = () => {
-    if (window.confirm('Êtes-vous sûr de vouloir supprimer ce texte libre ?')) {
-      setTempTexteLibre('');
-      setTempCategorie('');
-    }
   };
 
   const selectTexteLibre = () => {

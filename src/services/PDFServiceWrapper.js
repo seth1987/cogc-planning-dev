@@ -219,8 +219,10 @@ export function getAvailableMethods() {
   ];
 }
 
-export default {
+const PDFServiceWrapper = {
   readPDF,
   isAPIConfigured,
   getAvailableMethods
 };
+
+export default PDFServiceWrapper;

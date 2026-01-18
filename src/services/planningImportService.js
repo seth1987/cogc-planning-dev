@@ -356,4 +356,5 @@ class PlanningImportService {
 }
 
 // Export singleton
-export default new PlanningImportService();
+const planningImportService = new PlanningImportService();
+export default planningImportService;

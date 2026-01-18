@@ -234,6 +234,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentInfo, selectedYear]);
 
   // v1.5: Charger les stats de benchmarking pour tous les agents de réserve
@@ -316,6 +317,7 @@ const ModalStatistiques = ({ isOpen, onClose, currentUser }) => {
     } finally {
       setLoadingBenchmark(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentInfo, selectedYear, isReserveAgent]);
 
   // v1.6: Charger les stats de postes figés/rapatriés (global COGC)

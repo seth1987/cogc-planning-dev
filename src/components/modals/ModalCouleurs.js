@@ -19,7 +19,6 @@ const ModalCouleurs = ({ isOpen, onClose, context = 'general', userEmail = null 
   const {
     colors,
     updateServiceColor,
-    updateGroupColor,
     updateSubCategoryColor,
     updateCategoryColor,
     setCategoryMode,

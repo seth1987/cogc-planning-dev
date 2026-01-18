@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  FileText, Calendar, Clock, MapPin, User, Building, Hash,
+import {
+  FileText, Calendar, Clock, Building, Hash,
   CheckSquare, Square, AlertCircle, Printer, Download, Eye, X,
-  Upload, FolderOpen, Library, Check, Loader2
+  FolderOpen, Library, Check, Loader2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import html2pdf from 'html2pdf.js';
