@@ -100,8 +100,8 @@ const MOTS_EXCLUS = [
   'IMPRESSION', 'COMMANDE', 'NOTIFIE', 'BULLETIN', 'PARC', 'DENFERT'
 ];
 
-// Particules françaises
-const PARTICULES = ['DE', 'DU', 'LE', 'LA', 'DES', "D'", 'DE LA', 'VAN', 'VON', 'DI', 'DA'];
+// Particules françaises (conservé pour référence future)
+// const PARTICULES = ['DE', 'DU', 'LE', 'LA', 'DES', "D'", 'DE LA', 'VAN', 'VON', 'DI', 'DA'];
 
 // ============================================================================
 // PATTERNS REGEX - SÉPARÉS PAR PRIORITÉ (v9.0)
@@ -419,8 +419,7 @@ class BulletinParserService {
     this.log('\n🔍 Extraction services v9.0 (par blocs)...', 'info');
     
     const lignes = texte.split(/[\n\r]+/).map(l => l.trim()).filter(l => l.length > 0);
-    const services = [];
-    
+
     // Identifier toutes les dates et leurs positions
     const datesPositions = [];
     

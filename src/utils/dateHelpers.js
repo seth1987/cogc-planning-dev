@@ -1,4 +1,4 @@
-import { format, parse, isValid, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay } from 'date-fns';
+import { format, isValid, startOfMonth, endOfMonth, eachDayOfInterval, isWeekend, isSameDay } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 // Formater une date en français
@@ -123,7 +123,6 @@ export const exportPlanningText = (planning, gardes) => {
   const days = getDaysInMonth(planning.annee, planning.mois);
   
   days.forEach(day => {
-    const dateStr = format(day, 'yyyy-MM-dd');
     const dayGardes = gardes.filter(g => isSameDay(new Date(g.date), day));
     
     text += formatDate(day, 'EEEE dd MMMM') + '\n';
@@ -142,7 +141,7 @@ export const exportPlanningText = (planning, gardes) => {
   return text;
 };
 
-export default {
+const dateHelpers = {
   formatDate,
   getMonthName,
   getDaysInMonth,
@@ -155,3 +154,5 @@ export default {
   generateAvailabilityCalendar,
   exportPlanningText
 };
+
+export default dateHelpers;

@@ -251,6 +251,7 @@ const ModalCellEdit = ({
     setDateRangeWarning('');
     setSearchTerm('');
     setShowPcdDropdown(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cellData, selectedCell]);
 
   // === INITIALISER LA DATE DE DÉPART QUAND ON ACTIVE L'ÉDITION MULTIPLE ===

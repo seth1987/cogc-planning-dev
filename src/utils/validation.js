@@ -151,7 +151,7 @@ export const formatErrors = (errors) => {
   return errors;
 };
 
-export default {
+const validation = {
   validateEmail,
   validatePassword,
   validatePhone,
@@ -161,3 +161,5 @@ export default {
   validateProfile,
   formatErrors
 };
+
+export default validation;

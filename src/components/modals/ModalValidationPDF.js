@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Check, AlertTriangle, Edit2, Save, XCircle, CheckCircle, Calendar, User } from 'lucide-react';
+import { X, Check, AlertTriangle, Edit2, Save, XCircle, CheckCircle, Calendar } from 'lucide-react';
 
 const ModalValidationPDF = ({ 
   isOpen, 

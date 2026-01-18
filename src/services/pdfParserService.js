@@ -291,7 +291,6 @@ class PDFParserService {
   static postProcessNightsV21(entriesRaw) {
     console.log('\n🌙 Post-traitement nuits v2.1 (décalage J→J+1)...');
     
-    const result = [];
     const entriesMap = new Map(); // Pour éviter les doublons
     
     for (const entry of entriesRaw) {
