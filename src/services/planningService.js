@@ -233,7 +233,6 @@ class PlanningService {
 
   // Extraire les informations d'un bulletin PDF avec gestion correcte des services de nuit ET DU MOIS
   extractFromPDF(pdfText, agent, currentMonth = null) {
-    const planning = {};
     const lines = pdfText.split('\n');
     
     // Patterns pour détecter les dates et services

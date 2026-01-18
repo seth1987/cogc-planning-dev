@@ -86,8 +86,10 @@ export const createAgentAccount = async (agent) => {
   }
 };
 
-export default {
+const userManagementService = {
   DEFAULT_PASSWORD,
   generateSNCFEmail,
   createAgentAccount
 };
+
+export default userManagementService;

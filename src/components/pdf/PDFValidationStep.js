@@ -202,12 +202,6 @@ const PDFValidationStep = React.memo(({
     });
   }, [onChange]);
 
-  // Handler pour basculer en mode texte libre
-  const toggleFreeTextMode = useCallback((index, field) => {
-    const key = `${index}_${field}`;
-    setFreeTextMode(prev => ({ ...prev, [key]: !prev[key] }));
-  }, []);
-
   // Handler pour le changement de service (gère le switch vers texte libre)
   const handleServiceChange = useCallback((index, value) => {
     if (value === LIBRE_MARKER) {

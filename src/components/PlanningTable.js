@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { ChevronDown, ChevronUp, ChevronLeft, ChevronRight, StickyNote, Users, Palette, Type, Moon, Sun } from 'lucide-react';
-import { MONTHS } from '../constants/config';
-import { DEFAULT_COLORS } from '../constants/defaultColors';
 import useColors from '../hooks/useColors';
-import useTheme, { NEXAVERSE_THEME, LIGHT_THEME } from '../hooks/useTheme';
+import useTheme, { NEXAVERSE_THEME } from '../hooks/useTheme';
 import planningService from '../services/planningService';
 import ModalCouleurs from './modals/ModalCouleurs';
 

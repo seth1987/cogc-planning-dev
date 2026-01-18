@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  DEFAULT_COLORS, 
-  COLORS_STORAGE_KEY, 
+import {
+  DEFAULT_COLORS,
+  COLORS_STORAGE_KEY,
   COLOR_CATEGORIES,
   findCategoryForCode,
   findParentSubCategory,
   isSubCategoryUniform,
-  getHorairesForSubCategory,
-  resolveColorForCode 
+  getHorairesForSubCategory
 } from '../constants/defaultColors';
 import { supabase } from '../lib/supabaseClient';
 
@@ -57,7 +56,7 @@ export const useColors = (context = 'general', userEmail = null) => {
   };
 
   const [colors, setColors] = useState(getInitialColors);
-  const [isLoaded, setIsLoaded] = useState(true);
+  const [isLoaded] = useState(true);
   const [syncEnabled, setSyncEnabled] = useState(getInitialSyncState);
   const [isSyncing, setIsSyncing] = useState(false);
 

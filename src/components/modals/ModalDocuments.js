@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  X, FileText, Download, FolderOpen, Search, AlertTriangle, 
+import {
+  X, FileText, Download, FolderOpen, Search, AlertTriangle,
   Clock, Euro, Flag, Upload, Trash2, Plus, Loader2, CheckCircle,
   AlertCircle, FolderPlus, FileSignature, User, Library, PenTool,
-  RefreshCw, Edit3, ExternalLink, Calendar, Eye, Printer
+  RefreshCw, Edit3, Calendar, Eye, Printer
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 import FormulaireD2I from './FormulaireD2I';

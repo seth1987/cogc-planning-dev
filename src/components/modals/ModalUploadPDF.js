@@ -60,6 +60,7 @@ const ModalUploadPDF = React.memo(({ isOpen, onClose, onSuccess }) => {
       loadMappingStats();
       loadCodesMapping();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, addLog]);
 
   const loadMappingStats = async () => {
@@ -245,6 +246,7 @@ const ModalUploadPDF = React.memo(({ isOpen, onClose, onSuccess }) => {
     } finally {
       processingRef.current = false;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addLog]);
 
   const handleValidate = useCallback(async () => {

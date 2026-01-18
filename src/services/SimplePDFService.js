@@ -415,8 +415,10 @@ export function getValidCodes() {
   return Array.from(VALID_SERVICE_CODES);
 }
 
-export default {
+const SimplePDFService = {
   extractBulletinData,
   isAPIConfigured,
   getValidCodes
 };
+
+export default SimplePDFService;

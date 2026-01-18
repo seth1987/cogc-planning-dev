@@ -1,8 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { 
+import {
   Upload, Trash2, Image, CheckCircle, AlertCircle, Loader2,
-  PenTool, RefreshCw, FileText, Download, Eye, Library, 
-  FolderOpen, Calendar, ExternalLink, Edit3, X, Plus, Printer
+  PenTool, RefreshCw, FileText, Download, Eye, Library,
+  FolderOpen, Calendar, Edit3, X, Plus, Printer
 } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
 

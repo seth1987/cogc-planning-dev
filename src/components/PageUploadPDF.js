@@ -35,6 +35,7 @@ const PageUploadPDF = ({ onBack, onSuccess }) => {
     addLog('Page montée');
     loadMappingStats();
     loadCodesMapping();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadMappingStats = async () => {
