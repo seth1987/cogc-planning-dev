@@ -2,8 +2,8 @@
 // Optimisé pour les bulletins de commande avec codes services spécifiques
 
 class MistralOCRService {
-  // Configuration API Mistral
-  static MISTRAL_API_KEY = 'WKZ6fHhJ7wW5rUruSkLFiUuLVpwmXfxz';
+  // Configuration API Mistral via variables d'environnement
+  static MISTRAL_API_KEY = process.env.REACT_APP_MISTRAL_API_KEY;
   static MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
   
   // Modèles Mistral pour OCR
