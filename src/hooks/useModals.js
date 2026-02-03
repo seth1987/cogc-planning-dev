@@ -3,8 +3,8 @@ import { useState, useCallback } from 'react';
 /**
  * Hook personnalisé pour la gestion centralisée des modals
  * Simplifie l'ouverture/fermeture et le passage de données aux modals
- * 
- * @version 2.1.0 - Ajout ModalPrevisionnelJour (Équipes du Jour)
+ *
+ * @version 2.2.0 - Ajout ChatAssistant (Agent IA Import PDF)
  * @returns {Object} État et fonctions de gestion des modals
  */
 export function useModals() {
@@ -15,7 +15,8 @@ export function useModals() {
     editAgent: false,
     habilitations: false,
     uploadPDF: false,
-    previsionnelJour: false, // Nouveau modal Équipes du Jour
+    previsionnelJour: false,
+    chatAssistant: false, // Nouveau: Agent IA conversationnel
   });
 
   // Données associées aux modals
@@ -80,6 +81,7 @@ export function useModals() {
       habilitations: false,
       uploadPDF: false,
       previsionnelJour: false,
+      chatAssistant: false,
     });
     setSelectedCell(null);
     setSelectedAgent(null);
@@ -140,6 +142,20 @@ export function useModals() {
     openModal('previsionnelJour', date);
   }, [openModal]);
 
+  /**
+   * Ouvre le Chat Assistant (Agent IA Import PDF)
+   */
+  const openChatAssistant = useCallback(() => {
+    openModal('chatAssistant');
+  }, [openModal]);
+
+  /**
+   * Ferme le Chat Assistant
+   */
+  const closeChatAssistant = useCallback(() => {
+    closeModal('chatAssistant');
+  }, [closeModal]);
+
   return {
     // État brut
     modals,
@@ -160,8 +176,10 @@ export function useModals() {
     openEditAgent,
     openHabilitations,
     openUploadPDF,
-    openPrevisionnelJour, // Nouveau raccourci
-    
+    openPrevisionnelJour,
+    openChatAssistant,    // Nouveau: Agent IA
+    closeChatAssistant,   // Nouveau: Fermer Agent IA
+
     // Setters directs (pour cas spéciaux)
     setSelectedAgent,
     setSelectedCell,

@@ -1,25 +1,25 @@
 import React from 'react';
-import { Calendar, Users, Upload, ArrowLeft, Home } from 'lucide-react';
+import { Calendar, Users, ArrowLeft, Home, MessageSquare } from 'lucide-react';
 
 /**
  * Header - En-tête de l'application Planning
- * 
- * v2.5: Bouton Admin supprimé (création compte intégrée dans ModalEditAgent)
- * 
+ *
+ * v2.7: Suppression bouton Upload PDF (remplacé par Assistant IA)
+ *
  * Props:
  * - user: Utilisateur connecté
  * - connectionStatus: Statut de connexion Supabase
  * - onOpenGestionAgents: Ouvrir modal gestion agents
- * - onOpenUploadPDF: Ouvrir modal upload PDF
+ * - onOpenChatAssistant: Ouvrir assistant IA conversationnel
  * - onSignOut: Déconnexion
  * - onBackToLanding: Retour page d'accueil
  * - showBackButton: Afficher le bouton retour
  */
-const Header = ({ 
-  user, 
-  connectionStatus, 
-  onOpenGestionAgents, 
-  onOpenUploadPDF, 
+const Header = ({
+  user,
+  connectionStatus,
+  onOpenGestionAgents,
+  onOpenChatAssistant,
   onSignOut,
   onBackToLanding,
   showBackButton = false
@@ -64,17 +64,17 @@ const Header = ({
           <Users className="w-4 h-4" />
           <span className="hidden sm:inline">Gestion Agents</span>
         </button>
-        
-        {/* Bouton Upload PDF */}
-        <button 
-          onClick={onOpenUploadPDF}
-          className="flex items-center space-x-1 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
-          title="Importer un bulletin PDF"
+
+        {/* Bouton Regul Bot */}
+        <button
+          onClick={onOpenChatAssistant}
+          className="flex items-center space-x-1 px-3 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm rounded-lg hover:from-cyan-600 hover:to-blue-600 transition-all shadow-sm"
+          title="Regul Bot - Assistant IA"
         >
-          <Upload className="w-4 h-4" />
-          <span className="hidden sm:inline">Upload PDF</span>
+          <MessageSquare className="w-4 h-4" />
+          <span className="hidden sm:inline">Regul Bot</span>
         </button>
-        
+
         {/* Bouton Déconnexion */}
         <button 
           onClick={onSignOut}

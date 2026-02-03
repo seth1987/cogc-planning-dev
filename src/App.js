@@ -26,6 +26,9 @@ import ModalHabilitations from './components/modals/ModalHabilitations';
 import ModalUploadPDF from './components/modals/ModalUploadPDF';
 import ModalPrevisionnelJour from './components/modals/ModalPrevisionnelJour';
 
+// Chat Assistant (Agent IA)
+import ChatWindow from './components/ChatAssistant';
+
 // Constants
 import { MONTHS } from './constants/config';
 
@@ -134,6 +137,8 @@ const App = () => {
     openHabilitations,
     openUploadPDF: openUploadPDFModal,
     openPrevisionnelJour,
+    openChatAssistant,
+    closeChatAssistant,
     closeModal,
     setSelectedAgent
   } = useModals();
@@ -542,11 +547,12 @@ const App = () => {
   // === APPLICATION PRINCIPALE PLANNING ===
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header 
+      <Header
         user={user}
         connectionStatus={connectionStatus}
         onOpenGestionAgents={openGestionAgents}
         onOpenUploadPDF={openUploadPDF}
+        onOpenChatAssistant={openChatAssistant}
         onSignOut={signOut}
         onBackToLanding={handleBackToLanding}
         showBackButton={true}
@@ -654,6 +660,12 @@ const App = () => {
         agents={agents}
         planningData={planning}
         onClose={() => closeModal('previsionnelJour')}
+      />
+
+      {/* Chat Assistant - Agent IA Import PDF */}
+      <ChatWindow
+        isOpen={modals.chatAssistant}
+        onClose={closeChatAssistant}
       />
     </div>
   );

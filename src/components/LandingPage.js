@@ -7,6 +7,7 @@ import ModalAide from './modals/ModalAide';
 import ModalMonPlanning from './modals/ModalMonPlanning';
 import ModalStatistiques from './modals/ModalStatistiques';
 import ModalInstallApp from './modals/ModalInstallApp';
+import ChatWindow from './ChatAssistant/ChatWindow';
 
 /**
  * LandingPage - Page d'accueil avec design Nexaverse
@@ -25,6 +26,7 @@ const LandingPage = ({ onNavigate, user, onSignOut, canInstallPWA, isAppInstalle
   const [showMonPlanning, setShowMonPlanning] = useState(false);
   const [showStatistiques, setShowStatistiques] = useState(false);
   const [showInstallApp, setShowInstallApp] = useState(false);
+  const [showRegulBot, setShowRegulBot] = useState(false);
 
   // Simulate loading and trigger animations
   useEffect(() => {
@@ -320,6 +322,28 @@ const LandingPage = ({ onNavigate, user, onSignOut, canInstallPWA, isAppInstalle
       <ModalInstallApp
         isOpen={showInstallApp}
         onClose={() => setShowInstallApp(false)}
+      />
+
+      {/* Bouton flottant Regul Bot */}
+      <div className="regul-bot-container">
+        <button
+          onClick={() => setShowRegulBot(true)}
+          className="regul-bot-fab"
+          title="Regul Bot - Assistant IA"
+        >
+          <img
+            src="/regul-bot.png"
+            alt="Regul Bot"
+            className="regul-bot-image"
+          />
+        </button>
+        <span className="regul-bot-label">Regul Bot</span>
+      </div>
+
+      {/* ChatWindow Regul Bot */}
+      <ChatWindow
+        isOpen={showRegulBot}
+        onClose={() => setShowRegulBot(false)}
       />
     </div>
   );
