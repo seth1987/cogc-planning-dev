@@ -10,19 +10,12 @@
  * 2. Chat avec response_format: json_object → Structure en JSON
  */
 
-// Clé API Mistral via variables d'environnement
-const MISTRAL_API_KEY = process.env.REACT_APP_MISTRAL_API_KEY;
-
-// Endpoints API Mistral
-const ENDPOINTS = {
-  OCR: 'https://api.mistral.ai/v1/ocr',
-  CHAT: 'https://api.mistral.ai/v1/chat/completions'
-};
+import { callMistralOCR, callMistralChat } from './mistralProxyClient';
 
 // Modèles
 const MODELS = {
   OCR: 'mistral-ocr-latest',
-  CHAT: 'mistral-small-latest'  // Rapide et efficace pour le JSON
+  CHAT: 'mistral-small-latest'
 };
 
 // Codes services SNCF valides (pour validation)
@@ -126,28 +119,14 @@ TEXTE OCR DU BULLETIN:
 async function extractTextFromPDF(base64Data) {
   console.log('📄 SimplePDFService: Appel API OCR...');
   
-  const response = await fetch(ENDPOINTS.OCR, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MISTRAL_API_KEY}`
+  const ocrResult = await callMistralOCR({
+    model: MODELS.OCR,
+    document: {
+      type: 'document_url',
+      document_url: `data:application/pdf;base64,${base64Data}`
     },
-    body: JSON.stringify({
-      model: MODELS.OCR,
-      document: {
-        type: 'document_url',
-        document_url: `data:application/pdf;base64,${base64Data}`
-      },
-      include_image_base64: false
-    })
+    include_image_base64: false
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Erreur API OCR: ${response.status} - ${errorText}`);
-  }
-
-  const ocrResult = await response.json();
   
   // Extraire le texte de toutes les pages
   let fullText = '';
@@ -169,32 +148,18 @@ async function extractTextFromPDF(base64Data) {
 async function structureToJSON(ocrText) {
   console.log('🔄 SimplePDFService: Structuration JSON...');
   
-  const response = await fetch(ENDPOINTS.CHAT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MISTRAL_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: MODELS.CHAT,
-      messages: [
-        {
-          role: 'user',
-          content: STRUCTURATION_PROMPT + ocrText
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 4000,
-      response_format: { type: 'json_object' }
-    })
+  const chatResult = await callMistralChat({
+    model: MODELS.CHAT,
+    messages: [
+      {
+        role: 'user',
+        content: STRUCTURATION_PROMPT + ocrText
+      }
+    ],
+    temperature: 0.1,
+    max_tokens: 4000,
+    response_format: { type: 'json_object' }
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Erreur API Chat: ${response.status} - ${errorText}`);
-  }
-
-  const chatResult = await response.json();
   const content = chatResult.choices?.[0]?.message?.content;
   
   if (!content) {
@@ -405,7 +370,7 @@ export async function extractBulletinData(pdfFile) {
  * Vérifie si l'API est configurée
  */
 export function isAPIConfigured() {
-  return !!MISTRAL_API_KEY;
+  return true;
 }
 
 /**

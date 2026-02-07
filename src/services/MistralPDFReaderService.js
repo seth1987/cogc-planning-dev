@@ -15,19 +15,13 @@
  *   - 2.1.0: Ajout de TOUS les 69 codes SNCF depuis la BDD
  */
 
+import { callMistralOCR, callMistralChat } from './mistralProxyClient';
+
 class MistralPDFReaderService {
   // ═══════════════════════════════════════════════════════════════
-  // CONFIGURATION API MISTRAL (via variables d'environnement)
+  // CONFIGURATION API MISTRAL
   // ═══════════════════════════════════════════════════════════════
 
-  static MISTRAL_API_KEY = process.env.REACT_APP_MISTRAL_API_KEY;
-  
-  // Endpoints API Mistral
-  static ENDPOINTS = {
-    OCR: 'https://api.mistral.ai/v1/ocr',
-    CHAT: 'https://api.mistral.ai/v1/chat/completions'
-  };
-  
   // Modèles disponibles
   static MODELS = {
     OCR: 'mistral-ocr-latest',
@@ -274,29 +268,14 @@ class MistralPDFReaderService {
     console.log('🔍 Traitement avec API OCR (mistral-ocr-latest)...');
 
     try {
-      const response = await fetch(this.ENDPOINTS.OCR, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.MISTRAL_API_KEY}`
+      const ocrResult = await callMistralOCR({
+        model: this.MODELS.OCR,
+        document: {
+          type: 'document_url',
+          document_url: `data:application/pdf;base64,${base64Data}`
         },
-        body: JSON.stringify({
-          model: this.MODELS.OCR,
-          document: {
-            type: 'document_url',
-            document_url: `data:application/pdf;base64,${base64Data}`
-          },
-          include_image_base64: false
-        })
+        include_image_base64: false
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Erreur API OCR:', response.status, errorText);
-        return { success: false, error: `API OCR: ${response.status}` };
-      }
-
-      const ocrResult = await response.json();
       console.log('✅ Réponse OCR reçue:', ocrResult.pages?.length, 'page(s)');
 
       let fullMarkdown = '';
@@ -326,37 +305,22 @@ class MistralPDFReaderService {
     const prompt = this.createExtractionPrompt();
 
     try {
-      const response = await fetch(this.ENDPOINTS.CHAT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.MISTRAL_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: this.MODELS.VISION,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'text', text: prompt },
-              { 
-                type: 'image_url', 
-                image_url: { url: `data:application/pdf;base64,${base64Data}` }
-              }
-            ]
-          }],
-          temperature: 0.1,
-          max_tokens: 4000,
-          response_format: { type: 'json_object' }
-        })
+      const visionResult = await callMistralChat({
+        model: this.MODELS.VISION,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            {
+              type: 'image_url',
+              image_url: { url: `data:application/pdf;base64,${base64Data}` }
+            }
+          ]
+        }],
+        temperature: 0.1,
+        max_tokens: 4000,
+        response_format: { type: 'json_object' }
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Erreur API Vision:', response.status, errorText);
-        return { success: false, error: `API Vision: ${response.status}` };
-      }
-
-      const visionResult = await response.json();
       const content = visionResult.choices?.[0]?.message?.content;
 
       if (!content) {

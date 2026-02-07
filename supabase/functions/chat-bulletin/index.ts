@@ -168,6 +168,8 @@ const ALLOWED_ORIGINS = [
   "http://localhost:3000",
 ];
 
+let _requestOrigin = ALLOWED_ORIGINS[0];
+
 function getCorsHeaders(req: Request) {
   const origin = req.headers.get("origin") || "";
   const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -182,6 +184,10 @@ function getCorsHeaders(req: Request) {
  * Point d'entrée de l'Edge Function
  */
 serve(async (req) => {
+  // Capturer l'origine pour les réponses
+  const origin = req.headers.get("origin") || "";
+  _requestOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: getCorsHeaders(req) });
@@ -1259,7 +1265,7 @@ Vous pouvez me poser des questions en langage naturel :
 /**
  * Helper pour créer une réponse JSON
  */
-function jsonResponse(data: ChatResponse, status = 200, origin = ALLOWED_ORIGINS[0]): Response {
+function jsonResponse(data: ChatResponse, status = 200, origin = _requestOrigin): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
