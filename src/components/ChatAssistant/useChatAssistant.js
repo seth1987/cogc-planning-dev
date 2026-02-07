@@ -34,6 +34,7 @@ export function useChatAssistant() {
   const [detectedAgent, setDetectedAgent] = useState(null);
   const [agentMismatch, setAgentMismatch] = useState(false);
   const [qaResponse, setQaResponse] = useState(null);
+  const [agentProfile, setAgentProfile] = useState(null);
 
   // État UI
   const [status, setStatus] = useState(ConversationStatus.IDLE);
@@ -61,6 +62,28 @@ export function useChatAssistant() {
     }
 
     return agent.id;
+  }, []);
+
+  /**
+   * Charge le profil complet de l'agent connecté
+   */
+  const loadAgentProfile = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: agent, error: agentError } = await supabase
+        .from('agents')
+        .select('*')
+        .eq('email', user.email)
+        .single();
+
+      if (!agentError && agent) {
+        setAgentProfile(agent);
+      }
+    } catch (err) {
+      console.error('Erreur chargement profil agent:', err);
+    }
   }, []);
 
   /**
@@ -92,10 +115,11 @@ export function useChatAssistant() {
     }
   }, []);
 
-  // Charger les codes de service au montage
+  // Charger les codes de service et le profil agent au montage
   useEffect(() => {
     loadCodesServices();
-  }, [loadCodesServices]);
+    loadAgentProfile();
+  }, [loadCodesServices, loadAgentProfile]);
 
   /**
    * Met à jour un service extrait (correction manuelle)
@@ -220,7 +244,16 @@ export function useChatAssistant() {
 
       // Gérer les réponses Q&A
       if (result.qa_response) {
-        setQaResponse(result.qa_response);
+        // Pour le D2I, intégrer dans l'historique des messages (persist à travers les conversations)
+        if (result.qa_response.type === 'generate_d2i') {
+          addMessage('assistant', result.message, {
+            isD2IForm: true,
+            d2iParams: result.qa_response.d2i_params || {},
+          });
+          setQaResponse(null);
+        } else {
+          setQaResponse(result.qa_response);
+        }
       } else {
         setQaResponse(null);
       }
@@ -340,7 +373,7 @@ export function useChatAssistant() {
   /**
    * Résout les conflits avec la stratégie choisie
    */
-  const resolveConflicts = useCallback(async (strategy) => {
+  const resolveConflicts = useCallback(async (strategy, selectedDates = null) => {
     setStatus(ConversationStatus.LOADING);
     setError(null);
 
@@ -354,6 +387,7 @@ export function useChatAssistant() {
           type: 'resolve_conflicts',
           value: strategy,
           conflict_strategy: strategy,
+          ...(strategy === 'selective' && selectedDates ? { selected_dates: selectedDates } : {}),
         },
       };
 
@@ -439,6 +473,7 @@ export function useChatAssistant() {
     detectedAgent,
     agentMismatch,
     qaResponse,
+    agentProfile,
     status,
     error,
     isLoading: status === ConversationStatus.LOADING,

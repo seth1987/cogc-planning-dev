@@ -116,11 +116,12 @@ export const COLOR_CATEGORIES = {
   repos: {
     id: 'repos',
     label: 'Repos / Non utilisé',
-    description: 'RP, NU',
+    description: 'RP, RPP, NU',
     defaultOpen: true,
     defaultColor: { bg: '#dcfce7', text: '#166534' },
     items: {
       'RP': { label: 'Repos programmé', defaultColor: { bg: '#dcfce7', text: '#166534' } },
+      'RPP': { label: 'Repos programmé périodique', defaultColor: { bg: '#dcfce7', text: '#dc2626' } },
       'NU': { label: 'Non utilisé', defaultColor: { bg: '#f3f4f6', text: '#374151' } }
     }
   },

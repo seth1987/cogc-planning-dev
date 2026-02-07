@@ -10,7 +10,7 @@ class PlanningService {
       
       // Repos et congés
       'RP': 'bg-yellow-100 text-yellow-800',  // Repos programmé/périodique
-      'RPP': 'bg-yellow-100 text-yellow-800', // Repos périodique (variante)
+      'RPP': 'bg-green-100 text-red-600',      // Repos programmé périodique
       'RU': 'bg-amber-100 text-amber-800',    // RTT
       'C': 'bg-lime-100 text-lime-800',       // Congés
 

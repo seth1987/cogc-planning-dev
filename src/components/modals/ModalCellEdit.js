@@ -22,6 +22,7 @@ const MODAL_COLORS = {
   'X': 'bg-gray-100 text-gray-800',
   'I': 'bg-gray-100 text-gray-800',
   'RP': 'bg-green-100 text-green-800',
+  'RPP': 'bg-green-100 text-red-600',
   'NU': 'bg-gray-200 text-gray-600',
   // Absences
   'MA': 'bg-red-200 text-red-800 font-semibold',

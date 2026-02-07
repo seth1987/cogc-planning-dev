@@ -41,6 +41,7 @@ export const CODE_COLORS = {
   
   // === REPOS ===
   'RP': 'bg-green-100 text-green-700',
+  'RPP': 'bg-green-100 text-red-600',
   'RU': 'bg-green-100 text-green-700',
   
   // === STATUT CONGE : Stocké dans statut_conge, affiché séparément ===
@@ -155,6 +156,7 @@ export const SERVICE_CODES = [
   { code: 'X', desc: 'Nuit (22h-06h)' },
   { code: 'I', desc: 'Jour' },
   { code: 'RP', desc: 'Repos programmé' },
+  { code: 'RPP', desc: 'Repos programmé périodique' },
   { code: 'NU', desc: 'Non Utilisé' }
 ];
 

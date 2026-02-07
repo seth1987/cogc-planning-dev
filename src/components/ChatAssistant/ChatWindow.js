@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useEffect, useState } from 'react';
-import { X, Send, Loader2, MessageSquare, RefreshCw } from 'lucide-react';
+import { X, Send, Loader2, RefreshCw } from 'lucide-react';
 import { useChatAssistant } from './useChatAssistant';
 import MessageBubble from './MessageBubble';
 import FileUploadZone from './FileUploadZone';
@@ -14,6 +14,7 @@ import ModalEditService from './ModalEditService';
 import ConflictResolutionModal from './ConflictResolutionModal';
 import AgentDetectionBanner from './AgentDetectionBanner';
 import QAResponseCard from './QAResponseCard';
+import D2IFormCard from './D2IFormCard';
 
 export default function ChatWindow({ isOpen, onClose }) {
   const {
@@ -26,6 +27,7 @@ export default function ChatWindow({ isOpen, onClose }) {
     detectedAgent,
     agentMismatch,
     qaResponse,
+    agentProfile,
     isLoading,
     error,
     codesServices,
@@ -195,6 +197,27 @@ export default function ChatWindow({ isOpen, onClose }) {
                 </div>
               </div>
 
+              {/* Suggestions cliquables */}
+              <div className="flex flex-wrap justify-center gap-2 mb-6">
+                {[
+                  { label: '📅 Mes services cette semaine', message: 'Quels sont mes services cette semaine ?' },
+                  { label: '🔜 Mon prochain service', message: "C'est quand mon prochain service ?" },
+                  { label: '📊 Mes stats du mois', message: 'Mes statistiques ce mois' },
+                  { label: '📝 Générer un D2I', message: 'Générer un formulaire D2I' },
+                  { label: '📂 Chercher un document', message: 'Montre-moi les documents disponibles' },
+                  { label: '❓ Aide', message: 'Aide' },
+                ].map((chip) => (
+                  <button
+                    key={chip.message}
+                    onClick={() => sendMessage({ message: chip.message })}
+                    disabled={isLoading}
+                    className="px-4 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-full text-sm font-medium text-gray-700 dark:text-gray-200 hover:border-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
               {/* Zone d'upload initiale */}
               <div className="max-w-sm mx-auto">
                 <FileUploadZone
@@ -207,12 +230,18 @@ export default function ChatWindow({ isOpen, onClose }) {
 
           {/* Liste des messages */}
           {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
+            <React.Fragment key={message.id}>
+              <MessageBubble message={message} />
+              {/* Formulaire D2I inline persisté dans l'historique */}
+              {message.isD2IForm && (
+                <D2IFormCard d2iParams={message.d2iParams || {}} agent={agentProfile} />
+              )}
+            </React.Fragment>
           ))}
 
           {/* Réponse Q&A */}
           {qaResponse && (
-            <QAResponseCard qaResponse={qaResponse} />
+            <QAResponseCard qaResponse={qaResponse} agentProfile={agentProfile} />
           )}
 
           {/* Agent détecté depuis le PDF */}
@@ -283,6 +312,13 @@ export default function ChatWindow({ isOpen, onClose }) {
                 disabled={isLoading}
               />
             </div>
+          )}
+
+          {/* Hint correction si services prêts à importer */}
+          {readyToImport && !importResult && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+              Vous pouvez encore modifier les services en écrivant une correction ci-dessous.
+            </p>
           )}
 
           {/* Formulaire de message */}

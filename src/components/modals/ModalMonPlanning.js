@@ -61,6 +61,7 @@ const MODAL_COLORS = {
   'X': { bg: '#f3f4f6', text: '#374151' },
   'I': { bg: '#f3f4f6', text: '#374151' },
   'RP': { bg: '#dcfce7', text: '#166534' },
+  'RPP': { bg: '#dcfce7', text: '#dc2626' },
   'NU': { bg: '#e5e7eb', text: '#6b7280' },
   'MA': { bg: '#fecaca', text: '#991b1b' },
   'F': { bg: '#e9d5ff', text: '#6b21a8' },

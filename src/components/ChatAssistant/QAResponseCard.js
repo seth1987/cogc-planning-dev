@@ -4,20 +4,55 @@
  */
 
 import React from 'react';
-import { Calendar, Clock, Briefcase, BarChart2 } from 'lucide-react';
+import { Calendar, Clock, Briefcase, BarChart2, Users } from 'lucide-react';
+import DocumentSearchCard from './DocumentSearchCard';
+import D2IFormCard from './D2IFormCard';
 
 // Mapping des codes de service vers des labels et couleurs
 const serviceConfig = {
+  // Horaires
   '-': { label: 'Matin', color: 'bg-yellow-100 text-yellow-800', icon: '☀️' },
   'O': { label: 'Soir', color: 'bg-orange-100 text-orange-800', icon: '🌅' },
   'X': { label: 'Nuit', color: 'bg-indigo-100 text-indigo-800', icon: '🌙' },
+  'I': { label: 'Journée', color: 'bg-gray-100 text-gray-800', icon: '📌' },
+  // Repos
   'RP': { label: 'Repos', color: 'bg-green-100 text-green-800', icon: '🏠' },
+  'RPP': { label: 'Repos programmé', color: 'bg-green-100 text-red-600', icon: '🏠' },
   'RU': { label: 'Repos récup', color: 'bg-green-100 text-green-800', icon: '🏠' },
+  'RQ': { label: 'Repos qualif.', color: 'bg-green-100 text-green-800', icon: '🏠' },
+  'NU': { label: 'Non utilisé', color: 'bg-gray-200 text-gray-600', icon: '⬜' },
+  // Dispo
   'D': { label: 'Dispo', color: 'bg-gray-100 text-gray-800', icon: '📋' },
+  'DN': { label: 'Dispo Nord', color: 'bg-gray-100 text-gray-800', icon: '📋' },
+  'DR': { label: 'Dispo Denfert', color: 'bg-gray-100 text-gray-800', icon: '📋' },
+  // Congés
   'C': { label: 'Congé', color: 'bg-blue-100 text-blue-800', icon: '🏖️' },
   'CA': { label: 'Congé annuel', color: 'bg-blue-100 text-blue-800', icon: '🏖️' },
+  'VT': { label: 'Congé TP', color: 'bg-blue-100 text-blue-800', icon: '🏖️' },
+  // Absences
   'MA': { label: 'Maladie', color: 'bg-red-100 text-red-800', icon: '🏥' },
+  'VM': { label: 'Visite médicale', color: 'bg-red-100 text-red-800', icon: '🏥' },
+  'F': { label: 'Férié', color: 'bg-purple-200 text-purple-800', icon: '🎌' },
+  // Formation / Habilitation
   'FO': { label: 'Formation', color: 'bg-purple-100 text-purple-800', icon: '📚' },
+  'HAB': { label: 'Habilitation', color: 'bg-orange-200 text-orange-800', icon: '🎓' },
+  'EIA': { label: 'Entretien annuel', color: 'bg-blue-100 text-blue-800', icon: '📝' },
+  // Service de jour
+  'VL': { label: 'Visite ligne', color: 'bg-blue-100 text-blue-800', icon: '🚆' },
+  'DPX': { label: 'DPX', color: 'bg-blue-100 text-blue-800', icon: '📋' },
+  'PSE': { label: 'PSE', color: 'bg-blue-100 text-blue-800', icon: '📋' },
+  'INAC': { label: 'Inactif', color: 'bg-blue-100 text-blue-800', icon: '⏸️' },
+  // Jours RH
+  'D2I': { label: 'D2I', color: 'bg-yellow-100 text-yellow-800', icon: '📋' },
+  'RA': { label: 'RA', color: 'bg-yellow-100 text-yellow-800', icon: '📋' },
+  'RN': { label: 'RN', color: 'bg-yellow-100 text-yellow-800', icon: '📋' },
+  'TY': { label: 'TY', color: 'bg-yellow-100 text-yellow-800', icon: '📋' },
+  'AY': { label: 'AY', color: 'bg-yellow-100 text-yellow-800', icon: '📋' },
+  'AH': { label: 'AH', color: 'bg-yellow-100 text-yellow-800', icon: '📋' },
+  'DD': { label: 'DD', color: 'bg-yellow-100 text-yellow-800', icon: '📋' },
+  // PCD
+  'CCCBO': { label: 'CCCBO', color: 'bg-cyan-200 text-cyan-800', icon: '🚉' },
+  'CBVD': { label: 'CBVD', color: 'bg-cyan-200 text-cyan-800', icon: '🚉' },
 };
 
 function getServiceDisplay(code) {
@@ -28,18 +63,44 @@ function getServiceDisplay(code) {
   };
 }
 
-export default function QAResponseCard({ qaResponse }) {
-  if (!qaResponse || !qaResponse.data) return null;
+export default function QAResponseCard({ qaResponse, agentProfile }) {
+  if (!qaResponse) return null;
 
-  const { type, data, summary } = qaResponse;
+  const { type, data, team_data, summary } = qaResponse;
 
   // Le type "help" n'a pas besoin de carte, le message suffit
   if (type === 'help') {
     return null;
   }
 
+  // Recherche de documents
+  if (type === 'document_search') {
+    return <DocumentSearchCard documents={qaResponse.doc_data || []} summary={summary} />;
+  }
+
+  // Génération D2I (rendu via QAResponseCard comme fallback, le principal est dans ChatWindow via message)
+  if (type === 'generate_d2i') {
+    return <D2IFormCard d2iParams={qaResponse.d2i_params || {}} agent={agentProfile} />;
+  }
+
+  // Routes multi-agents
+  if (type === 'team_on_date' || type === 'team_on_poste') {
+    const teamEntries = team_data || [];
+    if (teamEntries.length === 0) {
+      return (
+        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 text-center">
+          <Users className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <p className="text-gray-500 dark:text-gray-400">
+            Aucun collègue trouvé pour cette recherche.
+          </p>
+        </div>
+      );
+    }
+    return <TeamView data={teamEntries} summary={summary} />;
+  }
+
   // Pas de données
-  if (data.length === 0) {
+  if (!data || data.length === 0) {
     return (
       <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 text-center">
         <Calendar className="w-8 h-8 text-gray-400 mx-auto mb-2" />
@@ -267,6 +328,66 @@ function StatsView({ data, summary }) {
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Vue équipe - Liste des collègues sur une date/poste
+ */
+function TeamView({ data, summary }) {
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-2">
+          <Users className="w-5 h-5 text-blue-600" />
+          <span className="font-medium text-gray-900 dark:text-white">
+            Équipe {summary?.period || ''}
+          </span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            ({data.length} collègue{data.length > 1 ? 's' : ''})
+          </span>
+        </div>
+      </div>
+
+      {/* Liste des agents */}
+      <div className="divide-y divide-gray-100 dark:divide-gray-700">
+        {data.map((entry, index) => {
+          const display = getServiceDisplay(entry.service_code);
+          const initials = entry.agent_name
+            .split(' ')
+            .map(n => n.charAt(0))
+            .slice(0, 2)
+            .join('')
+            .toUpperCase();
+          return (
+            <div
+              key={index}
+              className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full flex items-center justify-center text-xs font-bold">
+                  {initials}
+                </div>
+                <div>
+                  <div className="font-medium text-gray-900 dark:text-white">
+                    {entry.agent_name}
+                  </div>
+                  {entry.poste_code && (
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      Poste: {entry.poste_code}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className={`px-3 py-1 rounded-full text-sm font-medium ${display.color}`}>
+                {display.label}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

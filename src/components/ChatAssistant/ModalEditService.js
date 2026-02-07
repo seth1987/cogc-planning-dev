@@ -13,6 +13,7 @@ const SERVICE_CODES = [
   { code: 'X', desc: 'Soir' },
   { code: 'I', desc: 'Journée' },
   { code: 'RP', desc: 'Repos' },
+  { code: 'RPP', desc: 'Repos programmé' },
   { code: 'NU', desc: 'Nuit' },
 ];
 

@@ -18,6 +18,7 @@ import {
   buildQASystemPrompt,
   buildQAIntentPrompt,
   buildQAResponsePrompt,
+  buildConversationalPrompt,
   type ServiceCode,
   type QAIntent,
   type QAIntentType,
@@ -44,7 +45,8 @@ interface ChatRequest {
     type: "select_code" | "confirm_import" | "cancel" | "resolve_conflicts";
     value: string;
     service_index?: number;
-    conflict_strategy?: "overwrite_all" | "skip_existing";
+    conflict_strategy?: "overwrite_all" | "skip_existing" | "selective";
+    selected_dates?: string[];
   };
 }
 
@@ -86,6 +88,9 @@ interface ChatResponse {
   qa_response?: {
     type: QAIntentType;
     data?: PlanningEntry[];
+    team_data?: TeamEntry[];
+    doc_data?: DocumentEntry[];
+    d2i_params?: D2IParams;
     summary?: {
       count: number;
       period: string;
@@ -99,6 +104,35 @@ interface PlanningEntry {
   poste_code: string | null;
   commentaire?: string;
   day_name?: string;
+}
+
+interface TeamEntry {
+  agent_name: string;
+  service_code: string;
+  poste_code: string | null;
+}
+
+interface DocumentEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  file_path: string;
+  file_type: string;
+  file_size: number;
+  created_at: string;
+}
+
+interface D2IParams {
+  preavis_date_debut?: string;
+  preavis_heure_debut?: string;
+  preavis_date_fin?: string;
+  preavis_heure_fin?: string;
+  date_greve?: string;
+  heure_greve?: string;
+  cadre_type?: string;
+  date_reprise?: string;
+  heure_reprise?: string;
 }
 
 interface Service {
@@ -231,7 +265,8 @@ serve(async (req) => {
         // L'utilisateur a choisi comment gérer les conflits
         const services = conversation.extraction_data?.services || [];
         const strategy = quick_reply.conflict_strategy || "overwrite_all";
-        const importResult = await importServices(supabase, agent_id, services, strategy);
+        const selectedDates = quick_reply.selected_dates || [];
+        const importResult = await importServices(supabase, agent_id, services, strategy, selectedDates);
 
         await updateConversation(supabase, conversation.id, {
           status: "imported",
@@ -283,11 +318,12 @@ serve(async (req) => {
           });
         }
 
-        // Pas une question Q&A → message d'aide
+        // Ce cas ne devrait plus arriver (le fallback conversationnel retourne toujours isQA: true)
+        // Mais par sécurité, on retourne le message Mistral s'il y en a un
         return jsonResponse({
           success: true,
           conversation_id: conversation.conversation_id,
-          message: "📎 Pour importer un bulletin, envoyez-moi un fichier PDF.\n\n💬 Vous pouvez aussi me poser des questions sur votre planning :\n• \"Quels sont mes services cette semaine ?\"\n• \"À quelle heure je commence demain ?\"\n• \"Combien d'heures j'ai travaillé ce mois ?\"",
+          message: qaResult.message || "Je suis là pour t'aider ! Tu peux me poser des questions sur ton planning, chercher des documents, générer un D2I, ou m'envoyer un bulletin PDF à importer. Tape \"aide\" pour voir tout ce que je sais faire 😊",
           ready_to_import: false,
         });
       }
@@ -301,7 +337,7 @@ serve(async (req) => {
         success: true,
         conversation_id: conversation.conversation_id,
         message:
-          "👋 Bonjour ! Je suis **Regul Bot**, votre assistant COGC.\n\n📎 **Import PDF** : Envoyez-moi votre bulletin de commande\n\n💬 **Questions** : Demandez-moi n'importe quoi sur votre planning :\n• \"Quels sont mes services cette semaine ?\"\n• \"C'est quand mon prochain repos ?\"\n• \"Combien d'heures ce mois ?\"",
+          "👋 Salut ! Je suis **Regul Bot**, ton assistant IA au COGC Paris Nord.\n\nJe peux t'aider avec :\n📎 **Import PDF** — Envoie-moi ton bulletin de commande\n📅 **Planning** — Tes services, stats, équipe du jour\n📝 **D2I** — Générer une déclaration de grève\n📂 **Documents** — Chercher un formulaire RH\n\nPose-moi ta question ou envoie un fichier, je m'occupe du reste ! 🚄",
         ready_to_import: false,
       });
     }
@@ -526,33 +562,60 @@ async function updateConversation(
  * Extrait le texte d'un PDF via Mistral OCR
  */
 async function extractPdfText(pdfBase64: string): Promise<string> {
-  const response = await fetch(MISTRAL_OCR_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${MISTRAL_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MISTRAL_OCR_MODEL,
-      document: {
-        type: "document_url",
-        document_url: `data:application/pdf;base64,${pdfBase64}`,
-      },
-    }),
-  });
+  const MAX_RETRIES = 2;
+  const BASE_DELAY_MS = 1000;
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Mistral OCR error: ${response.status} - ${errorText}`);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(MISTRAL_OCR_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${MISTRAL_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: MISTRAL_OCR_MODEL,
+          document: {
+            type: "document_url",
+            document_url: `data:application/pdf;base64,${pdfBase64}`,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const status = response.status;
+        // Pas de retry sur erreurs client (sauf 429 rate limit)
+        if (status >= 400 && status < 500 && status !== 429) {
+          throw new Error(`Mistral OCR error: ${status} - ${errorText}`);
+        }
+        throw new Error(`Mistral OCR error: ${status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      const pages = result.pages || [];
+      const text = pages.map((p: any) => p.markdown || p.text || "").join("\n\n");
+
+      if (!text.trim()) {
+        throw new Error("OCR : texte vide retourné - le PDF est peut-être illisible");
+      }
+
+      return text;
+    } catch (error) {
+      lastError = error;
+      console.warn(`OCR tentative ${attempt + 1}/${MAX_RETRIES + 1} échouée:`, error.message);
+      if (attempt < MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, BASE_DELAY_MS * Math.pow(2, attempt)));
+      }
+    }
   }
 
-  const result = await response.json();
-
-  // Extraire le texte des pages
-  const pages = result.pages || [];
-  const text = pages.map((p: any) => p.markdown || p.text || "").join("\n\n");
-
-  return text;
+  throw new Error(
+    `Impossible de lire le PDF après ${MAX_RETRIES + 1} tentatives. ` +
+    `Vérifiez que le fichier n'est pas protégé ou corrompu. ` +
+    `Erreur : ${lastError?.message || "inconnue"}`
+  );
 }
 
 /**
@@ -683,16 +746,22 @@ async function importServices(
   supabase: any,
   agentId: string,
   services: Service[],
-  conflictStrategy: "overwrite_all" | "skip_existing" = "overwrite_all"
+  conflictStrategy: "overwrite_all" | "skip_existing" | "selective" = "overwrite_all",
+  selectedDates: string[] = []
 ): Promise<{ count: number; skipped: number; success: boolean }> {
   let count = 0;
   let skipped = 0;
 
-  // Si stratégie skip_existing, vérifier les conflits d'abord
+  // Déterminer les dates à ignorer selon la stratégie
   let datesToSkip: Set<string> = new Set();
   if (conflictStrategy === "skip_existing") {
     const conflicts = await checkConflicts(supabase, agentId, services);
     datesToSkip = new Set(conflicts.map((c) => c.date));
+  } else if (conflictStrategy === "selective") {
+    // Sélectif : écraser seulement les dates choisies, ignorer les autres conflits
+    const conflicts = await checkConflicts(supabase, agentId, services);
+    const datesToOverwrite = new Set(selectedDates);
+    datesToSkip = new Set(conflicts.map((c) => c.date).filter(d => !datesToOverwrite.has(d)));
   }
 
   for (const service of services) {
@@ -733,6 +802,7 @@ async function handleQAQuestion(
   qa_response?: {
     type: QAIntentType;
     data?: PlanningEntry[];
+    team_data?: TeamEntry[];
     summary?: { count: number; period: string };
   };
 }> {
@@ -746,9 +816,21 @@ async function handleQAQuestion(
     const intentResponse = await callMistralChat(intentMessages);
     const intentParsed = JSON.parse(intentResponse);
 
-    // Si l'intention est inconnue, ce n'est pas une question Q&A
+    // Si l'intention est inconnue → réponse conversationnelle
     if (!intentParsed.intent || intentParsed.intent.type === "unknown") {
-      return { isQA: false, message: "" };
+      const conversationalResponse = await callMistralChat([
+        { role: "user", content: buildConversationalPrompt(message) },
+      ]);
+
+      return {
+        isQA: true,
+        message: conversationalResponse.trim(),
+        qa_response: {
+          type: "help",
+          data: [],
+          summary: { count: 0, period: "" },
+        },
+      };
     }
 
     const intent: QAIntent = intentParsed.intent;
@@ -766,7 +848,94 @@ async function handleQAQuestion(
       };
     }
 
-    // Étape 2: Récupérer les données du planning selon l'intention
+    // Recherche de documents RH
+    if (intent.type === "document_search") {
+      const docData = await queryDocuments(supabase, intent);
+
+      const categoryLabel = intent.params.category
+        ? ` dans la catégorie **${intent.params.category}**`
+        : "";
+      const searchLabel = intent.params.search_query
+        ? ` pour « ${intent.params.search_query} »`
+        : "";
+      const docMessage = docData.length > 0
+        ? `📂 Compris ! Je recherche vos documents${searchLabel}${categoryLabel}. J'ai trouvé **${docData.length} document${docData.length > 1 ? 's' : ''}** :`
+        : `📂 J'ai cherché${searchLabel}${categoryLabel} mais aucun document ne correspond. Essayez avec d'autres mots-clés.`;
+
+      return {
+        isQA: true,
+        message: docMessage,
+        qa_response: {
+          type: "document_search",
+          doc_data: docData,
+          summary: {
+            count: docData.length,
+            period: intent.params.category || "toutes catégories",
+          },
+        },
+      };
+    }
+
+    // Génération formulaire D2I
+    if (intent.type === "generate_d2i") {
+      const cadreType = intent.params.cadre_type || "participation";
+      const d2iParams: D2IParams = {
+        preavis_date_debut: intent.params.preavis_date_debut,
+        preavis_heure_debut: intent.params.preavis_heure_debut,
+        preavis_date_fin: intent.params.preavis_date_fin,
+        preavis_heure_fin: intent.params.preavis_heure_fin,
+        date_greve: intent.params.date_greve,
+        heure_greve: intent.params.heure_greve,
+        cadre_type: cadreType,
+        date_reprise: intent.params.date_reprise,
+        heure_reprise: intent.params.heure_reprise,
+      };
+
+      const cadreLabels: Record<string, string> = {
+        participation: "de **participation à la grève**",
+        renonciation: "de **renonciation à la grève**",
+        reprise: "de **reprise du travail**",
+      };
+      const cadreLabel = cadreLabels[cadreType] || cadreLabels.participation;
+
+      return {
+        isQA: true,
+        message: `📝 Compris ! Je prépare un formulaire D2I ${cadreLabel}. Les dates détectées ont été pré-remplies. Complétez les champs manquants puis téléchargez le PDF.`,
+        qa_response: {
+          type: "generate_d2i",
+          d2i_params: d2iParams,
+          summary: { count: 0, period: "" },
+        },
+      };
+    }
+
+    // Étape 2a: Questions multi-agents (équipe)
+    if (intent.type === "team_on_date" || intent.type === "team_on_poste") {
+      const teamData = await queryTeamData(supabase, agentId, intent);
+
+      const responseMessages: MistralMessage[] = [
+        { role: "system", content: buildQASystemPrompt() },
+        { role: "user", content: buildQAResponsePrompt(message, intent, teamData) },
+      ];
+      const finalResponse = await callMistralChat(responseMessages);
+      const responseParsed = JSON.parse(finalResponse);
+
+      const targetDate = intent.params.date || formatDate(new Date());
+      return {
+        isQA: true,
+        message: responseParsed.message || "Voici les informations demandées.",
+        qa_response: {
+          type: intent.type,
+          team_data: teamData,
+          summary: responseParsed.data_summary || {
+            count: teamData.length,
+            period: formatDayName(targetDate),
+          },
+        },
+      };
+    }
+
+    // Étape 2b: Récupérer les données du planning selon l'intention
     const planningData = await queryPlanningData(supabase, agentId, intent);
 
     // Étape 3: Générer la réponse avec Mistral
@@ -851,11 +1020,11 @@ async function queryPlanningData(
       break;
     }
     case "service_search": {
-      // Recherche sur les 3 prochains mois
-      startDate = formatDate(today);
+      // Recherche sur les 3 prochains mois (ou période spécifiée par Mistral)
       const threeMonths = new Date(today);
       threeMonths.setMonth(threeMonths.getMonth() + 3);
-      endDate = formatDate(threeMonths);
+      startDate = params.start_date || formatDate(today);
+      endDate = params.end_date || formatDate(threeMonths);
       break;
     }
     default:
@@ -887,6 +1056,76 @@ async function queryPlanningData(
 
   if (error) {
     console.error("Error querying planning:", error);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
+ * Récupère les données d'équipe (multi-agents) pour une date/poste
+ */
+async function queryTeamData(
+  supabase: any,
+  agentId: string,
+  intent: QAIntent
+): Promise<TeamEntry[]> {
+  const { params } = intent;
+  const date = params.date || formatDate(new Date());
+
+  let query = supabase
+    .from("planning")
+    .select("agent_id, service_code, poste_code, agents!inner(nom, prenom)")
+    .eq("date", date)
+    .neq("agent_id", agentId)
+    .in("service_code", ["-", "O", "X"]);
+
+  if (intent.type === "team_on_poste" && params.poste_code) {
+    query = query.eq("poste_code", params.poste_code);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Error querying team data:", error);
+    return [];
+  }
+
+  return (data || []).map((entry: any) => ({
+    agent_name: `${entry.agents.prenom} ${entry.agents.nom}`,
+    service_code: entry.service_code,
+    poste_code: entry.poste_code,
+  }));
+}
+
+/**
+ * Recherche des documents dans la table documents
+ */
+async function queryDocuments(
+  supabase: any,
+  intent: QAIntent
+): Promise<DocumentEntry[]> {
+  const { params } = intent;
+
+  let query = supabase
+    .from("documents")
+    .select("id, name, description, category, file_path, file_type, file_size, created_at")
+    .order("created_at", { ascending: false });
+
+  if (params.category) {
+    query = query.eq("category", params.category);
+  }
+
+  if (params.search_query) {
+    query = query.or(
+      `name.ilike.%${params.search_query}%,description.ilike.%${params.search_query}%`
+    );
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Error querying documents:", error);
     return [];
   }
 
@@ -985,8 +1224,27 @@ Vous pouvez me poser des questions en langage naturel :
 • "Combien de repos ce mois ?"
 • "Mes congés de l'année"
 
+👥 *Équipe*
+• "Qui travaille avec moi lundi ?"
+• "Qui est en CRC demain ?"
+• "Les agents en CCU ce soir"
+
+📝 *Formulaire D2I (grève)*
+• "Génère un D2I pour la grève du 15 février à 8h"
+• "Faire un D2I de renonciation"
+• "Créer un D2I de reprise du travail pour le 20 février"
+
+📂 *Recherche de documents RH*
+• "Montre-moi les documents accident du travail"
+• "Cherche les formulaires CET"
+• "Documents grève"
+
 ---
-💡 *Astuce* : Vous pouvez aussi cliquer sur les services extraits pour les modifier manuellement !`;
+💡 *Astuces* :
+• Cliquez sur les services extraits pour les modifier manuellement
+• Vous pouvez corriger les services par message : "le 15 c'est RPP pas RP"
+• Les dates complexes sont supportées : "du 15 au 28 janvier", "la semaine dernière"
+• Le formulaire D2I supporte la participation, la renonciation et la reprise du travail`;
 }
 
 /**

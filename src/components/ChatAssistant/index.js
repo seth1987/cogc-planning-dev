@@ -11,6 +11,8 @@ export { default as FileUploadZone } from './FileUploadZone';
 export { default as QuickReplyButtons } from './QuickReplyButtons';
 export { default as ServicePreviewTable } from './ServicePreviewTable';
 export { useChatAssistant } from './useChatAssistant';
+export { default as DocumentSearchCard } from './DocumentSearchCard';
+export { default as D2IFormCard } from './D2IFormCard';
 
 // Export par défaut du composant principal
 export { default } from './ChatWindow';
