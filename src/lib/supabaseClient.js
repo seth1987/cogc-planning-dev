@@ -4,9 +4,6 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
 
-console.log('✅ Supabase URL:', supabaseUrl);
-console.log('✅ Supabase Key valide:', supabaseAnonKey ? 'OUI' : 'NON');
-
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Configuration Supabase manquante!');
   throw new Error('Configuration Supabase manquante');
@@ -28,7 +25,7 @@ supabase.from('agents').select('count').then(result => {
     console.error('Détails:', result.error.message, result.error.hint);
     console.error('Code erreur:', result.error.code);
   } else {
-    console.log('✅ Connexion Supabase réussie! Agents trouvés:', result.data[0]?.count || 0);
+    // Connexion OK
   }
 }).catch(err => {
   console.error('❌ Erreur lors de la vérification de connexion:', err);

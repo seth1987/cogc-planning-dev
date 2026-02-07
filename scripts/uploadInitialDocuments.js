@@ -12,8 +12,13 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration Supabase
-const SUPABASE_URL = 'https://kbihxjbazmjmpsxkeydf.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'YOUR_ANON_KEY_HERE';
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('Variables REACT_APP_SUPABASE_URL et REACT_APP_SUPABASE_ANON_KEY requises');
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
