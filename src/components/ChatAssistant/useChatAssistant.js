@@ -33,6 +33,7 @@ export function useChatAssistant() {
   const [conflicts, setConflicts] = useState([]);
   const [detectedAgent, setDetectedAgent] = useState(null);
   const [agentMismatch, setAgentMismatch] = useState(false);
+  const [targetAgentId, setTargetAgentId] = useState(null);
   const [qaResponse, setQaResponse] = useState(null);
   const [agentProfile, setAgentProfile] = useState(null);
 
@@ -343,6 +344,11 @@ export function useChatAssistant() {
         },
       };
 
+      // Si un agent cible a été défini, l'utiliser pour l'import
+      if (targetAgentId) {
+        payload.target_agent_id = targetAgentId;
+      }
+
       const result = await callChatFunction(payload);
 
       // Vérifier s'il y a des conflits
@@ -368,7 +374,25 @@ export function useChatAssistant() {
       setStatus(ConversationStatus.ERROR);
       throw err;
     }
-  }, [conversationId, getAgentId, addMessage, callChatFunction]);
+  }, [conversationId, targetAgentId, getAgentId, addMessage, callChatFunction]);
+
+  /**
+   * Définit l'agent cible pour l'import (différent du connecté)
+   */
+  const confirmImportForAgent = useCallback((agentId) => {
+    setTargetAgentId(agentId);
+    setAgentMismatch(false);
+    addMessage('assistant', `✅ Les services seront importés pour ${detectedAgent?.prenom || ''} ${detectedAgent?.nom || ''}. Vous pouvez corriger les services puis cliquer sur "Importer dans mon planning".`, { isSuccess: true });
+  }, [detectedAgent, addMessage]);
+
+  /**
+   * Choisit d'importer pour soi-même (ignore l'agent détecté)
+   */
+  const importForSelf = useCallback(() => {
+    setTargetAgentId(null);
+    setAgentMismatch(false);
+    addMessage('assistant', '✅ Les services seront importés dans votre planning. Vous pouvez corriger les services puis cliquer sur "Importer dans mon planning".', { isSuccess: true });
+  }, [addMessage]);
 
   /**
    * Résout les conflits avec la stratégie choisie
@@ -432,6 +456,7 @@ export function useChatAssistant() {
 
       addMessage('assistant', result.message);
       setReadyToImport(false);
+      setConflicts([]);
       setStatus(ConversationStatus.SUCCESS);
 
       return result;
@@ -439,6 +464,7 @@ export function useChatAssistant() {
     } catch (err) {
       console.error('Erreur annulation:', err);
       setError(err.message);
+      setConflicts([]);
       setStatus(ConversationStatus.ERROR);
     }
   }, [conversationId, getAgentId, addMessage, callChatFunction]);
@@ -456,6 +482,7 @@ export function useChatAssistant() {
     setConflicts([]);
     setDetectedAgent(null);
     setAgentMismatch(false);
+    setTargetAgentId(null);
     setQaResponse(null);
     setStatus(ConversationStatus.IDLE);
     setError(null);
@@ -483,6 +510,8 @@ export function useChatAssistant() {
     sendMessage,
     answerQuestion,
     confirmImport,
+    confirmImportForAgent,
+    importForSelf,
     cancelImport,
     resolveConflicts,
     reset,

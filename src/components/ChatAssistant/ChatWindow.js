@@ -34,6 +34,8 @@ export default function ChatWindow({ isOpen, onClose }) {
     sendMessage,
     answerQuestion,
     confirmImport,
+    confirmImportForAgent,
+    importForSelf,
     cancelImport,
     resolveConflicts,
     reset,
@@ -249,8 +251,8 @@ export default function ChatWindow({ isOpen, onClose }) {
             <AgentDetectionBanner
               detectedAgent={detectedAgent}
               agentMismatch={agentMismatch}
-              onConfirm={() => {}}
-              onSelectOther={() => {}}
+              onConfirm={() => confirmImportForAgent(detectedAgent.id)}
+              onSelectOther={() => importForSelf()}
             />
           )}
 
@@ -374,7 +376,7 @@ export default function ChatWindow({ isOpen, onClose }) {
         isOpen={conflicts.length > 0}
         conflicts={conflicts}
         onResolve={resolveConflicts}
-        onClose={() => {}}
+        onClose={cancelImport}
         isLoading={isLoading}
       />
     </div>

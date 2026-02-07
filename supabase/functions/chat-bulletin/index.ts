@@ -37,6 +37,7 @@ const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // Types
 interface ChatRequest {
   agent_id: string;
+  target_agent_id?: string;
   message?: string;
   pdf_base64?: string;
   pdf_filename?: string;
@@ -201,7 +202,7 @@ serve(async (req) => {
 
     // Parser la requête
     const body: ChatRequest = await req.json();
-    const { agent_id, message, pdf_base64, pdf_filename, conversation_id, quick_reply } = body;
+    const { agent_id, target_agent_id, message, pdf_base64, pdf_filename, conversation_id, quick_reply } = body;
 
     // Initialiser le client Supabase
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -244,9 +245,12 @@ serve(async (req) => {
     } else if (quick_reply) {
       // Réponse rapide (bouton)
       if (quick_reply.type === "confirm_import") {
+        // Utiliser target_agent_id si fourni (import pour un autre agent)
+        const importAgentId = target_agent_id || agent_id;
+
         // Vérifier les conflits avant import
         const services = conversation.extraction_data?.services || [];
-        const conflicts = await checkConflicts(supabase, agent_id, services);
+        const conflicts = await checkConflicts(supabase, importAgentId, services);
 
         if (conflicts.length > 0) {
           // Il y a des conflits, demander à l'utilisateur comment procéder
@@ -261,7 +265,7 @@ serve(async (req) => {
         }
 
         // Pas de conflits, lancer l'import directement
-        const importResult = await importServices(supabase, agent_id, services);
+        const importResult = await importServices(supabase, importAgentId, services);
 
         await updateConversation(supabase, conversation.id, {
           status: "imported",
@@ -278,10 +282,11 @@ serve(async (req) => {
         });
       } else if (quick_reply.type === "resolve_conflicts") {
         // L'utilisateur a choisi comment gérer les conflits
+        const importAgentId = target_agent_id || agent_id;
         const services = conversation.extraction_data?.services || [];
         const strategy = quick_reply.conflict_strategy || "overwrite_all";
         const selectedDates = quick_reply.selected_dates || [];
-        const importResult = await importServices(supabase, agent_id, services, strategy, selectedDates);
+        const importResult = await importServices(supabase, importAgentId, services, strategy, selectedDates);
 
         await updateConversation(supabase, conversation.id, {
           status: "imported",

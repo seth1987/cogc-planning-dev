@@ -503,7 +503,15 @@ export const useColors = (context = 'general', userEmail = null) => {
       
       // 3. MODE GROUPE: utiliser la couleur du groupe directement
       if (categoryMode === 'group') {
-        // Priorité: couleur groupe personnalisée > couleur par défaut du groupe
+        // 3a. Si l'item a une couleur par défaut DISTINCTE du groupe, la respecter
+        // (ex: RPP a un texte rouge différent de RP dans la catégorie repos)
+        const itemDefault = category.items?.[serviceCode]?.defaultColor;
+        if (itemDefault && (itemDefault.bg !== category.defaultColor?.bg || itemDefault.text !== category.defaultColor?.text)) {
+          return colors.services?.[serviceCode]?.bg && colors.services[serviceCode].bg !== 'transparent'
+            ? colors.services[serviceCode]
+            : itemDefault;
+        }
+        // 3b. Priorité: couleur groupe personnalisée > couleur par défaut du groupe
         if (colors.groups?.[category.key]?.bg && colors.groups[category.key].bg !== 'transparent') {
           return colors.groups[category.key];
         }
